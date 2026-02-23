@@ -271,7 +271,7 @@ async def build_subscription_message(info: dict, state: FSMContext, config=None)
             text += f"• {plan_data['title']} - {price_text}\n"
         
         builder.row(InlineKeyboardButton(text="💳 Купить подписку", callback_data="show_subscription_plans"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
     
     return text, builder
 
