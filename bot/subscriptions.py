@@ -205,7 +205,7 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                                 SET key_name = $1
                                 WHERE id = $2
                                 """,
-                                f"{server['name']} #{key_id}",
+                                server['name'],
                                 key_id,
                             )
                             logger.debug(f"Created key {key_id} for user {user_id} on server {server['name']}")
@@ -353,7 +353,7 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                                 SET key_name = $1
                                 WHERE id = $2
                                 """,
-                                f"{server['name']} #{key_id}",
+                                server['name'],
                                 key_id,
                             )
                             logger.info(f"Created key {key_id} for user {user_id} on server {server['name']}")
