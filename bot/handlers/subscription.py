@@ -424,14 +424,170 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data.startswith("buy_subscription:"))
     async def handle_buy_subscription(callback: CallbackQuery):
         """Обработка покупки подписки"""
-        # TODO: Реализовать создание инвойса
-        await callback.answer("Функция в разработке", show_alert=True)
+        await process_payment(callback, is_renewal=False)
     
     @dp.callback_query(F.data.startswith("buy_renewal:"))
     async def handle_buy_renewal(callback: CallbackQuery):
         """Обработка продления подписки"""
-        # TODO: Реализовать создание инвойса
-        await callback.answer("Функция в разработке", show_alert=True)
+        await process_payment(callback, is_renewal=True)
+    
+    async def process_payment(callback: CallbackQuery, is_renewal: bool):
+        """Обработка платежа (общая функция для покупки и продления)"""
+        # Парсим callback_data: buy_subscription:plan_id:method_id или buy_renewal:plan_id:method_id
+        parts = callback.data.split(":")
+        if len(parts) < 3:
+            await callback.answer("❌ Неверный формат данных", show_alert=True)
+            return
+        
+        plan_id = parts[1]
+        method_id = parts[2]
+        
+        # Получаем планы
+        subscription_plans = await get_subscription_plans()
+        renewal_plans = await get_renewal_plans()
+        
+        # Определяем план
+        if is_renewal:
+            plan_data = renewal_plans.get(plan_id)
+        else:
+            plan_data = subscription_plans.get(plan_id)
+        
+        if not plan_data:
+            await callback.answer("❌ План не найден", show_alert=True)
+            return
+        
+        # Валидация метода оплаты
+        if method_id not in PAYMENT_METHODS:
+            await callback.answer("❌ Неизвестный метод оплаты", show_alert=True)
+            return
+        
+        method_data = PAYMENT_METHODS[method_id]
+        
+        # Определяем цену
+        currency_type = 'stars' if method_data['currency'] == 'XTR' else 'rub'
+        price_key = f"price_{currency_type}"
+        price = plan_data.get(price_key)
+        
+        if price is None:
+            await callback.answer(f"❌ Цена не найдена для плана. Ключ: {price_key}", show_alert=True)
+            logger.error(f"Price key '{price_key}' not found in plan_data for plan {plan_id}")
+            return
+        
+        # Преобразуем цену в int
+        try:
+            price = int(float(price))
+        except (ValueError, TypeError) as e:
+            await callback.answer("❌ Ошибка: неверный формат цены", show_alert=True)
+            logger.error(f"Invalid price format for plan {plan_id}: {price}, error: {e}")
+            return
+        
+        if price <= 0:
+            await callback.answer("❌ Ошибка: цена должна быть больше нуля", show_alert=True)
+            logger.error(f"Invalid price value for plan {plan_id}: {price}")
+            return
+        
+        # Обработка разных методов оплаты
+        if method_id == "yookassa":
+            # Оплата через ЮKassa
+            if not config.yookassa.enabled:
+                await callback.answer("❌ ЮKassa не настроена", show_alert=True)
+                return
+            
+            # Проверяем минимальную сумму для ЮKassa (минимум 1 рубль = 100 копеек)
+            if price < 100:
+                await callback.answer("❌ Минимальная сумма оплаты - 1 рубль", show_alert=True)
+                return
+            
+            try:
+                # Создаем YooKassa клиент
+                yookassa_client = YooKassaClient(config.yookassa)
+                
+                # Получаем username бота для return_url
+                bot_info = await bot.get_me()
+                bot_username = bot_info.username
+                
+                # Конвертируем цену из копеек в рубли
+                amount_rub = price / 100.0
+                
+                # Создаем платеж через ЮKassa
+                payment_data = yookassa_client.create_payment(
+                    amount=amount_rub,
+                    description=f"VPN подписка - {plan_data['title']}",
+                    return_url=f"https://t.me/{bot_username}?start=payment_success",
+                    metadata={
+                        "user_id": callback.from_user.id,
+                        "plan_id": plan_id,
+                        "method_id": method_id
+                    }
+                )
+                
+                payment_id = payment_data["id"]
+                confirmation_url = payment_data["confirmation_url"]
+                
+                # Сохраняем платеж в БД со статусом pending
+                async with get_connection() as conn:
+                    await conn.execute('''
+                        INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    ''',
+                        callback.from_user.id,
+                        price,
+                        "RUB",
+                        plan_id,
+                        "subscription",
+                        "pending",
+                        payment_id
+                    )
+                
+                # Отправляем пользователю ссылку на оплату
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=confirmation_url))
+                builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
+                
+                await callback.message.edit_text(
+                    f"💳 <b>Оплата через ЮKassa</b>\n\n"
+                    f"План: <i>{plan_data['title']}</i>\n"
+                    f"Сумма: <i>{format_price_rub(price)}</i>\n\n"
+                    f"Нажмите кнопку ниже, чтобы перейти к оплате.\n"
+                    f"После успешной оплаты подписка будет активирована автоматически.\n\n"
+                    f"⏰ <i>Платеж не должен задерживаться больше 1 часа.</i>",
+                    reply_markup=builder.as_markup(),
+                    parse_mode="HTML"
+                )
+                
+                await callback.answer()
+                
+            except Exception as e:
+                logger.error(f"Error creating YooKassa payment: {e}", exc_info=True)
+                await callback.answer("❌ Ошибка при создании платежа. Попробуйте позже.", show_alert=True)
+                return
+        
+        else:
+            # Оплата через Telegram (Stars)
+            # Проверяем минимальную сумму
+            if price < 1:
+                await callback.answer("❌ Ошибка: сумма слишком мала", show_alert=True)
+                return
+            
+            # Создаем payload
+            payload = f"{plan_id}|{method_id}"
+            
+            # Отправляем инвойс
+            try:
+                await bot.send_invoice(
+                    chat_id=callback.message.chat.id,
+                    title=f"VPN подписка - {plan_data['title']}",
+                    description=f"Нажимая кнопку «Заплатить» Вы соглашаетесь с правилами VPN бота (/help)",
+                    provider_token=method_data.get('provider_token', ''),
+                    currency=method_data['currency'],
+                    prices=[LabeledPrice(label="VPN подписка", amount=price)],
+                    payload=payload,
+                    start_parameter='subscription'
+                )
+                await callback.answer()
+            except Exception as e:
+                logger.error(f"Error sending invoice: {e}", exc_info=True)
+                await callback.answer("❌ Ошибка при создании инвойса. Попробуйте позже.", show_alert=True)
     
     @dp.callback_query(F.data == "go_back")
     async def handle_go_back_subscription(callback: CallbackQuery, state: FSMContext):
