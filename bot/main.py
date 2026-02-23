@@ -156,6 +156,7 @@ async def main():
     await start.setup_start_handler(dp, bot, config)
     await subscription.setup_subscription_handlers(dp, bot, config)
     await payment.setup_payment_handlers(dp, bot, config)
+    await start.setup_other_handlers(dp, bot, config)
     logger.info("All handlers registered")
     
     # Запускаем планировщик

@@ -91,26 +91,50 @@ PAYMENT_METHODS = {
 async def get_subscription_plans() -> Dict[str, Dict[str, Any]]:
     """Получить планы подписки с динамическими ценами из БД"""
     plans = SUBSCRIPTION_PLANS_BASE.copy()
-    async with get_connection() as conn:
-        price_settings = await conn.fetch('SELECT plan_id, price_rub, price_stars FROM price_settings')
-        for setting in price_settings:
-            plan_id = setting['plan_id']
-            if plan_id in plans:
-                plans[plan_id]['price_rub'] = int(setting['price_rub']) if setting['price_rub'] is not None else plans[plan_id]['price_rub']
-                plans[plan_id]['price_stars'] = int(setting['price_stars']) if setting['price_stars'] is not None else plans[plan_id]['price_stars']
+    try:
+        async with get_connection() as conn:
+            # Проверяем существование таблицы
+            table_exists = await conn.fetchval('''
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'price_settings'
+                )
+            ''')
+            if table_exists:
+                price_settings = await conn.fetch('SELECT plan_id, price_rub, price_stars FROM price_settings')
+                for setting in price_settings:
+                    plan_id = setting['plan_id']
+                    if plan_id in plans:
+                        plans[plan_id]['price_rub'] = int(setting['price_rub']) if setting['price_rub'] is not None else plans[plan_id]['price_rub']
+                        plans[plan_id]['price_stars'] = int(setting['price_stars']) if setting['price_stars'] is not None else plans[plan_id]['price_stars']
+    except Exception as e:
+        import logging
+        logging.warning(f"Error loading price_settings: {e}, using default prices")
     return plans
 
 
 async def get_renewal_plans() -> Dict[str, Dict[str, Any]]:
     """Получить планы продления с динамическими ценами из БД"""
     plans = RENEWAL_PLANS_BASE.copy()
-    async with get_connection() as conn:
-        price_settings = await conn.fetch('SELECT plan_id, price_rub, price_stars FROM price_settings')
-        for setting in price_settings:
-            plan_id = setting['plan_id']
-            if plan_id in plans:
-                plans[plan_id]['price_rub'] = int(setting['price_rub']) if setting['price_rub'] is not None else plans[plan_id]['price_rub']
-                plans[plan_id]['price_stars'] = int(setting['price_stars']) if setting['price_stars'] is not None else plans[plan_id]['price_stars']
+    try:
+        async with get_connection() as conn:
+            # Проверяем существование таблицы
+            table_exists = await conn.fetchval('''
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'price_settings'
+                )
+            ''')
+            if table_exists:
+                price_settings = await conn.fetch('SELECT plan_id, price_rub, price_stars FROM price_settings')
+                for setting in price_settings:
+                    plan_id = setting['plan_id']
+                    if plan_id in plans:
+                        plans[plan_id]['price_rub'] = int(setting['price_rub']) if setting['price_rub'] is not None else plans[plan_id]['price_rub']
+                        plans[plan_id]['price_stars'] = int(setting['price_stars']) if setting['price_stars'] is not None else plans[plan_id]['price_stars']
+    except Exception as e:
+        import logging
+        logging.warning(f"Error loading price_settings: {e}, using default prices")
     return plans
 
 

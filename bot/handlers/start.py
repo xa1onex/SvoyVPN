@@ -176,3 +176,63 @@ async def get_main_keyboard(user_id: int, config):
     )
     
     return builder.as_markup()
+
+
+async def setup_other_handlers(dp, bot: Bot, config):
+    """Настраивает дополнительные обработчики (invite, help, admin)"""
+    
+    @dp.callback_query(F.data == "open_invite")
+    async def handle_open_invite(callback: CallbackQuery):
+        """Обработчик кнопки Подарок (реферальная система)"""
+        user_id = callback.from_user.id
+        from ..database import get_connection
+        
+        async with get_connection() as conn:
+            user_data = await conn.fetchrow(
+                "SELECT referral_code FROM users WHERE user_id = $1",
+                user_id
+            )
+            
+            if user_data:
+                referral_code = user_data.get("referral_code", "")
+                referral_link = f"https://t.me/{bot.username}?start=ref_{referral_code}"
+                
+                await callback.message.answer(
+                    f"🎁 <b>Пригласи друга и получи бонус!</b>\n\n"
+                    f"📎 <b>Ваша реферальная ссылка:</b>\n"
+                    f"<code>{referral_link}</code>\n\n"
+                    f"💡 <b>Как это работает:</b>\n"
+                    f"• Отправьте эту ссылку другу\n"
+                    f"• Когда друг зарегистрируется и купит подписку, вы оба получите бонусные дни\n"
+                    f"• Количество бонусных дней настраивается администратором",
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+            else:
+                await callback.message.answer("❌ Ошибка: пользователь не найден")
+        
+        await callback.answer()
+    
+    @dp.callback_query(F.data == "open_help")
+    async def handle_open_help(callback: CallbackQuery):
+        """Обработчик кнопки Помощь"""
+        help_text = (
+            "🆘 <b>Помощь</b>\n\n"
+            "📱 <b>Как использовать VPN:</b>\n"
+            "1. Купите подписку через кнопку <b>💳 Подписка</b>\n"
+            "2. Нажмите <b>🔗 Получить VPN</b> для получения ссылки подписки\n"
+            "3. Добавьте ссылку в приложение (v2rayNG, v2rayN, sing-box и т.п.)\n"
+            "4. Обновите подписку в приложении\n\n"
+            "💳 <b>Способы оплаты:</b>\n"
+            "• Telegram Stars\n"
+            "• ЮKassa (банковская карта)\n\n"
+            "❓ <b>Вопросы?</b>\n"
+            "Обратитесь в поддержку: @xdouble_support"
+        )
+        await callback.message.answer(help_text, parse_mode="HTML")
+        await callback.answer()
+    
+    @dp.callback_query(F.data == "admin_panel")
+    async def handle_admin_panel(callback: CallbackQuery):
+        """Обработчик админ-панели (заглушка)"""
+        await callback.answer("Админ-панель в разработке", show_alert=True)

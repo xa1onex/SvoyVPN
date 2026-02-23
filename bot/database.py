@@ -222,6 +222,65 @@ async def init_db() -> None:
             WHERE yookassa_payment_id IS NOT NULL
             """
         )
+        
+        # Таблица для динамических цен
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS price_settings (
+                id SERIAL PRIMARY KEY,
+                plan_id TEXT UNIQUE NOT NULL,
+                price_rub INTEGER NOT NULL,
+                price_stars INTEGER NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        
+        # Таблица для настроек реферальной системы
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS referral_settings (
+                id SERIAL PRIMARY KEY,
+                inviter_bonus_days INTEGER DEFAULT 5,
+                invited_bonus_days INTEGER DEFAULT 3,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        
+        # Инициализация настроек реферальной системы, если таблица пустая
+        try:
+            referral_count = await conn.fetchval('SELECT COUNT(*) FROM referral_settings')
+            if referral_count == 0:
+                await conn.execute('''
+                    INSERT INTO referral_settings (inviter_bonus_days, invited_bonus_days, updated_at)
+                    VALUES (5, 3, CURRENT_TIMESTAMP)
+                ''')
+        except Exception as e:
+            logging.warning(f"Could not initialize referral_settings: {e}")
+        
+        # Таблица для настроек скидок
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS discount_settings (
+                id SERIAL PRIMARY KEY,
+                days_threshold INTEGER DEFAULT 3,
+                enable_for_all BOOLEAN DEFAULT FALSE,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        
+        # Инициализация настроек скидок, если таблица пустая
+        try:
+            discount_count = await conn.fetchval('SELECT COUNT(*) FROM discount_settings')
+            if discount_count == 0:
+                await conn.execute('''
+                    INSERT INTO discount_settings (days_threshold, enable_for_all, updated_at)
+                    VALUES (3, FALSE, CURRENT_TIMESTAMP)
+                ''')
+        except Exception as e:
+            logging.warning(f"Could not initialize discount_settings: {e}")
 
 
 async def check_expired_subscriptions() -> None:
