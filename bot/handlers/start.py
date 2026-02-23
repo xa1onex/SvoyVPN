@@ -93,6 +93,17 @@ async def setup_start_handler(dp, bot: Bot, config):
                         except Exception as e:
                             logger.error(f"Ошибка отправки уведомления: {e}")
                         
+                        # Уведомление новому пользователю о получении бонуса
+                        try:
+                            invited_end_date = datetime.now() + timedelta(days=invited_bonus_days)
+                            await bot.send_message(
+                                user_id,
+                                f"🎁 Поздравляем! Вы получили +{invited_bonus_days} {'день' if invited_bonus_days == 1 else 'дня' if invited_bonus_days < 5 else 'дней'} VPN за регистрацию по реферальной ссылке!\n"
+                                f"Ваш VPN активен до: {invited_end_date.strftime('%d.%m.%Y')}"
+                            )
+                        except Exception as e:
+                            logger.error(f"Ошибка отправки уведомления новому пользователю: {e}")
+                        
                         has_referral = True
                 
                 # Уведомление админам
@@ -131,8 +142,9 @@ async def setup_start_handler(dp, bot: Bot, config):
                 )
 
 
-async def get_main_text(first_name: str, subscription_status: str, user_id: int = None) -> str:
+async def get_main_text(first_name: str, subscription_status: str, user_id: int = None, is_new_user: bool = False) -> str:
     """Возвращает основной текст с объявлением"""
+    import random
     from ..database import get_connection
     
     ann = ""
@@ -141,8 +153,28 @@ async def get_main_text(first_name: str, subscription_status: str, user_id: int 
         if ann_row:
             ann = ann_row['text']
     
+    # Разнообразные приветствия
+    if is_new_user:
+        greetings = [
+            f"👋 Добро пожаловать, <b>{first_name}</b>!",
+            f"🎉 Привет, <b>{first_name}</b>! Рады тебя видеть!",
+            f"🚀 Здравствуй, <b>{first_name}</b>! Добро пожаловать!",
+            f"✨ Приветствуем тебя, <b>{first_name}</b>!",
+            f"🌟 С возвращением, <b>{first_name}</b>!"
+        ]
+        greeting = random.choice(greetings)
+    else:
+        greetings = [
+            f"👋 Рады видеть тебя снова, <b>{first_name}</b>!",
+            f"🎯 Привет, <b>{first_name}</b>! С возвращением!",
+            f"🔥 Здравствуй, <b>{first_name}</b>! Хорошо видеть тебя!",
+            f"💫 Снова ты, <b>{first_name}</b>! Отлично!",
+            f"⚡ Привет, <b>{first_name}</b>! Рады тебя видеть!"
+        ]
+        greeting = random.choice(greetings)
+    
     msg = (
-        f"👋 Рады видеть тебя снова, <b>{first_name}</b>!\n\n"
+        f"{greeting}\n\n"
         f"<b>VPN</b>: <i>{subscription_status}</i>\n\n"
         f"📌 <b>Команды:</b>\n"
         "<i>/start</i> - Перезагрузить бота\n"
