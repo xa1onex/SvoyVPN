@@ -1223,15 +1223,21 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 await message.answer("❌ Сервер не найден")
                 return
             
-            keys_count = await conn.fetchval('SELECT COUNT(*) FROM vpn_keys WHERE server_id = $1', server_id)
+            # Деактивируем все ключи этого сервера перед удалением
+            deactivated_count = await conn.fetchval('''
+                SELECT COUNT(*) FROM vpn_keys
+                WHERE server_id = $1 AND is_active = TRUE
+            ''', server_id)
             
-            if keys_count > 0:
-                await message.answer(
-                    f"❌ Нельзя удалить сервер: на нем {keys_count} ключей. "
-                    f"Сначала удалите или переместите ключи."
-                )
-                return
+            if deactivated_count and deactivated_count > 0:
+                await conn.execute('''
+                    UPDATE vpn_keys
+                    SET is_active = FALSE
+                    WHERE server_id = $1 AND is_active = TRUE
+                ''', server_id)
+                logger.info(f"Deactivated {deactivated_count} keys for server {server_id} before deletion")
             
+            # Удаляем сервер
             await conn.execute('DELETE FROM servers WHERE id = $1', server_id)
         
         await message.answer(f"✅ Сервер '{server['name']}' удален")
@@ -2008,17 +2014,21 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     await safe_callback_answer(callback, "❌ Сервер не найден", show_alert=True)
                     return
                 
-                # Проверяем, есть ли ключи на этом сервере
-                keys_count = await conn.fetchval('SELECT COUNT(*) FROM vpn_keys WHERE server_id = $1', server_id)
+                # Деактивируем все ключи этого сервера перед удалением
+                deactivated_count = await conn.fetchval('''
+                    SELECT COUNT(*) FROM vpn_keys
+                    WHERE server_id = $1 AND is_active = TRUE
+                ''', server_id)
                 
-                if keys_count > 0:
-                    await safe_callback_answer(
-                        callback,
-                        f"❌ Нельзя удалить сервер: на нем {keys_count} ключей. Сначала удалите или переместите ключи.",
-                        show_alert=True
-                    )
-                    return
+                if deactivated_count and deactivated_count > 0:
+                    await conn.execute('''
+                        UPDATE vpn_keys
+                        SET is_active = FALSE
+                        WHERE server_id = $1 AND is_active = TRUE
+                    ''', server_id)
+                    logger.info(f"Deactivated {deactivated_count} keys for server {server_id} before deletion")
                 
+                # Удаляем сервер
                 await conn.execute('DELETE FROM servers WHERE id = $1', server_id)
             
             await safe_callback_answer(callback, f"✅ Сервер '{server['name']}' удален")
