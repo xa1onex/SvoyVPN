@@ -45,6 +45,9 @@ async def setup_start_handler(dp, bot: Bot, config):
                 
                 # Обработка реферального кода
                 has_referral = False
+                invited_bonus_days = None
+                invited_end_date = None
+                
                 if referral_code:
                     inviter = await conn.fetchrow('SELECT user_id FROM users WHERE referral_code = $1', referral_code)
                     
@@ -94,18 +97,9 @@ async def setup_start_handler(dp, bot: Bot, config):
                         except Exception as e:
                             logger.error(f"Ошибка отправки уведомления: {e}")
                         
-                        # Уведомление новому пользователю о получении бонуса
-                        try:
-                            invited_end_date = datetime.now() + timedelta(days=invited_bonus_days)
-                            await bot.send_message(
-                                user_id,
-                                f"🎁 Поздравляем! Вы получили +{invited_bonus_days} {'день' if invited_bonus_days == 1 else 'дня' if invited_bonus_days < 5 else 'дней'} VPN за регистрацию по реферальной ссылке!\n"
-                                f"Ваш VPN активен до: {invited_end_date.strftime('%d.%m.%Y')}"
-                            )
-                        except Exception as e:
-                            logger.error(f"Ошибка отправки уведомления новому пользователю: {e}")
-                        
                         has_referral = True
+                        # Сохраняем дату окончания для использования в приветствии
+                        invited_end_date = datetime.now() + timedelta(days=invited_bonus_days)
                 
                 # Уведомление админам
                 referral_info = "по реферальной ссылке" if has_referral else "без рефералки"
@@ -124,12 +118,42 @@ async def setup_start_handler(dp, bot: Bot, config):
                     except Exception as e:
                         logger.error(f"Failed to notify admin {admin_id}: {e}")
                 
-                # Приветствие для нового пользователя
-                subscription_status = await get_subscription_status(user_id)
+                # Формируем приветственное сообщение для нового пользователя
+                welcome_msg_parts = [
+                    "<b>VPN бот</b> — быстрый и надежный VPN сервис\n\n"
+                ]
+
+                if has_referral and invited_bonus_days is not None:
+                    # Получаем дату окончания подписки из базы данных
+                    user_data = await conn.fetchrow('SELECT subscription_end FROM users WHERE user_id = $1', user_id)
+                    if user_data and user_data['subscription_end']:
+                        expiration_date = user_data['subscription_end'].strftime("%d.%m.%Y")
+                    elif invited_end_date:
+                        expiration_date = invited_end_date.strftime("%d.%m.%Y")
+                    else:
+                        expiration_date = (datetime.now() + timedelta(days=invited_bonus_days)).strftime("%d.%m.%Y")
+                    
+                    welcome_msg_parts.append(
+                        f"🎁 Вы получили +{invited_bonus_days} {'день' if invited_bonus_days == 1 else 'дня' if invited_bonus_days < 5 else 'дней'} <b>VPN</b> за регистрацию по реферальной ссылке!\n"
+                        f"Ваш <b>VPN</b> активен до: {expiration_date}\n\n"
+                    )
+
+                welcome_msg_parts.extend([
+                    "<b>Бот предоставляет</b>:\n"
+                    "• Безопасный и быстрый VPN\n"
+                    "• Обход блокировок\n"
+                    "• Высокая скорость\n\n"
+                    "👉 Больше информации в разделе <b>помощь</b> - /help\n\n"
+                    "‼️ Продолжая использовать бота, вы принимаете <a href='https://telegra.ph/Konfidencialnost-i-usloviya-02-01'>нашу политику и конфиденциальность</a>!\n\n"
+                ])
+
+                welcome_msg = "".join(welcome_msg_parts)
+
                 await message.answer(
-                    await get_main_text(first_name, subscription_status, user_id, is_new_user=True, has_referral=has_referral),
-                    parse_mode="HTML",
-                    reply_markup=await get_main_keyboard(user_id, config)
+                    welcome_msg,
+                    reply_markup=await get_main_keyboard(user_id, config),
+                    disable_web_page_preview=True,
+                    parse_mode='HTML'
                 )
             else:
                 # Обновляем активность
