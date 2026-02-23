@@ -287,23 +287,59 @@ async def setup_other_handlers(dp, bot: Bot, config):
         else:
             message = message_or_callback
             callback = None
+        
+        # Получаем ссылку на техподдержку
+        from ..database import get_support_link
+        support_link = await get_support_link()
+        
+        # Получаем настройки реферальной системы
+        async with get_connection() as conn:
+            referral_settings = await conn.fetchrow('SELECT inviter_bonus_days, invited_bonus_days FROM referral_settings ORDER BY id DESC LIMIT 1')
+            if not referral_settings:
+                inviter_days = 5
+                invited_days = 3
+            else:
+                inviter_days = referral_settings['inviter_bonus_days']
+                invited_days = referral_settings['invited_bonus_days']
+        
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        if support_link:
+            builder.row(InlineKeyboardButton(text="🛟 Техподдержка", url=support_link))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
+        
         help_text = (
-            "🆘 <b>Помощь</b>\n\n"
-            "📱 <b>Как использовать VPN:</b>\n"
-            "1. Купите подписку через кнопку <b>💳 Подписка</b>\n"
-            "2. Нажмите <b>🔗 Получить VPN</b> для получения ссылки подписки\n"
-            "3. Добавьте ссылку в приложение (v2rayNG, v2rayN, sing-box и т.п.)\n"
-            "4. Обновите подписку в приложении\n\n"
-            "💳 <b>Способы оплаты:</b>\n"
-            "• Telegram Stars\n"
-            "• ЮKassa (банковская карта)\n\n"
-            "❓ <b>Вопросы?</b>\n"
-            "Обратитесь в поддержку: @xdouble_support"
+            "🤖<b>VPN бот</b> — быстрый и надежный VPN сервис\n\n"
+            "<b>Бот предоставляет</b>:\n"
+            "• Быстрый и безопасный VPN\n"
+            "• Обход всех блокировок\n"
+            "• Высокая скорость подключения\n\n"
+            "<b>Как пользоваться</b>?\n"
+            "• Купите подписку через /prem\n"
+            "• Получите VPN ссылку\n"
+            "• Импортируйте ссылку в приложение (v2rayNG, sing-box и т.п.)\n"
+            "• Подключитесь!\n\n"
+            "<b>Реферальная программа</b>:\n"
+            "• Пригласите друга через /invite\n"
+            f"• Вы получите +{inviter_days} {'день' if inviter_days == 1 else 'дня' if inviter_days < 5 else 'дней'} VPN\n"
+            f"• Друг получит +{invited_days} {'день' if invited_days == 1 else 'дня' if invited_days < 5 else 'дней'} VPN\n\n"
+            "📌 <b>Команды</b>:\n"
+            "/start - Перезагрузить бота\n"
+            "/prem - Покупка VPN\n"
+            "/invite - Пригласи друга\n"
         )
+        
         if isinstance(message_or_callback, CallbackQuery):
-            await callback.message.answer(help_text, parse_mode="HTML")
-            await callback.answer()
+            await message_or_callback.message.edit_text(
+                help_text,
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
         else:
-            await message.answer(help_text, parse_mode="HTML")
+            await message.answer(
+                help_text,
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
     
     # Админ-панель обрабатывается в admin.py
