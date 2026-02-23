@@ -1,0 +1,138 @@
+"""
+Клиент для работы с API ЮKassa
+Документация: https://yookassa.ru/developers/api
+"""
+import logging
+from typing import Optional, Dict, Any
+from yookassa import Configuration, Payment
+from yookassa.domain.notification import WebhookNotification
+from .config import YooKassaConfig
+
+logger = logging.getLogger(__name__)
+
+
+class YooKassaClient:
+    """Клиент для работы с API ЮKassa"""
+    
+    def __init__(self, config: YooKassaConfig):
+        self.config = config
+        if config.enabled and config.shop_id and config.secret_key:
+            Configuration.account_id = config.shop_id
+            Configuration.secret_key = config.secret_key
+        else:
+            logger.warning("YooKassa is not properly configured")
+    
+    def create_payment(
+        self,
+        amount: float,
+        description: str,
+        return_url: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Создать платеж через ЮKassa
+        
+        Args:
+            amount: Сумма платежа в рублях
+            description: Описание платежа
+            return_url: URL для возврата после оплаты
+            metadata: Дополнительные метаданные (например, user_id, plan_id)
+        
+        Returns:
+            Словарь с данными платежа, включая confirmation_url
+        """
+        if not self.config.enabled:
+            raise RuntimeError("YooKassa is not enabled")
+        
+        payment_dict = {
+            "amount": {
+                "value": f"{amount:.2f}",
+                "currency": "RUB"
+            },
+            "confirmation": {
+                "type": "redirect",
+                "return_url": return_url
+            },
+            "description": description,
+            "capture": True,
+            "metadata": metadata or {}
+        }
+        
+        try:
+            payment = Payment.create(payment_dict, idempotency_key=None)
+            logger.info(f"YooKassa payment created: {payment.id}")
+            return {
+                "id": payment.id,
+                "status": payment.status,
+                "confirmation_url": payment.confirmation.confirmation_url if payment.confirmation else None,
+                "amount": payment.amount.value,
+                "currency": payment.amount.currency
+            }
+        except Exception as e:
+            logger.error(f"Error creating YooKassa payment: {e}", exc_info=True)
+            raise
+    
+    def get_payment_status(self, payment_id: str) -> Dict[str, Any]:
+        """
+        Получить статус платежа
+        
+        Args:
+            payment_id: ID платежа в ЮKassa
+        
+        Returns:
+            Словарь со статусом платежа
+        """
+        if not self.config.enabled:
+            raise RuntimeError("YooKassa is not enabled")
+        
+        try:
+            payment = Payment.find_one(payment_id)
+            return {
+                "id": payment.id,
+                "status": payment.status,
+                "paid": payment.paid,
+                "amount": payment.amount.value if payment.amount else None,
+                "currency": payment.amount.currency if payment.amount else None,
+                "metadata": payment.metadata or {}
+            }
+        except Exception as e:
+            logger.error(f"Error getting YooKassa payment status: {e}", exc_info=True)
+            raise
+    
+    def parse_webhook(self, request_body: dict, request_headers: dict) -> Optional[Dict[str, Any]]:
+        """
+        Парсинг webhook уведомления от ЮKassa
+        
+        Args:
+            request_body: Тело запроса (JSON)
+            request_headers: Заголовки запроса
+        
+        Returns:
+            Словарь с данными уведомления или None если ошибка
+        """
+        try:
+            notification = WebhookNotification(request_body)
+            payment_object = notification.object
+            
+            return {
+                "event": notification.event,
+                "payment_id": payment_object.id,
+                "status": payment_object.status,
+                "paid": payment_object.paid,
+                "amount": payment_object.amount.value if payment_object.amount else None,
+                "currency": payment_object.amount.currency if payment_object.amount else None,
+                "metadata": payment_object.metadata or {}
+            }
+        except Exception as e:
+            logger.error(f"Error parsing YooKassa webhook: {e}", exc_info=True)
+            return None
+
+
+
+
+
+
+
+
+
+
