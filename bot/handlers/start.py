@@ -132,15 +132,15 @@ async def setup_start_handler(dp, bot: Bot, config):
                     reply_markup=await get_main_keyboard(user_id, config)
                 )
             else:
-            # Обновляем активность
-            await conn.execute("UPDATE users SET last_activity = CURRENT_TIMESTAMP WHERE user_id = $1", user_id)
-            
-            subscription_status = await get_subscription_status(user_id)
-            await message.answer(
-                await get_main_text(first_name, subscription_status, user_id, is_new_user=False),
-                parse_mode="HTML",
-                reply_markup=await get_main_keyboard(user_id, config)
-            )
+                # Обновляем активность
+                await conn.execute("UPDATE users SET last_activity = CURRENT_TIMESTAMP WHERE user_id = $1", user_id)
+                
+                subscription_status = await get_subscription_status(user_id)
+                await message.answer(
+                    await get_main_text(first_name, subscription_status, user_id, is_new_user=False),
+                    parse_mode="HTML",
+                    reply_markup=await get_main_keyboard(user_id, config)
+                )
 
 
 async def get_main_text(first_name: str, subscription_status: str, user_id: int = None, is_new_user: bool = False) -> str:
