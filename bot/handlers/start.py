@@ -194,6 +194,8 @@ async def setup_other_handlers(dp, bot: Bot, config):
             callback = None
         
         user_id = message.from_user.id
+        username = message.from_user.username
+        first_name = message.from_user.first_name or "Пользователь"
         from urllib.parse import quote
         
         async with get_connection() as conn:
@@ -202,22 +204,32 @@ async def setup_other_handlers(dp, bot: Bot, config):
                 user_id
             )
             
+            # Если пользователя нет, создаем его автоматически
             if not user_data:
-                await message.answer("❌ Пожалуйста, сначала запустите бота с помощью команды /start")
-                return
-            
-            referral_code = user_data.get("referral_code", "")
-            referral_count = user_data.get("referral_count", 0)
-            
-            # Если реферальный код отсутствует, генерируем новый
-            if not referral_code:
-                import secrets
-                referral_code = secrets.token_hex(4)
+                new_referral_code = secrets.token_hex(4)
+                sub_token = generate_subscription_token()
+                
                 await conn.execute('''
-                    UPDATE users
-                    SET referral_code = $1
-                    WHERE user_id = $2
-                ''', referral_code, user_id)
+                    INSERT INTO users (
+                        user_id, username, first_name, registration_date, last_activity,
+                        referral_code, pay_subscribed, subscription_end, subscription_token
+                    ) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $4, FALSE, NULL, $5)
+                ''', user_id, username, first_name, new_referral_code, sub_token)
+                
+                referral_code = new_referral_code
+                referral_count = 0
+            else:
+                referral_code = user_data.get("referral_code", "")
+                referral_count = user_data.get("referral_count", 0)
+                
+                # Если реферальный код отсутствует, генерируем новый
+                if not referral_code:
+                    referral_code = secrets.token_hex(4)
+                    await conn.execute('''
+                        UPDATE users
+                        SET referral_code = $1
+                        WHERE user_id = $2
+                    ''', referral_code, user_id)
             
             # Получаем настройки реферальной системы
             referral_settings = await conn.fetchrow('SELECT inviter_bonus_days, invited_bonus_days FROM referral_settings ORDER BY id DESC LIMIT 1')
