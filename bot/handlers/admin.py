@@ -1182,12 +1182,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             
             # Если сервер переведен на паузу - деактивируем все ключи этого сервера
             if not new_status:
-                deactivated_count = await conn.fetchval('''
+                result = await conn.execute('''
                     UPDATE vpn_keys
                     SET is_active = FALSE
                     WHERE server_id = $1 AND is_active = TRUE
-                    RETURNING COUNT(*)
                 ''', server_id)
+                # Получаем количество обновленных строк из результата
+                deactivated_count = int(result.split()[-1]) if result else 0
                 if deactivated_count:
                     logger.info(f"Deactivated {deactivated_count} keys for server {server_id} (server paused)")
         
@@ -1963,12 +1964,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 
                 # Если сервер переведен на паузу - деактивируем все ключи этого сервера
                 if not new_status:
-                    deactivated_count = await conn.fetchval('''
+                    result = await conn.execute('''
                         UPDATE vpn_keys
                         SET is_active = FALSE
                         WHERE server_id = $1 AND is_active = TRUE
-                        RETURNING COUNT(*)
                     ''', server_id)
+                    # Получаем количество обновленных строк из результата
+                    deactivated_count = int(result.split()[-1]) if result else 0
                     if deactivated_count:
                         logger.info(f"Deactivated {deactivated_count} keys for server {server_id} (server paused)")
             
