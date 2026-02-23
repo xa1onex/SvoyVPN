@@ -8,6 +8,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.exceptions import TelegramBadRequest
 
 from ..database import get_connection, ensure_subscription_token
 from ..subscriptions import get_subscription_status, get_user_subscription_url
@@ -438,5 +439,12 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         user_id = callback.from_user.id
         info = await get_subscription_info(user_id)
         text, builder = await build_subscription_message(info, state, config)
-        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        try:
+            await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        except TelegramBadRequest as e:
+            # Игнорируем ошибку, если сообщение не изменилось
+            if "message is not modified" in str(e):
+                logger.debug(f"Message not modified for user {user_id}, ignoring")
+            else:
+                raise
         await callback.answer()
