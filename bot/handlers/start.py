@@ -2,6 +2,7 @@
 Обработчик команды /start
 """
 import secrets
+import random
 import logging
 from datetime import datetime, timedelta
 from aiogram import Bot, F
