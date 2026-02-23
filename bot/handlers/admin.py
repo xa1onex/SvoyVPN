@@ -14,7 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..database import get_connection, get_support_link, set_announcement_text, get_device_instruction_photos, get_device_instruction_photos_list, add_device_instruction_photo, delete_device_instruction_photo
 from ..config import AppConfig
 from ..plans import SUBSCRIPTION_PLANS_BASE, RENEWAL_PLANS_BASE, format_price_rub, format_price_stars, format_price_both, get_renewal_plans
-from ..subscriptions import create_or_activate_keys_for_all_servers, create_keys_for_specific_server
+from ..subscriptions import create_or_activate_keys_for_all_servers, create_keys_for_specific_server, update_vless_links_for_server
 from ..xui_client import XUIClient
 
 logger = logging.getLogger(__name__)
@@ -2180,12 +2180,23 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 await conn.execute(f'UPDATE servers SET {field} = $1, base_url = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3', new_value, base_url, server_id)
             else:
                 await conn.execute(f'UPDATE servers SET {field} = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', new_value, server_id)
+            
+            # Обновляем VLESS ссылки для всех пользователей при любом изменении сервера
+            # (название, IP, порт, base_url и т.д. влияют на ссылку)
+            try:
+                # Запускаем обновление ссылок в фоне, чтобы не блокировать ответ админу
+                import asyncio
+                asyncio.create_task(update_vless_links_for_server(server_id))
+                logger.info(f"Scheduled VLESS links update for server {server_id} after editing {field}")
+            except Exception as e:
+                logger.error(f"Error scheduling VLESS links update for server {server_id}: {e}")
         
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="◀️ Назад к серверу", callback_data=f"admin_server_view:{server_id}"))
         
         await message.answer(
-            f"✅ Поле <b>{field}</b> обновлено!",
+            f"✅ Поле <b>{field}</b> обновлено!\n\n"
+            f"🔄 VLESS ссылки пользователей обновляются...",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
         )

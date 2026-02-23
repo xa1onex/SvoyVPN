@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, time as dt_time
 
 from .database import get_connection
@@ -543,6 +544,162 @@ async def get_subscription_status(user_id: int) -> str:
         import logging
         logging.error(f"Error in get_subscription_status: {e}")
     return "неактивен"
+
+
+async def update_vless_links_for_server(server_id: int) -> None:
+    """
+    Обновляет VLESS ссылки для всех пользователей при редактировании сервера.
+    Пересоздает ссылки с актуальными данными сервера (IP, порт, название и т.д.).
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        async with get_connection() as conn:
+            # Получаем информацию о сервере
+            server = await conn.fetchrow(
+                """
+                SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url, is_active
+                FROM servers
+                WHERE id = $1
+                """,
+                server_id,
+            )
+            if not server or not server['is_active']:
+                logger.warning(f"Server {server_id} not found or not active")
+                return
+            
+            # Получаем все активные ключи для этого сервера
+            keys = await conn.fetch('''
+                SELECT k.id, k.user_id, k.vless_client_id, k.key_name
+                FROM vpn_keys k
+                WHERE k.server_id = $1 
+                  AND k.is_active = TRUE
+                  AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
+            ''', server_id)
+            
+            if not keys:
+                logger.info(f"No active keys found for server {server_id}")
+                return
+            
+            logger.info(f"Updating {len(keys)} VLESS links for server {server['name']} (ID: {server_id})")
+            
+            # Создаем клиент для работы с x-ui панелью
+            client = XUIClient(
+                base_url=server["base_url"],
+                username=server["username"],
+                password=server["password"],
+                inbound_id=server["inbound_id"]
+            )
+            
+            # Получаем актуальные данные из inbound
+            try:
+                client.ensure_login()
+                inbounds = client._client.get("panel/api/inbounds/list").json().get("obj", [])
+                chosen = next((i for i in inbounds if i.get("id") == server["inbound_id"]), None)
+                
+                if not chosen:
+                    logger.error(f"Inbound {server['inbound_id']} not found for server {server_id}")
+                    return
+                
+                port = chosen.get("port") or "443"
+                stream_settings = json.loads(chosen.get("streamSettings", "{}") or "{}")
+                reality_settings = stream_settings.get("realitySettings") or {}
+                
+                # Извлекаем параметры Reality
+                pbk = ""
+                sid = ""
+                sni = "google.com"
+                fp = "chrome"
+                
+                if reality_settings:
+                    settings = reality_settings.get("settings", {})
+                    if isinstance(settings, str):
+                        try:
+                            settings = json.loads(settings)
+                        except:
+                            settings = {}
+                    elif not isinstance(settings, dict):
+                        settings = {}
+                    
+                    pbk = settings.get("publicKey", "") or ""
+                    sid = reality_settings.get("shortId", "") or ""
+                    if not sid:
+                        short_ids = reality_settings.get("shortIds", []) or settings.get("shortIds", [])
+                        if isinstance(short_ids, list) and short_ids:
+                            sid = short_ids[0]
+                        elif isinstance(short_ids, str):
+                            sid = short_ids
+                    
+                    sni_list = reality_settings.get("serverNames", [])
+                    if isinstance(sni_list, str):
+                        try:
+                            sni_list = json.loads(sni_list)
+                        except:
+                            sni_list = [sni_list] if sni_list else []
+                    if isinstance(sni_list, list) and sni_list:
+                        sni = sni_list[0]
+                    elif isinstance(sni_list, str) and sni_list:
+                        sni = sni_list
+                    
+                    fingerprints = settings.get("fingerprints", []) or reality_settings.get("fingerprints", [])
+                    if isinstance(fingerprints, str):
+                        try:
+                            fingerprints = json.loads(fingerprints)
+                        except:
+                            fingerprints = [fingerprints] if fingerprints else []
+                    if isinstance(fingerprints, list) and fingerprints:
+                        fp = fingerprints[0]
+                    elif isinstance(fingerprints, str) and fingerprints:
+                        fp = fingerprints
+                
+                # Получаем IP сервера
+                listen_ip = chosen.get("listen") or ""
+                if not listen_ip or listen_ip == "0.0.0.0":
+                    url_part = server["base_url"].split("//")[-1].split("/")[0]
+                    listen_ip = url_part.split(":")[0]
+                else:
+                    # Используем IP из таблицы servers, если он указан
+                    if server["ip"]:
+                        listen_ip = server["ip"]
+                
+                # Обновляем ссылки для всех ключей
+                updated_count = 0
+                for key in keys:
+                    try:
+                        # Формируем новую VLESS ссылку
+                        client_uuid = key['vless_client_id']
+                        key_id = key['id']
+                        server_name = server['name']
+                        
+                        link = f"vless://{client_uuid}@{listen_ip}:{port}/?type=tcp&encryption=none&security=reality"
+                        if pbk:
+                            link += f"&pbk={pbk}"
+                        link += f"&fp={fp}"
+                        link += f"&sni={sni}"
+                        link += f"&sid={sid or '3d'}"
+                        link += "&spx=%2F&flow=xtls-rprx-vision"
+                        link += f"#{server_name}#{key_id}"
+                        
+                        # Обновляем ссылку и название в базе данных
+                        key_name = f"{server_name} #{key_id}"
+                        await conn.execute('''
+                            UPDATE vpn_keys
+                            SET vless_link = $1, key_name = $2
+                            WHERE id = $3
+                        ''', link, key_name, key_id)
+                        
+                        updated_count += 1
+                    except Exception as e:
+                        logger.error(f"Failed to update link for key {key['id']}: {e}")
+                
+                logger.info(f"Updated {updated_count} VLESS links for server {server['name']} (ID: {server_id})")
+                
+            except Exception as e:
+                logger.error(f"Error updating VLESS links for server {server_id}: {e}", exc_info=True)
+                
+    except Exception as e:
+        logger.error(f"Error in update_vless_links_for_server for server {server_id}: {e}", exc_info=True)
 
 
 async def get_user_subscription_url(user_id: int, config=None) -> str:
