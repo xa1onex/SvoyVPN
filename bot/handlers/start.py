@@ -222,10 +222,10 @@ async def get_main_keyboard(user_id: int, config):
     if user_id in config.bot.admin_ids:
         builder.row(InlineKeyboardButton(text="🔐 Админ панель", callback_data="admin_panel"))
     
-    # Получаем URL для miniapp
+    # Получаем URL для miniapp из APP_URL
     miniapp_url = None
-    if config.subscription_base_url:
-        miniapp_url = f"{config.subscription_base_url}/miniapp"
+    if config.app_url:
+        miniapp_url = f"{config.app_url}/miniapp"
     else:
         # Fallback на localhost для разработки
         import os

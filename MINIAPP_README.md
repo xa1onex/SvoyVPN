@@ -32,10 +32,12 @@ miniapp/
 
 В главной клавиатуре бота добавлена кнопка "📱 Открыть приложение", которая открывает miniapp.
 
-URL miniapp формируется из `SUBSCRIPTION_BASE_URL` или `PUBLIC_BASE_URL` из `.env`:
+URL miniapp формируется из `APP_URL` из `.env`:
 ```
-{SUBSCRIPTION_BASE_URL}/miniapp
+{APP_URL}/miniapp
 ```
+
+**Важно:** `APP_URL` - это отдельная переменная, отличная от `SUBSCRIPTION_BASE_URL`. Это позволяет размещать miniapp на отдельном домене или поддомене.
 
 ## Безопасность
 
@@ -43,8 +45,14 @@ URL miniapp формируется из `SUBSCRIPTION_BASE_URL` или `PUBLIC_B
 
 ## Настройка
 
-1. Убедитесь, что в `.env` указан `SUBSCRIPTION_BASE_URL` или `PUBLIC_BASE_URL`
-2. Запустите бота - miniapp будет доступен по адресу `{BASE_URL}/miniapp`
+1. Убедитесь, что в `.env` указан `APP_URL` (отдельно от `SUBSCRIPTION_BASE_URL`):
+   ```bash
+   APP_URL=https://app.your-domain.com
+   # или
+   APP_URL=https://your-domain.com/app
+   ```
+
+2. Запустите бота - miniapp будет доступен по адресу `{APP_URL}/miniapp`
 3. Кнопка для открытия miniapp автоматически появится в главном меню бота
 
 ## Разработка

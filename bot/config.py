@@ -49,6 +49,7 @@ class AppConfig(BaseModel):
     flyer: FlyerConfig = Field(default_factory=FlyerConfig)
     yookassa: YooKassaConfig = Field(default_factory=YooKassaConfig)
     subscription_base_url: str | None = Field(None, description="Base URL for subscription links")
+    app_url: str | None = Field(None, description="Base URL for miniapp (APP_URL)")
 
 
 def load_config() -> AppConfig:
@@ -101,6 +102,10 @@ def load_config() -> AppConfig:
     )
     if subscription_base_url:
         subscription_base_url = subscription_base_url.rstrip("/")
+    
+    app_url = os.getenv("APP_URL")
+    if app_url:
+        app_url = app_url.rstrip("/")
 
     return AppConfig(
         bot=bot,
@@ -110,5 +115,6 @@ def load_config() -> AppConfig:
         flyer=flyer,
         yookassa=yookassa,
         subscription_base_url=subscription_base_url,
+        app_url=app_url,
     )
 
