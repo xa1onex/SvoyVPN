@@ -94,78 +94,80 @@ class WebhookServer:
                 if user_row.get("blacklisted"):
                     logger.warning(f"User {user_row['user_id']} is blacklisted")
                     raise HTTPNotFound()
-            
-            user_id = user_row["user_id"]
-            
-            # Проверяем активность подписки
-            is_active = await conn.fetchval('''
-                SELECT CASE
-                    WHEN pay_subscribed = TRUE
-                     AND subscription_end IS NOT NULL
-                     AND DATE(subscription_end) >= CURRENT_DATE
-                    THEN TRUE ELSE FALSE END
-                FROM users WHERE user_id = $1
-            ''', user_id)
-            
-            # Получаем ключи (один на сервер благодаря уникальному индексу)
-            keys = await conn.fetch('''
-                SELECT DISTINCT ON (server_id) vless_link, server_id
-                FROM vpn_keys
-                WHERE user_id = $1 
-                  AND is_active = TRUE
-                  AND (expires_at IS NULL OR DATE(expires_at) >= CURRENT_DATE)
-                ORDER BY server_id, id ASC
-            ''', user_id)
-            
-            # ✅ Если ключей нет, но подписка активна - создаём их автоматически
-            if not keys and is_active:
-                logger.info(f"User {user_id} has no keys but subscription is active, creating...")
-                try:
-                    await create_or_activate_keys_for_all_servers(user_id)
-                    # Повторно запрашиваем
-                    keys = await conn.fetch('''
-                        SELECT DISTINCT ON (server_id) vless_link, server_id
-                        FROM vpn_keys
-                        WHERE user_id = $1 AND is_active = TRUE
-                          AND (expires_at IS NULL OR DATE(expires_at) >= CURRENT_DATE)
-                        ORDER BY server_id, id ASC
-                    ''', user_id)
-                except Exception as e:
-                    logger.error(f"Failed to auto-create keys for user {user_id}: {e}")
-            
-            # Формируем expire timestamp
-            subscription_end = user_row.get("subscription_end")
-            expire_ts = 0
-            if subscription_end and is_active:
-                try:
-                    if isinstance(subscription_end, str):
-                        dt = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
-                    else:
-                        dt = subscription_end
-                    expire_ts = int(dt.replace(hour=23, minute=59, second=59).timestamp())
-                except:
-                    pass
-            
-            # Формируем ответ
-            body = "\n".join([k["vless_link"] for k in keys if k.get("vless_link")])
-            
-            logger.info(f"Returning subscription for user {user_id}: {len(keys)} keys, active={is_active}")
-            
-            headers = {
-                "Cache-Control": "no-store",
-                "Content-Disposition": 'attachment; filename="SvoyVPN"',
-                "profile-title": "SvoyVPN",
-                "announce": "SvoyVPN • Premium subscription active",
-                "subscription-userinfo": f"upload=0; download=0; total=0; expire={expire_ts}" if is_active else "Inactive"
-            }
-            
-            return web.Response(
-                status=200,
-                text=body,
-                content_type="text/plain",
-                charset="utf-8",
-                headers=headers
-            )
+                
+                user_id = user_row["user_id"]
+                
+                # Проверяем активность подписки
+                is_active = await conn.fetchval('''
+                    SELECT CASE
+                        WHEN pay_subscribed = TRUE
+                         AND subscription_end IS NOT NULL
+                         AND DATE(subscription_end) >= CURRENT_DATE
+                        THEN TRUE ELSE FALSE END
+                    FROM users WHERE user_id = $1
+                ''', user_id)
+                
+                # Получаем ключи (один на сервер благодаря уникальному индексу)
+                keys = await conn.fetch('''
+                    SELECT DISTINCT ON (server_id) vless_link, server_id
+                    FROM vpn_keys
+                    WHERE user_id = $1 
+                      AND is_active = TRUE
+                      AND (expires_at IS NULL OR DATE(expires_at) >= CURRENT_DATE)
+                    ORDER BY server_id, id ASC
+                ''', user_id)
+                
+                # Формируем expire timestamp
+                subscription_end = user_row.get("subscription_end")
+                expire_ts = 0
+                if subscription_end and is_active:
+                    try:
+                        if isinstance(subscription_end, str):
+                            dt = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
+                        else:
+                            dt = subscription_end
+                        expire_ts = int(dt.replace(hour=23, minute=59, second=59).timestamp())
+                    except:
+                        pass
+                
+                # ✅ Если ключей нет, но подписка активна - создаём их автоматически
+                if not keys and is_active:
+                    logger.info(f"User {user_id} has no keys but subscription is active, creating...")
+                    try:
+                        # Создаём ключи вне транзакции (используем отдельное соединение)
+                        from .subscriptions import create_or_activate_keys_for_all_servers
+                        await create_or_activate_keys_for_all_servers(user_id)
+                        # Повторно запрашиваем ключи
+                        keys = await conn.fetch('''
+                            SELECT DISTINCT ON (server_id) vless_link, server_id
+                            FROM vpn_keys
+                            WHERE user_id = $1 AND is_active = TRUE
+                              AND (expires_at IS NULL OR DATE(expires_at) >= CURRENT_DATE)
+                            ORDER BY server_id, id ASC
+                        ''', user_id)
+                    except Exception as e:
+                        logger.error(f"Failed to auto-create keys for user {user_id}: {e}")
+                
+                # Формируем ответ
+                body = "\n".join([k["vless_link"] for k in keys if k.get("vless_link")])
+                
+                logger.info(f"Returning subscription for user {user_id}: {len(keys)} keys, active={is_active}")
+                
+                headers = {
+                    "Cache-Control": "no-store",
+                    "Content-Disposition": 'attachment; filename="SvoyVPN"',
+                    "profile-title": "SvoyVPN",
+                    "announce": "SvoyVPN • Premium subscription active",
+                    "subscription-userinfo": f"upload=0; download=0; total=0; expire={expire_ts}" if is_active else "Inactive"
+                }
+                
+                return web.Response(
+                    status=200,
+                    text=body,
+                    content_type="text/plain",
+                    charset="utf-8",
+                    headers=headers
+                )
         except HTTPNotFound:
             # Пробрасываем HTTPNotFound дальше
             raise
