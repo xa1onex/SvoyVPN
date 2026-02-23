@@ -592,12 +592,20 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
     
     @dp.callback_query(F.data == "go_back_subscription")
     async def handle_go_back_subscription(callback: CallbackQuery, state: FSMContext):
-        """Возврат в меню подписки"""
+        """Возврат на главное меню"""
         user_id = callback.from_user.id
-        info = await get_subscription_info(user_id)
-        text, builder = await build_subscription_message(info, state, config)
+        first_name = callback.from_user.first_name or "Пользователь"
+        from ..subscriptions import get_subscription_status
+        from ..handlers.start import get_main_text, get_main_keyboard
+        
+        subscription_status = await get_subscription_status(user_id)
+        
         try:
-            await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+            await callback.message.edit_text(
+                text=await get_main_text(first_name, subscription_status, user_id),
+                parse_mode='HTML',
+                reply_markup=await get_main_keyboard(user_id, config)
+            )
         except TelegramBadRequest as e:
             # Игнорируем ошибку, если сообщение не изменилось
             if "message is not modified" in str(e):
