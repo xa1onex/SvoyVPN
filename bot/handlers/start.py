@@ -333,8 +333,9 @@ async def setup_other_handlers(dp, bot: Bot, config):
             "/invite - Пригласи друга\n"
         )
         
+        # Если это callback, редактируем сообщение, иначе отправляем новое
         if isinstance(message_or_callback, CallbackQuery):
-            await message_or_callback.message.edit_text(
+            await callback.message.edit_text(
                 help_text,
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
