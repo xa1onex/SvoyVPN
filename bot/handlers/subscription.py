@@ -120,7 +120,7 @@ async def get_subscription_info(user_id: int) -> dict:
         }
 
 
-async def build_subscription_message(info: dict, state: FSMContext, config=None) -> tuple[str, InlineKeyboardMarkup]:
+async def build_subscription_message(info: dict, state: FSMContext, config=None) -> tuple[str, InlineKeyboardBuilder]:
     """Строит сообщение и клавиатуру для подписки"""
     builder = InlineKeyboardBuilder()
     is_active = info['is_active']
@@ -175,7 +175,7 @@ async def build_subscription_message(info: dict, state: FSMContext, config=None)
         builder.row(InlineKeyboardButton(text="💳 Купить подписку", callback_data="show_subscription_plans"))
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
     
-    return text, builder.as_markup()
+    return text, builder
 
 
 async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
