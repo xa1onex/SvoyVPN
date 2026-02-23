@@ -57,6 +57,7 @@ class WebhookServer:
             self.app.router.add_post('/webhook/yookassa', self.handle_yookassa_webhook)
         self.app.middlewares.append(self.handle_bad_requests_middleware)
         self.runner = None
+        logger.info(f"WebhookServer initialized with routes: /, /sub/{{token}}, /webhook/flyer, /webhook/yookassa")
     
     async def root_handler(self, request: web_request.Request) -> web.Response:
         """Обработчик корневого пути"""
@@ -316,11 +317,16 @@ class WebhookServer:
             log.addFilter(bad_status_filter)
         
         logger.info(f"Starting webhook server on {host}:{port}")
-        self.runner = web.AppRunner(self.app)
-        await self.runner.setup()
-        site = web.TCPSite(self.runner, host, port)
-        await site.start()
-        logger.info(f"Webhook server started on {host}:{port}")
+        try:
+            self.runner = web.AppRunner(self.app)
+            await self.runner.setup()
+            site = web.TCPSite(self.runner, host, port)
+            await site.start()
+            logger.info(f"✅ Webhook server started successfully on {host}:{port}")
+            logger.info(f"✅ Available routes: /, /sub/{{token}}, /webhook/flyer, /webhook/yookassa")
+        except Exception as e:
+            logger.error(f"❌ Failed to start webhook server: {e}", exc_info=True)
+            raise
     
     async def stop(self):
         """Остановить вебхук сервер"""
