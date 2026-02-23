@@ -3,15 +3,20 @@ HTTP сервер для обработки вебхуков (YooKassa, Flyer) �
 """
 import json
 import logging
+import os
+import hashlib
+import hmac
 from datetime import datetime
 from typing import Optional
+from urllib.parse import parse_qs, unquote
 from aiohttp import web, web_request
 from aiohttp.web_exceptions import HTTPBadRequest, HTTPNotFound, HTTPMethodNotAllowed
 from aiohttp.http_exceptions import BadStatusLine, BadHttpMessage
 
 from .config import FlyerConfig, YooKassaConfig
 from .database import get_connection
-from .subscriptions import create_or_activate_keys_for_all_servers
+from .subscriptions import create_or_activate_keys_for_all_servers, get_user_subscription_url
+from .plans import get_subscription_plans, get_renewal_plans
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +60,17 @@ class WebhookServer:
         self.app.router.add_get('/webhook/flyer', self.health_check)
         if yookassa_config and yookassa_config.enabled:
             self.app.router.add_post('/webhook/yookassa', self.handle_yookassa_webhook)
+        
+        # Miniapp routes
+        self.app.router.add_get('/miniapp', self.serve_miniapp)
+        self.app.router.add_get('/miniapp/{path:.*}', self.serve_miniapp_static)
+        
+        # Miniapp API routes
+        self.app.router.add_post('/api/user', self.api_get_user)
+        self.app.router.add_get('/api/tariffs', self.api_get_tariffs)
+        self.app.router.add_get('/api/payment-methods', self.api_get_payment_methods)
+        self.app.router.add_post('/api/payment/create', self.api_create_payment)
+        
         self.app.middlewares.append(self.handle_bad_requests_middleware)
         self.runner = None
         logger.info(f"WebhookServer initialized with routes: /, /sub/{{token}}, /webhook/flyer, /webhook/yookassa")
@@ -324,6 +340,326 @@ class WebhookServer:
         except Exception as e:
             logger.error(f"Error processing YooKassa webhook: {e}", exc_info=True)
             return web.json_response({"status": "error", "message": str(e)}, status=500)
+    
+    async def serve_miniapp(self, request: web_request.Request) -> web.Response:
+        """Отдает главную страницу miniapp"""
+        miniapp_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'miniapp', 'index.html')
+        try:
+            with open(miniapp_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return web.Response(text=content, content_type='text/html', charset='utf-8')
+        except FileNotFoundError:
+            logger.error(f"Miniapp file not found: {miniapp_path}")
+            return web.Response(text="Miniapp not found", status=404)
+        except Exception as e:
+            logger.error(f"Error serving miniapp: {e}")
+            return web.Response(text="Internal server error", status=500)
+    
+    async def serve_miniapp_static(self, request: web_request.Request) -> web.Response:
+        """Отдает статические файлы miniapp (CSS, JS)"""
+        path = request.match_info.get('path', '')
+        if not path:
+            return await self.serve_miniapp(request)
+        
+        # Определяем тип файла
+        if path.endswith('.css'):
+            content_type = 'text/css'
+        elif path.endswith('.js'):
+            content_type = 'application/javascript'
+        elif path.endswith('.png'):
+            content_type = 'image/png'
+        elif path.endswith('.jpg') or path.endswith('.jpeg'):
+            content_type = 'image/jpeg'
+        elif path.endswith('.svg'):
+            content_type = 'image/svg+xml'
+        else:
+            content_type = 'text/plain'
+        
+        miniapp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'miniapp')
+        file_path = os.path.join(miniapp_dir, path)
+        
+        # Проверяем безопасность пути
+        if not os.path.abspath(file_path).startswith(os.path.abspath(miniapp_dir)):
+            return web.Response(text="Forbidden", status=403)
+        
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            return web.Response(body=content, content_type=content_type)
+        except FileNotFoundError:
+            return web.Response(text="File not found", status=404)
+        except Exception as e:
+            logger.error(f"Error serving static file {path}: {e}")
+            return web.Response(text="Internal server error", status=500)
+    
+    def verify_telegram_webapp_data(self, init_data: str, bot_token: str) -> bool:
+        """Проверяет подлинность данных от Telegram WebApp"""
+        try:
+            from urllib.parse import parse_qs, unquote
+            import hmac
+            import hashlib
+            
+            # Парсим init_data
+            data_dict = {}
+            for item in init_data.split('&'):
+                if '=' in item:
+                    key, value = item.split('=', 1)
+                    data_dict[key] = unquote(value)
+            
+            # Извлекаем hash
+            received_hash = data_dict.pop('hash', '')
+            if not received_hash:
+                return False
+            
+            # Создаем строку для проверки
+            data_check_string = '\n'.join(f"{k}={v}" for k, v in sorted(data_dict.items()))
+            
+            # Вычисляем секретный ключ
+            secret_key = hmac.new(
+                b"WebAppData",
+                bot_token.encode(),
+                hashlib.sha256
+            ).digest()
+            
+            # Вычисляем hash
+            calculated_hash = hmac.new(
+                secret_key,
+                data_check_string.encode(),
+                hashlib.sha256
+            ).hexdigest()
+            
+            return calculated_hash == received_hash
+            
+        except Exception as e:
+            logger.error(f"Error verifying Telegram WebApp data: {e}")
+            return False
+    
+    def parse_telegram_init_data(self, init_data: str) -> dict:
+        """Парсит init_data от Telegram WebApp"""
+        result = {}
+        try:
+            from urllib.parse import unquote
+            for item in init_data.split('&'):
+                if '=' in item:
+                    key, value = item.split('=', 1)
+                    result[key] = unquote(value)
+        except Exception as e:
+            logger.error(f"Error parsing init_data: {e}")
+        return result
+    
+    async def api_get_user(self, request: web_request.Request) -> web.Response:
+        """API: Получить данные пользователя"""
+        try:
+            data = await request.json()
+            init_data = data.get('initData', '')
+            
+            if not init_data:
+                return web.json_response({"error": "initData required"}, status=400)
+            
+            # Проверяем подлинность данных
+            if not self.bot:
+                return web.json_response({"error": "Bot not initialized"}, status=500)
+            
+            bot_token = self.bot.token
+            if not self.verify_telegram_webapp_data(init_data, bot_token):
+                return web.json_response({"error": "Invalid initData"}, status=403)
+            
+            # Парсим данные пользователя
+            parsed_data = self.parse_telegram_init_data(init_data)
+            user_str = parsed_data.get('user', '{}')
+            user_data = json.loads(user_str) if user_str else {}
+            user_id = int(user_data.get('id', 0))
+            
+            if not user_id:
+                return web.json_response({"error": "User ID not found"}, status=400)
+            
+            # Получаем данные пользователя из БД
+            async with get_connection() as conn:
+                user = await conn.fetchrow(
+                    "SELECT user_id, pay_subscribed, subscription_end, subscription_token FROM users WHERE user_id = $1",
+                    user_id
+                )
+                
+                if not user:
+                    return web.json_response({"error": "User not found"}, status=404)
+                
+                # Проверяем активность подписки
+                is_active = False
+                end_date = None
+                if user['pay_subscribed'] and user['subscription_end']:
+                    end_date = user['subscription_end']
+                    if isinstance(end_date, str):
+                        end_date = datetime.strptime(end_date.split()[0], "%Y-%m-%d").date()
+                    is_active = end_date >= datetime.now().date()
+                
+                # Получаем ссылку на подписку
+                from .subscriptions import get_user_subscription_url
+                subscription_url = await get_user_subscription_url(user_id, None)
+                
+                return web.json_response({
+                    "user": {
+                        "id": user_id,
+                        "firstName": user_data.get('first_name', ''),
+                        "lastName": user_data.get('last_name', ''),
+                        "username": user_data.get('username', ''),
+                        "photoUrl": user_data.get('photo_url', '')
+                    },
+                    "subscription": {
+                        "isActive": is_active,
+                        "endDate": end_date.isoformat() if end_date else None,
+                        "subscriptionUrl": subscription_url
+                    }
+                })
+                
+        except Exception as e:
+            logger.error(f"Error in api_get_user: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+    
+    async def api_get_tariffs(self, request: web_request.Request) -> web.Response:
+        """API: Получить список тарифов"""
+        try:
+            from .plans import get_subscription_plans
+            subscription_plans = await get_subscription_plans()
+            tariffs = []
+            
+            for plan_id, plan_data in subscription_plans.items():
+                months = plan_data.get('duration', 1)
+                price_rub = plan_data.get('price_rub', 0) / 100.0  # Конвертируем из копеек
+                
+                # Вычисляем старую цену (для скидки)
+                base_price_per_month = price_rub / months
+                old_price = None
+                if months > 1:
+                    # Старая цена = цена за 1 месяц * количество месяцев
+                    old_price = base_price_per_month * months * 1.2  # Примерная старая цена
+                
+                tariffs.append({
+                    "id": plan_id,
+                    "months": months,
+                    "price": price_rub,
+                    "oldPrice": old_price,
+                    "pricePerMonth": price_rub / months,
+                    "popular": months == 12  # Годовой тариф помечаем как популярный
+                })
+            
+            return web.json_response(tariffs)
+            
+        except Exception as e:
+            logger.error(f"Error in api_get_tariffs: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+    
+    async def api_get_payment_methods(self, request: web_request.Request) -> web.Response:
+        """API: Получить способы оплаты"""
+        try:
+            from .plans import PAYMENT_METHODS
+            
+            methods = []
+            for method_id, method_data in PAYMENT_METHODS.items():
+                icon_map = {
+                    "stars": "⭐",
+                    "yookassa": "💳"
+                }
+                methods.append({
+                    "id": method_id,
+                    "name": method_data.get('title', method_id),
+                    "icon": icon_map.get(method_id, "💳"),
+                    "description": method_data.get('description', ''),
+                    "badge": method_data.get('badge', '')
+                })
+            
+            return web.json_response(methods)
+            
+        except Exception as e:
+            logger.error(f"Error in api_get_payment_methods: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+    
+    async def api_create_payment(self, request: web_request.Request) -> web.Response:
+        """API: Создать платеж"""
+        try:
+            data = await request.json()
+            init_data = data.get('initData', '')
+            tariff_id = data.get('tariffId')
+            payment_method = data.get('paymentMethod')
+            device_count = data.get('deviceCount', 1)
+            
+            if not init_data or not tariff_id or not payment_method:
+                return web.json_response({"error": "Missing required parameters"}, status=400)
+            
+            # Проверяем подлинность данных
+            if not self.bot:
+                return web.json_response({"error": "Bot not initialized"}, status=500)
+            
+            bot_token = self.bot.token
+            if not self.verify_telegram_webapp_data(init_data, bot_token):
+                return web.json_response({"error": "Invalid initData"}, status=403)
+            
+            # Парсим данные пользователя
+            parsed_data = self.parse_telegram_init_data(init_data)
+            user_str = parsed_data.get('user', '{}')
+            user_data = json.loads(user_str) if user_str else {}
+            user_id = int(user_data.get('id', 0))
+            
+            if not user_id:
+                return web.json_response({"error": "User ID not found"}, status=400)
+            
+            # Получаем данные тарифа
+            from .plans import get_subscription_plans
+            subscription_plans = await get_subscription_plans()
+            plan_data = subscription_plans.get(tariff_id)
+            
+            if not plan_data:
+                return web.json_response({"error": "Tariff not found"}, status=404)
+            
+            # Получаем данные способа оплаты
+            from .plans import PAYMENT_METHODS
+            method_data = PAYMENT_METHODS.get(payment_method)
+            
+            if not method_data:
+                return web.json_response({"error": "Payment method not found"}, status=404)
+            
+            # Вычисляем цену
+            price_rub = plan_data.get('price_rub', 0)
+            total_price = price_rub * device_count
+            
+            # Создаем платеж в зависимости от способа оплаты
+            if payment_method == 'stars':
+                # Оплата через Telegram Stars
+                price_stars = plan_data.get('price_stars', 0) * device_count
+                # Здесь должна быть логика создания invoice через Telegram Bot API
+                # Пока возвращаем заглушку
+                bot_username = (await self.bot.get_me()).username
+                return web.json_response({
+                    "invoiceUrl": f"https://t.me/{bot_username}?start=payment_{tariff_id}_{device_count}",
+                    "paymentId": f"stars_{user_id}_{int(datetime.now().timestamp())}"
+                })
+            elif payment_method == 'yookassa':
+                # Оплата через ЮKassa
+                if not self.yookassa_client:
+                    return web.json_response({"error": "YooKassa not configured"}, status=500)
+                
+                amount_rub = total_price / 100.0
+                bot_username = (await self.bot.get_me()).username
+                payment_data = self.yookassa_client.create_payment(
+                    amount=amount_rub,
+                    description=f"VPN подписка - {plan_data['title']}",
+                    return_url=f"https://t.me/{bot_username}?start=payment_success",
+                    metadata={
+                        "user_id": user_id,
+                        "plan_id": tariff_id,
+                        "device_count": device_count
+                    }
+                )
+                
+                return web.json_response({
+                    "paymentUrl": payment_data.get("confirmation_url"),
+                    "paymentId": payment_data.get("id")
+                })
+            else:
+                return web.json_response({"error": "Payment method not supported"}, status=400)
+                
+        except Exception as e:
+            logger.error(f"Error in api_create_payment: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
     
     async def run(self, host: str = "0.0.0.0", port: int = 8080):
         """Запустить вебхук сервер"""

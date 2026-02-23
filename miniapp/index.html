@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SvoyVPN</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <button class="btn-close" onclick="window.Telegram.WebApp.close()">Закрыть</button>
+            <div class="header-center">
+                <h1 class="app-title">SvoyVPN</h1>
+                <p class="app-subtitle">мини-приложение</p>
+            </div>
+            <button class="btn-menu" onclick="showProfile()">⋯</button>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content" id="mainContent">
+            <!-- Главный экран -->
+            <div class="screen active" id="homeScreen">
+                <div class="logo-container">
+                    <div class="logo">
+                        <div class="logo-inner">
+                            <div class="logo-icon">🔒</div>
+                        </div>
+                    </div>
+                </div>
+                <h2 class="screen-title">SvoyVPN</h2>
+                <p class="screen-description">Быстрый и приватный VPN с готовыми конфигурациями для ваших устройств.</p>
+                
+                <div class="tariff-section">
+                    <div class="tariff-header">
+                        <span class="tariff-label">Тариф</span>
+                        <button class="btn-update" onclick="refreshSubscription()">
+                            <span class="icon-refresh">↻</span> Обновить
+                        </button>
+                    </div>
+                    
+                    <div class="subscription-info" id="subscriptionInfo">
+                        <div class="info-left">
+                            <div class="info-item">
+                                <span class="info-label">Пробный период</span>
+                                <span class="info-value">1 устройство</span>
+                            </div>
+                        </div>
+                        <div class="info-right">
+                            <div class="info-item">
+                                <span class="info-date" id="subscriptionDate">До 01.03.2026</span>
+                                <span class="info-status active" id="subscriptionStatus">подписка активна</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="subscription-url" id="subscriptionUrlContainer">
+                        <input type="text" class="url-input" id="subscriptionUrl" readonly>
+                        <button class="btn-copy" onclick="copySubscriptionUrl()">
+                            <span class="icon-copy">📋</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <button class="btn-primary" onclick="showTariffs()">Выбрать тариф</button>
+            </div>
+
+            <!-- Экран выбора тарифа -->
+            <div class="screen" id="tariffsScreen">
+                <div class="screen-header">
+                    <button class="btn-back" onclick="showHome()">← Назад</button>
+                    <h2 class="screen-title">Выберите тариф</h2>
+                    <button class="btn-close-screen" onclick="window.Telegram.WebApp.close()">✕</button>
+                </div>
+                
+                <p class="screen-description">Все тарифы включают неограниченную скорость и трафик.</p>
+                
+                <div class="bonus-banner" id="bonusBanner">
+                    <div class="bonus-content">
+                        <div class="bonus-text">
+                            <div class="bonus-title">Получите подарок при годовой подписке</div>
+                            <div class="bonus-subtitle">Один из 7 бонусных подарков</div>
+                        </div>
+                        <div class="bonus-icons">
+                            <div class="bonus-icon">🎩</div>
+                            <div class="bonus-icon">⭐</div>
+                            <div class="bonus-icon">🏆</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tariffs-section">
+                    <h3 class="section-title">Тарифы</h3>
+                    <div class="tariffs-grid" id="tariffsGrid">
+                        <!-- Тарифы будут загружены динамически -->
+                    </div>
+                </div>
+                
+                <div class="countries-section">
+                    <div class="countries-header">
+                        <span class="countries-icon">🌍</span>
+                        <span>Доступные страны</span>
+                        <span class="countries-arrow">⌃</span>
+                    </div>
+                </div>
+                
+                <button class="btn-primary" id="continueBtn" onclick="showPayment()" disabled>
+                    Продолжить с выбранным тарифом
+                </button>
+            </div>
+
+            <!-- Экран оплаты -->
+            <div class="screen" id="paymentScreen">
+                <div class="screen-header">
+                    <button class="btn-back" onclick="showTariffs()">← Назад</button>
+                    <h2 class="screen-title">Выберите тариф</h2>
+                    <button class="btn-close-screen" onclick="window.Telegram.WebApp.close()">✕</button>
+                </div>
+                
+                <div class="payment-icon-container">
+                    <div class="payment-icon">💳</div>
+                </div>
+                
+                <h3 class="payment-title">Способ оплаты</h3>
+                <p class="screen-description">Теперь выберите удобный способ оплаты.</p>
+                
+                <div class="device-selector">
+                    <div class="device-header">
+                        <span>Устройство в подписке</span>
+                        <span class="device-count" id="deviceCount">1</span>
+                    </div>
+                    <div class="device-slider">
+                        <input type="range" min="1" max="5" value="1" class="slider" id="deviceSlider" oninput="updateDeviceCount(this.value)">
+                        <div class="slider-labels">
+                            <span>1</span>
+                            <span>2</span>
+                            <span>3</span>
+                            <span>4</span>
+                            <span>5</span>
+                        </div>
+                    </div>
+                    <p class="device-hint">Выбирайте больше устройств и используйте VPN вместе с друзьями.</p>
+                </div>
+                
+                <div class="cloudflare-banner">
+                    <div class="cloudflare-left">
+                        <span class="check-icon">✓</span>
+                        <span>Успешно.</span>
+                    </div>
+                    <div class="cloudflare-right">
+                        <div class="cloudflare-logo">☁️</div>
+                        <div class="cloudflare-text">CLOUDFLARE</div>
+                        <div class="cloudflare-links">
+                            <a href="#" class="cloudflare-link">Конфиденциальность</a>
+                            <a href="#" class="cloudflare-link">Справка</a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="payment-methods" id="paymentMethods">
+                    <!-- Способы оплаты будут загружены динамически -->
+                </div>
+                
+                <button class="btn-primary" id="payBtn" onclick="processPayment()">
+                    Оплатить <span id="totalPrice">0</span> RUB
+                </button>
+            </div>
+
+            <!-- Экран настройки VPN -->
+            <div class="screen" id="setupScreen">
+                <div class="screen-header">
+                    <button class="btn-back" onclick="showHome()">← Назад</button>
+                    <h2 class="screen-title">Настройка VPN</h2>
+                </div>
+                
+                <p class="screen-description">Выберите устройство, которое хотите подключить.</p>
+                
+                <div class="app-selector">
+                    <label class="selector-label">Выберите приложение</label>
+                    <div class="app-buttons">
+                        <button class="app-btn active" onclick="selectApp(this, 'v2raytun')">v2RayTun</button>
+                        <button class="app-btn" onclick="selectApp(this, 'happ')">Happ</button>
+                    </div>
+                    <div class="os-selector-container">
+                        <select class="os-selector" id="osSelector" onchange="updateInstructions()">
+                            <option value="ios">iOS</option>
+                            <option value="android">Android</option>
+                            <option value="windows">Windows</option>
+                            <option value="macos">macOS</option>
+                            <option value="linux">Linux</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="subscription-url">
+                    <input type="text" class="url-input" id="setupSubscriptionUrl" readonly>
+                    <button class="btn-copy" onclick="copySubscriptionUrl()">📋</button>
+                </div>
+                
+                <div class="instruction-step">
+                    <div class="step-icon">⬇️</div>
+                    <div class="step-content">
+                        <h3>1. Установка приложения</h3>
+                        <p>Откройте страницу в App Store и установите приложение. Запустите его, в окне разрешения VPN-конфигурации нажмите Allow и введите свой пароль.</p>
+                        <div class="store-buttons" id="storeButtons">
+                            <button class="btn-store" onclick="openAppStore('ru')">App Store (RU)</button>
+                            <button class="btn-store" onclick="openAppStore('global')">App Store (Global)</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="instruction-step">
+                    <div class="step-icon">➕</div>
+                    <div class="step-content">
+                        <h3>2. Добавление подписки</h3>
+                        <p>Нажмите кнопку ниже — приложение откроется, и подписка добавится автоматически.</p>
+                        <button class="btn-primary" onclick="addSubscription()">Добавить подписку</button>
+                        <button class="btn-secondary" onclick="copyConfig()">Скопировать конфиг</button>
+                    </div>
+                </div>
+                
+                <div class="instruction-step">
+                    <div class="step-icon">✓</div>
+                    <div class="step-content">
+                        <h3>3. Подключение и использование</h3>
+                        <p>В главном разделе нажмите большую кнопку включения в центре для подключения к VPN. Не забудьте выбрать сервер в списке серверов. При необходимости выберите другой сервер из списка серверов.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Экран профиля -->
+            <div class="screen" id="profileScreen">
+                <div class="screen-header">
+                    <button class="btn-back" onclick="showHome()">← Назад</button>
+                    <h2 class="screen-title">SvoyVPN</h2>
+                </div>
+                
+                <div class="profile-info">
+                    <div class="profile-avatar" id="profileAvatar">👤</div>
+                    <div class="profile-name" id="profileName">Пользователь</div>
+                </div>
+                
+                <div class="profile-url">
+                    <input type="text" class="url-input" id="profileUrl" readonly>
+                    <button class="btn-copy" onclick="copyProfileUrl()">📋</button>
+                </div>
+                
+                <div class="menu-list">
+                    <div class="menu-item" onclick="showReferral()">
+                        <span class="menu-icon">👥</span>
+                        <span>Реферальная программа</span>
+                        <span class="menu-arrow">→</span>
+                    </div>
+                    <div class="menu-item" onclick="showTransactions()">
+                        <span class="menu-icon">🕐</span>
+                        <span>Транзакции</span>
+                        <span class="menu-arrow">→</span>
+                    </div>
+                    <div class="menu-item" onclick="openChannel()">
+                        <span class="menu-icon">✈️</span>
+                        <span>Telegram-канал</span>
+                        <span class="menu-arrow">→</span>
+                    </div>
+                    <div class="menu-item" onclick="contactSupport()">
+                        <span class="menu-icon">💬</span>
+                        <span>Связаться с поддержкой</span>
+                        <span class="menu-arrow">→</span>
+                    </div>
+                    <div class="menu-item" onclick="resetSessions()">
+                        <span class="menu-icon">🔄</span>
+                        <span>Сбросить активные сессии</span>
+                        <span class="menu-arrow">→</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
