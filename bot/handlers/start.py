@@ -127,7 +127,7 @@ async def setup_start_handler(dp, bot: Bot, config):
                 # Приветствие для нового пользователя
                 subscription_status = await get_subscription_status(user_id)
                 await message.answer(
-                    await get_main_text(first_name, subscription_status, user_id),
+                    await get_main_text(first_name, subscription_status, user_id, is_new_user=True, has_referral=has_referral),
                     parse_mode="HTML",
                     reply_markup=await get_main_keyboard(user_id, config)
                 )
@@ -143,20 +143,47 @@ async def setup_start_handler(dp, bot: Bot, config):
                 )
 
 
-async def get_main_text(first_name: str, subscription_status: str, user_id: int = None) -> str:
+async def get_main_text(first_name: str, subscription_status: str, user_id: int = None, is_new_user: bool = False, has_referral: bool = False) -> str:
     """Возвращает основной текст с объявлением"""
     from ..database import get_connection, get_announcement_text
     
     ann = await get_announcement_text()
-    msg = (
-        f"👋 Рады видеть тебя снова, <b>{first_name}</b>!\n\n"
-        f"<b>VPN</b>: <i>{subscription_status}</i>\n\n"
-        f"📌 <b>Команды:</b>\n"
-        "<i>/start</i> - Перезагрузить бота\n"
-        "<i>/prem</i> - Покупка VPN\n"
-        "<i>/invite</i> - Пригласи друга\n\n"
-        f"{ann}"
-    )
+    
+    # Особое приветствие для новых пользователей
+    if is_new_user:
+        if has_referral:
+            # Приветствие для пользователя, зарегистрировавшегося по реферальной ссылке
+            msg = (
+                f"👋 Добро пожаловать, <b>{first_name}</b>!\n\n"
+                f"<b>VPN</b>: <i>{subscription_status}</i>\n\n"
+                f"📌 <b>Команды:</b>\n"
+                "<i>/start</i> - Перезагрузить бота\n"
+                "<i>/prem</i> - Покупка VPN\n"
+                "<i>/invite</i> - Пригласи друга\n\n"
+                f"{ann}"
+            )
+        else:
+            # Приветствие для пользователя, зарегистрировавшегося без реферальной ссылки
+            msg = (
+                f"👋 Добро пожаловать, <b>{first_name}</b>!\n\n"
+                f"<b>VPN</b>: <i>{subscription_status}</i>\n\n"
+                f"📌 <b>Команды:</b>\n"
+                "<i>/start</i> - Перезагрузить бота\n"
+                "<i>/prem</i> - Покупка VPN\n"
+                "<i>/invite</i> - Пригласи друга\n\n"
+                f"{ann}"
+            )
+    else:
+        # Стандартное приветствие для существующих пользователей
+        msg = (
+            f"👋 Рады видеть тебя снова, <b>{first_name}</b>!\n\n"
+            f"<b>VPN</b>: <i>{subscription_status}</i>\n\n"
+            f"📌 <b>Команды:</b>\n"
+            "<i>/start</i> - Перезагрузить бота\n"
+            "<i>/prem</i> - Покупка VPN\n"
+            "<i>/invite</i> - Пригласи друга\n\n"
+            f"{ann}"
+        )
     return msg
 
 
