@@ -259,18 +259,55 @@ async def build_subscription_message(info: dict, state: FSMContext, config=None)
         # Кнопка "Назад" всегда
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
     else:
-        text = (
-            "❌ Ваш <b>VPN</b> <b>неактивен</b>\n\n"
-            "💳 Для активации VPN необходимо купить подписку.\n\n"
-            "📋 <b>Доступные планы:</b>\n"
+        # Если подписка неактивна или пользователя нет - показываем планы
+        subscription_plans = await get_subscription_plans()
+        renewal_plans = await get_renewal_plans()
+        
+        # Проверяем, должна ли показываться скидка (для режима "скидка для всех")
+        # Если у пользователя нет подписки, days_remaining = 0, но в режиме enable_for_all скидка должна показываться
+        show_discount = await should_show_discount(0)
+        
+        text = "💳 <b>Информация о вашем VPN:</b>\n\n"
+        text += (
+            "❌ Ваш VPN <b>неактивен</b>!\n\n"
+            "Что ты получишь с <b>VPN</b>?\n"
+            "• Быстрый и безопасный VPN\n"
+            "• Обход всех блокировок\n"
+            "• Высокая скорость подключения\n\n"
         )
         
-        subscription_plans = await get_subscription_plans()
-        for plan_id, plan_data in list(subscription_plans.items())[:4]:  # Показываем первые 4
-            price_text = format_price_both(plan_data['price_rub'], plan_data['price_stars'])
-            text += f"• {plan_data['title']} - {price_text}\n"
-        
-        builder.row(InlineKeyboardButton(text="💳 Купить подписку", callback_data="show_subscription_plans"))
+        if show_discount:
+            # Если скидка активна - показываем текст про скидку
+            text += "🎁 <b>Специальное предложение!</b>\n\n"
+            text += "🔥 Получи <b>VPN</b> по специальной цене:\n\n"
+            
+            # Показываем скидочные планы с зачеркнутыми обычными ценами в тексте
+            for plan_id in renewal_plans:
+                renew_plan = renewal_plans[plan_id]
+                # Находим обычную цену (убираем _renew из plan_id)
+                base_plan_id = plan_id.replace('_renew', '')
+                base_plan = subscription_plans.get(base_plan_id, {})
+                old_price = format_price_rub(base_plan.get('price_rub', 0))
+                new_price = format_price_rub(renew_plan['price_rub'])
+                
+                text += f"{renew_plan['title'].replace(' 🔥', '')} <s>{old_price}</s> - {new_price}\n"
+            text += "\n"
+            
+            # Показываем кнопки со скидочными ценами
+            for plan_id, plan_data in renewal_plans.items():
+                builder.button(
+                    text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
+                    callback_data=f"plan:{plan_id}"
+                )
+        else:
+            # Если скидки нет - показываем обычные планы
+            text += "Выберите план подписки:\n"
+            for plan_id, plan_data in subscription_plans.items():
+                builder.button(
+                    text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
+                    callback_data=f"plan:{plan_id}"
+                )
+        builder.adjust(1)
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
     
     return text, builder
