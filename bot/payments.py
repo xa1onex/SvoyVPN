@@ -203,150 +203,151 @@ async def process_yookassa_payment(
         logger.error(f"Invalid user_id value: {user_id}")
         return False
     
-    # Определяем тип подписки
-    if plan_id in subscription_plans:
-        plan_data = subscription_plans[plan_id]
-        is_new_subscription = True
-    elif plan_id in renewal_plans:
-        plan_data = renewal_plans[plan_id]
-        is_new_subscription = False
-    else:
-        logger.error(f"Unknown plan_id in YooKassa payment: {plan_id}")
-        return False
-    
-    method_data = payment_methods.get(method_id, {
-        "title": "ЮKassa",
-        "currency": "RUB",
-    })
-    
-    duration_months = plan_data["duration"]
-    
-    # Получаем сумму из объекта платежа
-    amount_obj = payment_obj.get("amount") or {}
-    amount_value = amount_obj.get("value")
     try:
-        amount_rub = float(amount_value) if amount_value is not None else plan_data.get("price_rub", 0) / 100.0
-    except (TypeError, ValueError):
-        amount_rub = plan_data.get("price_rub", 0) / 100.0
-    amount_cents = int(round(amount_rub * 100))
-    
-    async with get_connection() as conn:
-        # ✅ ПРОВЕРКА НА ДУБЛИКАТЫ ПЕРЕД ОБРАБОТКОЙ
-        existing = await conn.fetchrow(
-            "SELECT id, status FROM payments WHERE yookassa_payment_id = $1",
-            payment_id,
-        )
-        
-        if existing and existing['status'] == 'completed':
-            logger.warning(f"YooKassa payment {payment_id} already processed, skipping")
+        # Определяем тип подписки
+        if plan_id in subscription_plans:
+            plan_data = subscription_plans[plan_id]
+            is_new_subscription = True
+        elif plan_id in renewal_plans:
+            plan_data = renewal_plans[plan_id]
+            is_new_subscription = False
+        else:
+            logger.error(f"Unknown plan_id in YooKassa payment: {plan_id}")
             return False
         
-        # Проверяем пользователя
-        user_exists = await conn.fetchval(
-            "SELECT user_id FROM users WHERE user_id = $1",
-            user_id
-        )
-        if not user_exists:
-            logger.error(f"User {user_id} not found for YooKassa payment {payment_id}")
-            return False
+        method_data = payment_methods.get(method_id, {
+            "title": "ЮKassa",
+            "currency": "RUB",
+        })
         
-        # ✅ ИСПОЛЬЗУЕМ ТРАНЗАКЦИЮ
-        async with conn.transaction():
-            # Обновляем подписку
-            if is_new_subscription:
-                await set_new_subscription(user_id, duration_months, conn)
-            else:
-                await extend_subscription(user_id, duration_months, conn)
-            
-            # Получаем обновлённую дату окончания
-            sub_row = await conn.fetchrow(
-                "SELECT subscription_end FROM users WHERE user_id = $1",
-                user_id,
+        duration_months = plan_data["duration"]
+        
+        # Получаем сумму из объекта платежа
+        amount_obj = payment_obj.get("amount") or {}
+        amount_value = amount_obj.get("value")
+        try:
+            amount_rub = float(amount_value) if amount_value is not None else plan_data.get("price_rub", 0) / 100.0
+        except (TypeError, ValueError):
+            amount_rub = plan_data.get("price_rub", 0) / 100.0
+        amount_cents = int(round(amount_rub * 100))
+        
+        async with get_connection() as conn:
+            # ✅ ПРОВЕРКА НА ДУБЛИКАТЫ ПЕРЕД ОБРАБОТКОЙ
+            existing = await conn.fetchrow(
+                "SELECT id, status FROM payments WHERE yookassa_payment_id = $1",
+                payment_id,
             )
-            subscription_end = sub_row["subscription_end"] if sub_row else None
             
-            # Обновляем или создаём запись в payments
-            if existing:
-                await conn.execute('''
-                    UPDATE payments 
-                    SET status = 'completed', amount = $1
-                    WHERE yookassa_payment_id = $2
-                ''', amount_cents, payment_id)
-            else:
-                await conn.execute('''
-                    INSERT INTO payments 
-                    (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                ''', user_id, amount_cents, "RUB", plan_id, "subscription", "completed", payment_id)
-        
-        # Создаём/активируем ключи
-        if is_new_subscription:
-            await create_or_activate_keys_for_all_servers(user_id)
-        else:
-            from .subscriptions import sync_user_keys
-            await sync_user_keys(user_id)
-        
-        # Форматируем дату
-        if subscription_end:
-            try:
-                if isinstance(subscription_end, str):
-                    if " " in subscription_end:
-                        d = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
-                    else:
-                        d = datetime.strptime(subscription_end, "%Y-%m-%d")
+            if existing and existing['status'] == 'completed':
+                logger.warning(f"YooKassa payment {payment_id} already processed, skipping")
+                return False
+            
+            # Проверяем пользователя
+            user_exists = await conn.fetchval(
+                "SELECT user_id FROM users WHERE user_id = $1",
+                user_id
+            )
+            if not user_exists:
+                logger.error(f"User {user_id} not found for YooKassa payment {payment_id}")
+                return False
+            
+            # ✅ ИСПОЛЬЗУЕМ ТРАНЗАКЦИЮ
+            async with conn.transaction():
+                # Обновляем подписку
+                if is_new_subscription:
+                    await set_new_subscription(user_id, duration_months, conn)
                 else:
-                    d = subscription_end
-                end_str = d.strftime("%d.%m.%Y")
-            except:
-                end_str = str(subscription_end)
-        else:
-            end_str = "неизвестно"
-        
-        # Уведомление пользователю
-        if bot:
-            try:
-                text = (
-                    "✅ <b>Оплата через ЮKassa успешно получена!</b>\n\n"
-                    f"План: <i>{plan_data['title']}</i>\n"
-                    f"Подписка активна до: <b>{end_str}</b>\n\n"
-                    "Нажмите <b>🔗 Получить VPN</b> в главном меню, чтобы получить ссылку подписки."
+                    await extend_subscription(user_id, duration_months, conn)
+                
+                # Получаем обновлённую дату окончания
+                sub_row = await conn.fetchrow(
+                    "SELECT subscription_end FROM users WHERE user_id = $1",
+                    user_id,
                 )
-                await bot.send_message(user_id, text, parse_mode="HTML")
-            except Exception as e:
-                logger.error(f"Error sending YooKassa confirmation to user {user_id}: {e}")
-        
-        # Уведомление админам
-        if bot:
-            try:
-                user_info = await bot.get_chat(user_id)
-                username = user_info.username if hasattr(user_info, 'username') else "нет"
-                first_name = user_info.first_name if hasattr(user_info, 'first_name') else "Пользователь"
-            except:
-                username = "нет"
-                first_name = "Пользователь"
+                subscription_end = sub_row["subscription_end"] if sub_row else None
+                
+                # Обновляем или создаём запись в payments
+                if existing:
+                    await conn.execute('''
+                        UPDATE payments 
+                        SET status = 'completed', amount = $1
+                        WHERE yookassa_payment_id = $2
+                    ''', amount_cents, payment_id)
+                else:
+                    await conn.execute('''
+                        INSERT INTO payments 
+                        (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    ''', user_id, amount_cents, "RUB", plan_id, "subscription", "completed", payment_id)
             
-            formatted_price = f"{amount_rub:.2f} ₽"
+            # Создаём/активируем ключи (после транзакции)
+            if is_new_subscription:
+                await create_or_activate_keys_for_all_servers(user_id)
+            else:
+                from .subscriptions import sync_user_keys
+                await sync_user_keys(user_id)
             
-            for admin_id in config.bot.admin_ids:
-                if admin_id != user_id:
-                    try:
-                        await bot.send_message(
-                            admin_id,
-                            f"💳 <b>Покупка подписки (ЮKassa)</b>\n\n"
-                            f"Пользователь: {first_name} (@{username})\n"
-                            f"ID: <code>{user_id}</code>\n"
-                            f"План: {plan_data['title']}\n"
-                            f"Способ оплаты: ЮKassa\n"
-                            f"Сумма: {formatted_price}\n"
-                            f"Срок: {duration_months} месяцев\n"
-                            f"Активирована до: {end_str}",
-                            parse_mode="HTML"
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to send admin notification to {admin_id}: {e}")
-        
-        logger.info(f"Successfully processed YooKassa payment {payment_id} for user {user_id}")
-        return True
+            # Форматируем дату
+            if subscription_end:
+                try:
+                    if isinstance(subscription_end, str):
+                        if " " in subscription_end:
+                            d = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
+                        else:
+                            d = datetime.strptime(subscription_end, "%Y-%m-%d")
+                    else:
+                        d = subscription_end
+                    end_str = d.strftime("%d.%m.%Y")
+                except:
+                    end_str = str(subscription_end)
+            else:
+                end_str = "неизвестно"
+            
+            # Уведомление пользователю
+            if bot:
+                try:
+                    text = (
+                        "✅ <b>Оплата через ЮKassa успешно получена!</b>\n\n"
+                        f"План: <i>{plan_data['title']}</i>\n"
+                        f"Подписка активна до: <b>{end_str}</b>\n\n"
+                        "Нажмите <b>🔗 Получить VPN</b> в главном меню, чтобы получить ссылку подписки."
+                    )
+                    await bot.send_message(user_id, text, parse_mode="HTML")
+                except Exception as e:
+                    logger.error(f"Error sending YooKassa confirmation to user {user_id}: {e}")
+            
+            # Уведомление админам
+            if bot:
+                try:
+                    user_info = await bot.get_chat(user_id)
+                    username = user_info.username if hasattr(user_info, 'username') else "нет"
+                    first_name = user_info.first_name if hasattr(user_info, 'first_name') else "Пользователь"
+                except:
+                    username = "нет"
+                    first_name = "Пользователь"
+                
+                formatted_price = f"{amount_rub:.2f} ₽"
+                
+                for admin_id in config.bot.admin_ids:
+                    if admin_id != user_id:
+                        try:
+                            await bot.send_message(
+                                admin_id,
+                                f"💳 <b>Покупка подписки (ЮKassa)</b>\n\n"
+                                f"Пользователь: {first_name} (@{username})\n"
+                                f"ID: <code>{user_id}</code>\n"
+                                f"План: {plan_data['title']}\n"
+                                f"Способ оплаты: ЮKassa\n"
+                                f"Сумма: {formatted_price}\n"
+                                f"Срок: {duration_months} месяцев\n"
+                                f"Активирована до: {end_str}",
+                                parse_mode="HTML"
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to send admin notification to {admin_id}: {e}")
+            
+            logger.info(f"Successfully processed YooKassa payment {payment_id} for user {user_id}")
+            return True
         
     except Exception as e:
         logger.error(f"Error processing YooKassa payment {payment_id}: {e}", exc_info=True)
