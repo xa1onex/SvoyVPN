@@ -115,6 +115,30 @@ async def init_db() -> None:
             ON users(subscription_token)
             """
         )
+        
+        # announcements (объявления для пользователей)
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS announcements (
+                id SERIAL PRIMARY KEY,
+                text TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        
+        # Если таблица пустая, добавляем дефолтное объявление
+        try:
+            count = await conn.fetchval('SELECT COUNT(*) FROM announcements')
+            if count == 0:
+                default_text = ""
+                await conn.execute(
+                    'INSERT INTO announcements (text, updated_at) VALUES ($1, CURRENT_TIMESTAMP)',
+                    default_text
+                )
+        except Exception as e:
+            logging.warning(f"Could not initialize announcements: {e}")
 
         # servers
         await conn.execute(
