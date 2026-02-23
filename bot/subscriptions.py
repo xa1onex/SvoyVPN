@@ -412,9 +412,18 @@ async def get_user_subscription_url(user_id: int, config=None) -> str:
         base_url = base_url.rstrip("/")
     
     if not base_url:
-        logger.warning("SUBSCRIPTION_BASE_URL or PUBLIC_BASE_URL not set in .env, using placeholder")
+        logger.error("SUBSCRIPTION_BASE_URL or PUBLIC_BASE_URL not set in .env!")
+        logger.error("Please set SUBSCRIPTION_BASE_URL=https://your-domain.com in .env file")
         # Возвращаем placeholder, чтобы пользователь видел проблему
         return f"https://your-domain.com/sub/{token}"
     
-    return f"{base_url}/sub/{token}"
+    # Убеждаемся, что URL не содержит localhost или 127.0.0.1
+    if "localhost" in base_url.lower() or "127.0.0.1" in base_url:
+        logger.error(f"Subscription URL contains localhost/127.0.0.1: {base_url}")
+        logger.error("Please set SUBSCRIPTION_BASE_URL to your public domain (e.g., https://your-domain.com)")
+        return f"https://your-domain.com/sub/{token}"
+    
+    full_url = f"{base_url}/sub/{token}"
+    logger.debug(f"Generated subscription URL for user {user_id}: {full_url}")
+    return full_url
 

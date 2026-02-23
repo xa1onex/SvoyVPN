@@ -183,6 +183,10 @@ async def main():
                 webhook_server.run(host=webhook_host, port=webhook_port)
             )
             logger.info(f"Webhook server starting on {webhook_host}:{webhook_port}")
+            logger.info(f"Subscription endpoint will be available at: {config.subscription_base_url or 'NOT SET'}/sub/{{token}}")
+            if not config.subscription_base_url:
+                logger.error("⚠️  WARNING: SUBSCRIPTION_BASE_URL not set in .env!")
+                logger.error("⚠️  Please set SUBSCRIPTION_BASE_URL=https://your-domain.com in .env file")
         except Exception as e:
             logger.error(f"Error starting webhook server: {e}")
     
