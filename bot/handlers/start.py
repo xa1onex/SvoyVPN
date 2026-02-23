@@ -38,8 +38,8 @@ async def setup_start_handler(dp, bot: Bot, config):
                 await conn.execute('''
                     INSERT INTO users (
                         user_id, username, first_name, registration_date, last_activity,
-                        subscribed, referral_code, invited_by, pay_subscribed, subscription_end, subscription_token
-                    ) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, FALSE, $4, NULL, FALSE, NULL, $5)
+                        referral_code, invited_by, pay_subscribed, subscription_end, subscription_token
+                    ) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $4, NULL, FALSE, NULL, $5)
                 ''', user_id, username, first_name, new_referral_code, sub_token)
                 
                 # Обработка реферального кода

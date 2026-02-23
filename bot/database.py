@@ -59,10 +59,32 @@ async def init_db() -> None:
                 pay_subscribed BOOLEAN DEFAULT FALSE,
                 subscription_end TIMESTAMP,
                 blacklisted BOOLEAN DEFAULT FALSE,
-                subscription_token TEXT
+                subscription_token TEXT,
+                referral_code TEXT,
+                referral_count INTEGER DEFAULT 0,
+                invited_by BIGINT,
+                renewal_used BOOLEAN DEFAULT FALSE
             )
             """
         )
+        
+        # Добавляем уникальный индекс для referral_code
+        await conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS users_referral_code_uix
+            ON users(referral_code)
+            WHERE referral_code IS NOT NULL
+            """
+        )
+        
+        # Добавляем колонки, если их нет (для существующих БД)
+        try:
+            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code TEXT")
+            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_count INTEGER DEFAULT 0")
+            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS invited_by BIGINT")
+            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS renewal_used BOOLEAN DEFAULT FALSE")
+        except Exception as e:
+            logging.warning(f"Could not add columns to users table: {e}")
 
         # уникальный токен подписки
         await conn.execute(
