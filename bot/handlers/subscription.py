@@ -602,7 +602,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         
         try:
             await callback.message.edit_text(
-                text=await get_main_text(first_name, subscription_status, user_id),
+                text=await get_main_text(first_name, subscription_status, user_id, is_new_user=False),
                 parse_mode='HTML',
                 reply_markup=await get_main_keyboard(user_id, config)
             )
