@@ -72,6 +72,150 @@ async def extend_subscription(user_id: int, months: int, conn=None) -> None:
         )
 
 
+async def create_keys_for_specific_server(server_id: int) -> None:
+    """
+    Создать ключи для конкретного сервера всем активным пользователям.
+    Используется при добавлении нового сервера.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        async with get_connection() as conn:
+            # Получаем информацию о сервере
+            server = await conn.fetchrow(
+                """
+                SELECT id, name, username, password, inbound_id, base_url, is_active
+                FROM servers
+                WHERE id = $1
+                """,
+                server_id,
+            )
+            if not server or not server['is_active']:
+                logger.warning(f"Server {server_id} not found or not active")
+                return
+            
+            # Получаем всех активных пользователей
+            active_users = await conn.fetch('''
+                SELECT user_id, subscription_end, pay_subscribed
+                FROM users
+                WHERE pay_subscribed = TRUE 
+                  AND subscription_end IS NOT NULL
+                  AND DATE(subscription_end) >= CURRENT_DATE
+            ''')
+            
+            if not active_users:
+                logger.info(f"No active users for server {server_id}")
+                return
+            
+            logger.info(f"Creating keys for {len(active_users)} active users on server {server['name']} (ID: {server_id})")
+            
+            for user_row in active_users:
+                user_id = user_row['user_id']
+                subscription_end = user_row['subscription_end']
+                
+                try:
+                    # Парсим дату окончания
+                    if isinstance(subscription_end, str):
+                        if " " in subscription_end:
+                            end_date = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
+                        else:
+                            end_date = datetime.strptime(subscription_end, "%Y-%m-%d")
+                    else:
+                        end_date = subscription_end
+                    
+                    end_dt = datetime.combine(end_date.date(), dt_time(23, 59, 59))
+                    expiry_ms = int(end_dt.timestamp() * 1000)
+                    expires_at = end_date.date() if isinstance(end_date, datetime) else end_date
+                    
+                    # Проверяем, есть ли уже ключ для этого сервера
+                    existing = await conn.fetchrow(
+                        """
+                        SELECT id, vless_client_id, is_active
+                        FROM vpn_keys
+                        WHERE user_id = $1 AND server_id = $2
+                        ORDER BY id DESC
+                        LIMIT 1
+                        """,
+                        user_id,
+                        server_id,
+                    )
+                    
+                    if existing:
+                        # Ключ есть - активируем и продлеваем
+                        client = XUIClient(
+                            base_url=server["base_url"],
+                            username=server["username"],
+                            password=server["password"],
+                            inbound_id=server["inbound_id"]
+                        )
+                        
+                        client.update_client_expiry(existing["vless_client_id"], expiry_ms)
+                        
+                        await conn.execute(
+                            """
+                            UPDATE vpn_keys
+                            SET is_active = TRUE, expires_at = $1
+                            WHERE id = $2
+                            """,
+                            expires_at,
+                            existing["id"],
+                        )
+                        logger.debug(f"Reactivated key {existing['id']} for user {user_id} on server {server['name']}")
+                    else:
+                        # Ключа нет - создаём новый
+                        client = XUIClient(
+                            base_url=server["base_url"],
+                            username=server["username"],
+                            password=server["password"],
+                            inbound_id=server["inbound_id"]
+                        )
+                        
+                        result = client.add_vless_client(
+                            telegram_user_id=user_id,
+                            display_name=server["name"],
+                            traffic_gb=None,
+                            expiry_time_unix_ms=expiry_ms,
+                        )
+                        
+                        if not result.get("id") or not result.get("link"):
+                            logger.warning(f"Failed to create key for user {user_id} on server {server['name']}: invalid response")
+                            continue
+                        
+                        key_id = await conn.fetchval(
+                            """
+                            INSERT INTO vpn_keys (user_id, server_id, vless_client_id, vless_link,
+                                                  key_name, expires_at, is_active)
+                            VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+                            ON CONFLICT (user_id, server_id) WHERE is_active = TRUE DO NOTHING
+                            RETURNING id
+                            """,
+                            user_id,
+                            server_id,
+                            result["id"],
+                            result["link"],
+                            None,
+                            expires_at,
+                        )
+                        if key_id:
+                            await conn.execute(
+                                """
+                                UPDATE vpn_keys
+                                SET key_name = $1
+                                WHERE id = $2
+                                """,
+                                f"{server['name']} #{key_id}",
+                                key_id,
+                            )
+                            logger.debug(f"Created key {key_id} for user {user_id} on server {server['name']}")
+                            
+                except Exception as e:
+                    logger.error(f"Failed to create key for user {user_id} on server {server['name']}: {e}")
+                    
+    except Exception as e:
+        logger.error(f"Error creating keys for server {server_id}: {e}", exc_info=True)
+
+
 async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
     """
     Создать или активировать ключи для всех активных серверов.

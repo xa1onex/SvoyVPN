@@ -132,26 +132,41 @@ class WebhookServer:
                     except:
                         pass
                 
-                # ✅ Если ключей нет, но подписка активна - создаём их автоматически
-                if not keys and is_active:
-                    logger.info(f"User {user_id} has no keys but subscription is active, creating...")
-                    try:
-                        # Создаём ключи вне транзакции (используем отдельное соединение)
-                        from .subscriptions import create_or_activate_keys_for_all_servers
-                        await create_or_activate_keys_for_all_servers(user_id)
-                        # Повторно запрашиваем ключи только для активных серверов
-                        keys = await conn.fetch('''
-                            SELECT DISTINCT ON (k.server_id) k.vless_link, k.server_id
-                            FROM vpn_keys k
-                            INNER JOIN servers s ON k.server_id = s.id
-                            WHERE k.user_id = $1 
-                              AND k.is_active = TRUE
-                              AND s.is_active = TRUE
-                              AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
-                            ORDER BY k.server_id, k.id ASC
-                        ''', user_id)
-                    except Exception as e:
-                        logger.error(f"Failed to auto-create keys for user {user_id}: {e}")
+                # ✅ Проверяем наличие новых серверов без ключей и создаём их автоматически
+                if is_active:
+                    # Проверяем, есть ли активные серверы без ключей
+                    servers_without_keys = await conn.fetch('''
+                        SELECT s.id
+                        FROM servers s
+                        WHERE s.is_active = TRUE
+                          AND NOT EXISTS (
+                              SELECT 1 FROM vpn_keys k
+                              WHERE k.server_id = s.id
+                                AND k.user_id = $1
+                                AND k.is_active = TRUE
+                                AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
+                          )
+                    ''', user_id)
+                    
+                    if servers_without_keys:
+                        logger.info(f"User {user_id} has {len(servers_without_keys)} servers without keys, creating...")
+                        try:
+                            # Создаём ключи вне транзакции (используем отдельное соединение)
+                            from .subscriptions import create_or_activate_keys_for_all_servers
+                            await create_or_activate_keys_for_all_servers(user_id)
+                            # Повторно запрашиваем ключи только для активных серверов
+                            keys = await conn.fetch('''
+                                SELECT DISTINCT ON (k.server_id) k.vless_link, k.server_id
+                                FROM vpn_keys k
+                                INNER JOIN servers s ON k.server_id = s.id
+                                WHERE k.user_id = $1 
+                                  AND k.is_active = TRUE
+                                  AND s.is_active = TRUE
+                                  AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
+                                ORDER BY k.server_id, k.id ASC
+                            ''', user_id)
+                        except Exception as e:
+                            logger.error(f"Failed to auto-create keys for user {user_id}: {e}")
                 
                 # Формируем ответ
                 body = "\n".join([k["vless_link"] for k in keys if k.get("vless_link")])

@@ -14,7 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..database import get_connection, get_support_link, set_announcement_text, get_device_instruction_photos, get_device_instruction_photos_list, add_device_instruction_photo, delete_device_instruction_photo
 from ..config import AppConfig
 from ..plans import SUBSCRIPTION_PLANS_BASE, RENEWAL_PLANS_BASE, format_price_rub, format_price_stars, format_price_both, get_renewal_plans
-from ..subscriptions import create_or_activate_keys_for_all_servers
+from ..subscriptions import create_or_activate_keys_for_all_servers, create_keys_for_specific_server
 from ..xui_client import XUIClient
 
 logger = logging.getLogger(__name__)
@@ -2318,26 +2318,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 RETURNING id
             ''', name, ip, port, protocol, username, password, inbound_id, base_url)
             
-            # Создаём ключи для активных пользователей
+            # Создаём ключи для нового сервера всем активным пользователям
             try:
-                active_users = await conn.fetch('''
-                    SELECT user_id
-                    FROM users
-                    WHERE pay_subscribed = TRUE 
-                      AND subscription_end IS NOT NULL
-                      AND DATE(subscription_end) >= CURRENT_DATE
-                ''')
-                
-                if active_users:
-                    logger.info(f"Creating keys for {len(active_users)} active users on new server {name} (ID: {server_id})")
-                    for user_row in active_users:
-                        user_id = user_row['user_id']
-                        try:
-                            asyncio.create_task(create_or_activate_keys_for_all_servers(user_id))
-                        except Exception as e:
-                            logger.error(f"Failed to create keys for user {user_id} on new server: {e}")
+                # Создаём ключи в фоне, чтобы не блокировать ответ админу
+                asyncio.create_task(create_keys_for_specific_server(server_id))
+                logger.info(f"Scheduled key creation for new server {name} (ID: {server_id})")
             except Exception as e:
-                logger.error(f"Error creating keys for active users on new server: {e}")
+                logger.error(f"Error scheduling key creation for new server: {e}")
         
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="◀️ Назад к серверам", callback_data="admin_servers"))
