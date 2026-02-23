@@ -175,19 +175,22 @@ class WebhookServer:
     @web.middleware
     async def handle_bad_requests_middleware(self, request: web_request.Request, handler):
         """Middleware для обработки некорректных HTTP-запросов"""
+        logger.info(f"Request received: {request.method} {request.path_qs} from {request.remote}")
         try:
-            return await handler(request)
+            response = await handler(request)
+            logger.info(f"Response: {request.method} {request.path_qs} -> {response.status}")
+            return response
         except (BadStatusLine, BadHttpMessage, HTTPBadRequest) as e:
             logger.debug(f"Invalid HTTP request from {request.remote}: {type(e).__name__}")
             return web.Response(status=400, text="Bad Request")
         except (HTTPNotFound, HTTPMethodNotAllowed) as e:
-            logger.debug(f"Not found: {request.method} {request.path_qs}")
+            logger.warning(f"Not found: {request.method} {request.path_qs} - {type(e).__name__}")
             if isinstance(e, HTTPNotFound):
                 return web.json_response({"status": "error", "message": "Not Found"}, status=404)
             else:
                 return web.json_response({"status": "error", "message": "Method Not Allowed"}, status=405)
         except Exception as e:
-            logger.error(f"Error handling request: {e}", exc_info=True)
+            logger.error(f"Error handling request {request.path_qs}: {e}", exc_info=True)
             raise
     
     async def handle_flyer_webhook(self, request: web_request.Request) -> web.Response:
