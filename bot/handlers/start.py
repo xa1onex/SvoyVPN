@@ -67,8 +67,8 @@ async def setup_start_handler(dp, bot: Bot, config):
                                 referral_count = referral_count + 1,
                                 subscription_end = CASE 
                                     WHEN subscription_end IS NULL OR subscription_end < CURRENT_DATE 
-                                    THEN CURRENT_DATE + INTERVAL $2 || ' days'
-                                    ELSE subscription_end + INTERVAL $2 || ' days'
+                                    THEN CURRENT_DATE + ($2 || ' days')::INTERVAL
+                                    ELSE subscription_end + ($2 || ' days')::INTERVAL
                                 END,
                                 pay_subscribed = TRUE
                             WHERE user_id = $1
@@ -77,7 +77,7 @@ async def setup_start_handler(dp, bot: Bot, config):
                         await conn.execute('''
                             UPDATE users SET
                                 invited_by = $1,
-                                subscription_end = CURRENT_DATE + INTERVAL $3 || ' days',
+                                subscription_end = CURRENT_DATE + ($3 || ' days')::INTERVAL,
                                 pay_subscribed = TRUE
                             WHERE user_id = $2
                         ''', inviter_id, user_id, str(invited_bonus_days))
