@@ -214,13 +214,32 @@ async def get_main_text(first_name: str, subscription_status: str, user_id: int 
 async def get_main_keyboard(user_id: int, config):
     """Получает главную клавиатуру"""
     from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import InlineKeyboardButton
+    from aiogram.types import InlineKeyboardButton, WebAppInfo
     
     builder = InlineKeyboardBuilder()
     
     # Проверяем админа
     if user_id in config.bot.admin_ids:
         builder.row(InlineKeyboardButton(text="🔐 Админ панель", callback_data="admin_panel"))
+    
+    # Получаем URL для miniapp
+    miniapp_url = None
+    if config.subscription_base_url:
+        miniapp_url = f"{config.subscription_base_url}/miniapp"
+    else:
+        # Fallback на localhost для разработки
+        import os
+        webhook_port = os.getenv("WEBHOOK_PORT", "8080")
+        miniapp_url = f"http://localhost:{webhook_port}/miniapp"
+    
+    # Кнопка WebApp для miniapp
+    if miniapp_url:
+        builder.row(
+            InlineKeyboardButton(
+                text="📱 Открыть приложение",
+                web_app=WebAppInfo(url=miniapp_url)
+            )
+        )
     
     builder.row(
         InlineKeyboardButton(text="💳 Подписка", callback_data="open_premium"),
