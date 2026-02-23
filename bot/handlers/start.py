@@ -127,7 +127,7 @@ async def setup_start_handler(dp, bot: Bot, config):
                 # Приветствие для нового пользователя
                 subscription_status = await get_subscription_status(user_id)
                 await message.answer(
-                    await get_main_text(first_name, subscription_status, user_id, is_new_user=True),
+                    await get_main_text(first_name, subscription_status, user_id),
                     parse_mode="HTML",
                     reply_markup=await get_main_keyboard(user_id, config)
                 )
@@ -137,13 +137,13 @@ async def setup_start_handler(dp, bot: Bot, config):
                 
                 subscription_status = await get_subscription_status(user_id)
                 await message.answer(
-                    await get_main_text(first_name, subscription_status, user_id, is_new_user=False),
+                    await get_main_text(first_name, subscription_status, user_id),
                     parse_mode="HTML",
                     reply_markup=await get_main_keyboard(user_id, config)
                 )
 
 
-async def get_main_text(first_name: str, subscription_status: str, user_id: int = None, is_new_user: bool = False) -> str:
+async def get_main_text(first_name: str, subscription_status: str, user_id: int = None) -> str:
     """Возвращает основной текст с объявлением"""
     from ..database import get_connection, get_announcement_text
     
@@ -281,7 +281,7 @@ async def setup_other_handlers(dp, bot: Bot, config):
         subscription_status = await get_subscription_status(user_id)
         
         await callback.message.edit_text(
-            text=await get_main_text(first_name, subscription_status, user_id, is_new_user=False),
+            text=await get_main_text(first_name, subscription_status, user_id),
             parse_mode='HTML',
             reply_markup=await get_main_keyboard(user_id, config)
         )
