@@ -93,6 +93,14 @@ async def init_db() -> None:
             if 'renewal_used' not in existing_columns:
                 await conn.execute("ALTER TABLE users ADD COLUMN renewal_used BOOLEAN DEFAULT FALSE")
                 logging.info("Added renewal_used column to users table")
+            
+            if 'balance' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN balance INTEGER DEFAULT 0")
+                logging.info("Added balance column to users table")
+            
+            if 'trial_used' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN trial_used BOOLEAN DEFAULT FALSE")
+                logging.info("Added trial_used column to users table")
         except Exception as e:
             logging.warning(f"Could not add columns to users table: {e}")
         
@@ -281,6 +289,79 @@ async def init_db() -> None:
                 ''')
         except Exception as e:
             logging.warning(f"Could not initialize discount_settings: {e}")
+        
+        # Таблица для менеджеров (техподдержка)
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS managers (
+                    user_id BIGINT PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    support_link TEXT,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id)
+                )
+            ''')
+        except Exception as e:
+            logging.warning(f"Could not create managers table: {e}")
+        
+        # Таблица для балансов пользователей
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS user_balances (
+                    user_id BIGINT PRIMARY KEY,
+                    balance INTEGER DEFAULT 0,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id)
+                )
+            ''')
+        except Exception as e:
+            logging.warning(f"Could not create user_balances table: {e}")
+        
+        # Таблица для приложений устройств
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS device_apps (
+                    id SERIAL PRIMARY KEY,
+                    device_type TEXT NOT NULL,
+                    app_name TEXT NOT NULL,
+                    app_url TEXT NOT NULL,
+                    display_order INTEGER DEFAULT 0,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        except Exception as e:
+            logging.warning(f"Could not create device_apps table: {e}")
+        
+        # Таблица для фото инструкций устройств
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS device_instruction_photos (
+                    id SERIAL PRIMARY KEY,
+                    device_type TEXT NOT NULL,
+                    file_id TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Миграция: переименовываем photo_file_id в file_id, если существует
+            try:
+                photos_columns = await conn.fetch("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'device_instruction_photos'
+                """)
+                photos_existing = {row['column_name'] for row in photos_columns}
+                
+                if 'photo_file_id' in photos_existing and 'file_id' not in photos_existing:
+                    await conn.execute('ALTER TABLE device_instruction_photos RENAME COLUMN photo_file_id TO file_id')
+                    logging.info("Renamed photo_file_id to file_id in device_instruction_photos table")
+            except Exception as e:
+                logging.warning(f"Could not migrate device_instruction_photos table: {e}")
+        except Exception as e:
+            logging.warning(f"Could not create device_instruction_photos table: {e}")
 
 
 async def check_expired_subscriptions() -> None:
@@ -357,4 +438,65 @@ async def ensure_subscription_token(user_id: int) -> str:
                 return current
 
         raise RuntimeError("Failed to generate unique subscription token")
+
+
+async def get_support_link() -> str:
+    """Получить ссылку на техподдержку"""
+    async with get_connection() as conn:
+        manager = await conn.fetchrow('SELECT support_link FROM managers WHERE is_active = TRUE AND support_link IS NOT NULL LIMIT 1')
+        if manager and manager['support_link']:
+            return manager['support_link']
+    return ""
+
+
+async def get_announcement_text() -> str:
+    """Получить текст объявления"""
+    async with get_connection() as conn:
+        row = await conn.fetchrow('SELECT text FROM announcements ORDER BY id DESC LIMIT 1')
+        return row['text'] if row and row.get('text') else ""
+
+
+async def set_announcement_text(text: str) -> None:
+    """Установить текст объявления"""
+    async with get_connection() as conn:
+        await conn.execute('''
+            INSERT INTO announcements (text, updated_at)
+            VALUES ($1, CURRENT_TIMESTAMP)
+        ''', text)
+
+
+async def get_device_instruction_photos(device_type: str) -> list:
+    """Получить список file_id фото инструкций для устройства"""
+    async with get_connection() as conn:
+        rows = await conn.fetch('''
+            SELECT file_id FROM device_instruction_photos
+            WHERE device_type = $1
+            ORDER BY id
+        ''', device_type)
+        return [row['file_id'] for row in rows]
+
+
+async def get_device_instruction_photos_list(device_type: str) -> list:
+    """Получить список фото инструкций с ID для управления"""
+    async with get_connection() as conn:
+        return await conn.fetch('''
+            SELECT id, file_id FROM device_instruction_photos
+            WHERE device_type = $1
+            ORDER BY id
+        ''', device_type)
+
+
+async def add_device_instruction_photo(device_type: str, file_id: str) -> None:
+    """Добавить фото инструкции для устройства"""
+    async with get_connection() as conn:
+        await conn.execute('''
+            INSERT INTO device_instruction_photos (device_type, file_id, created_at)
+            VALUES ($1, $2, CURRENT_TIMESTAMP)
+        ''', device_type, file_id)
+
+
+async def delete_device_instruction_photo(photo_id: int) -> None:
+    """Удалить фото инструкции"""
+    async with get_connection() as conn:
+        await conn.execute('DELETE FROM device_instruction_photos WHERE id = $1', photo_id)
 

@@ -264,8 +264,8 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         await callback.answer("Функция в разработке", show_alert=True)
     
     @dp.callback_query(F.data == "go_back")
-    async def handle_go_back(callback: CallbackQuery, state: FSMContext):
-        """Возврат в главное меню"""
+    async def handle_go_back_subscription(callback: CallbackQuery, state: FSMContext):
+        """Возврат в меню подписки"""
         user_id = callback.from_user.id
         info = await get_subscription_info(user_id)
         text, builder = await build_subscription_message(info, state, config)

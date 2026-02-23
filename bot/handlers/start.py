@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from aiogram import Bot, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 
 from ..database import get_connection, generate_subscription_token, ensure_subscription_token
 from ..subscriptions import get_subscription_status, get_user_subscription_url
@@ -265,8 +265,16 @@ async def setup_other_handlers(dp, bot: Bot, config):
         await callback.answer()
     
     @dp.callback_query(F.data == "open_help")
-    async def handle_open_help(callback: CallbackQuery):
-        """Обработчик кнопки Помощь"""
+    @dp.message(Command("help"))
+    async def handle_open_help(message_or_callback: Message | CallbackQuery):
+        """Обработчик кнопки Помощь и команды /help"""
+        if isinstance(message_or_callback, CallbackQuery):
+            callback = message_or_callback
+            message = callback.message
+            await callback.answer()
+        else:
+            message = message_or_callback
+            callback = None
         help_text = (
             "🆘 <b>Помощь</b>\n\n"
             "📱 <b>Как использовать VPN:</b>\n"
@@ -280,7 +288,10 @@ async def setup_other_handlers(dp, bot: Bot, config):
             "❓ <b>Вопросы?</b>\n"
             "Обратитесь в поддержку: @xdouble_support"
         )
-        await callback.message.answer(help_text, parse_mode="HTML")
-        await callback.answer()
+        if isinstance(message_or_callback, CallbackQuery):
+            await callback.message.answer(help_text, parse_mode="HTML")
+            await callback.answer()
+        else:
+            await message.answer(help_text, parse_mode="HTML")
     
     # Админ-панель обрабатывается в admin.py
