@@ -500,11 +500,23 @@ class WebhookServer:
                     end_date = user['subscription_end']
                     if isinstance(end_date, str):
                         end_date = datetime.strptime(end_date.split()[0], "%Y-%m-%d").date()
+                    elif hasattr(end_date, 'date'):
+                        # Если это datetime.datetime, преобразуем в date
+                        end_date = end_date.date()
+                    # Теперь end_date точно date, сравниваем с date
                     is_active = end_date >= datetime.now().date()
                 
                 # Получаем ссылку на подписку
                 from .subscriptions import get_user_subscription_url
                 subscription_url = await get_user_subscription_url(user_id, None)
+                
+                # Форматируем end_date для JSON
+                end_date_str = None
+                if end_date:
+                    if hasattr(end_date, 'isoformat'):
+                        end_date_str = end_date.isoformat()
+                    elif isinstance(end_date, str):
+                        end_date_str = end_date
                 
                 return web.json_response({
                     "user": {
@@ -516,7 +528,7 @@ class WebhookServer:
                     },
                     "subscription": {
                         "isActive": is_active,
-                        "endDate": end_date.isoformat() if end_date else None,
+                        "endDate": end_date_str,
                         "subscriptionUrl": subscription_url
                     }
                 })
