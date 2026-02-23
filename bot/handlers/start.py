@@ -259,7 +259,11 @@ async def setup_other_handlers(dp, bot: Bot, config):
             [InlineKeyboardButton(text="◀️ Назад", callback_data="go_back")]
         ])
         
-        await message.answer(text, parse_mode='HTML', reply_markup=keyboard, disable_web_page_preview=True)
+        # Если это callback, редактируем сообщение, иначе отправляем новое
+        if isinstance(message_or_callback, CallbackQuery):
+            await callback.message.edit_text(text, parse_mode='HTML', reply_markup=keyboard, disable_web_page_preview=True)
+        else:
+            await message.answer(text, parse_mode='HTML', reply_markup=keyboard, disable_web_page_preview=True)
     
     @dp.callback_query(F.data == "go_back")
     async def go_back_handler(callback: CallbackQuery):
