@@ -679,10 +679,10 @@ async def update_vless_links_for_server(server_id: int) -> None:
                         link += f"&sni={sni}"
                         link += f"&sid={sid or '3d'}"
                         link += "&spx=%2F&flow=xtls-rprx-vision"
-                        link += f"#{server_name}#{key_id}"
+                        link += f"#{server_name}"
                         
                         # Обновляем ссылку и название в базе данных
-                        key_name = f"{server_name} #{key_id}"
+                        key_name = server_name
                         await conn.execute('''
                             UPDATE vpn_keys
                             SET vless_link = $1, key_name = $2
