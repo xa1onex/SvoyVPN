@@ -4,7 +4,7 @@
 import logging
 from datetime import datetime
 from aiogram import Bot, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -14,6 +14,7 @@ from ..database import get_connection, ensure_subscription_token
 from ..subscriptions import get_subscription_status, get_user_subscription_url
 from ..plans import get_subscription_plans, get_renewal_plans, format_price_rub, format_price_stars, format_price_both, PAYMENT_METHODS
 from ..config import AppConfig
+from ..yookassa_client import YooKassaClient
 
 logger = logging.getLogger(__name__)
 
