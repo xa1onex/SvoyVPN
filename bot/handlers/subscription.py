@@ -17,6 +17,54 @@ from ..config import AppConfig
 logger = logging.getLogger(__name__)
 
 
+async def should_show_discount(days_remaining: int) -> bool:
+    """Проверяет, должна ли показываться скидка
+    
+    Скидка показывается когда:
+    - Режим 2 (enable_for_all = True): скидка показывается ВСЕМ пользователям
+    - Режим 1 (enable_for_all = False): скидка показывается только если days_remaining <= days_threshold
+    """
+    # Защита от отрицательных значений
+    if days_remaining < 0:
+        days_remaining = 0
+    
+    async with get_connection() as conn:
+        discount_settings = await conn.fetchrow('SELECT days_threshold, enable_for_all FROM discount_settings ORDER BY id DESC LIMIT 1')
+        if not discount_settings:
+            # По умолчанию скидка показывается за 3 дня
+            result = days_remaining <= 3
+            logger.info(f"should_show_discount (no settings): days_remaining={days_remaining}, default_threshold=3, result={result}")
+            return result
+        
+        days_threshold = discount_settings['days_threshold']
+        enable_for_all = discount_settings['enable_for_all']
+        
+        # Логируем настройки для отладки
+        logger.info(f"should_show_discount settings: days_remaining={days_remaining}, days_threshold={days_threshold}, enable_for_all={enable_for_all}")
+        
+        # Режим 2: скидка для всех
+        if enable_for_all:
+            # Если days_threshold = 0, скидка все равно показывается (глобальная скидка)
+            logger.info(f"should_show_discount: enable_for_all=True, showing discount for all")
+            return True
+        
+        # Режим 1: скидка только по условию дней
+        # Если days_threshold = 0, None или отрицательный, скидка отключена
+        if not days_threshold or days_threshold <= 0:
+            logger.info(f"should_show_discount: discount disabled (days_threshold={days_threshold})")
+            return False
+        
+        # Защита от слишком больших значений (если больше 365 дней - это явно ошибка)
+        if days_threshold > 365:
+            logger.warning(f"should_show_discount: days_threshold слишком большой ({days_threshold}), отключаем скидку")
+            return False
+        
+        # Показываем скидку если осталось дней <= порога
+        result = days_remaining <= days_threshold
+        logger.info(f"should_show_discount result: days_remaining={days_remaining} <= days_threshold={days_threshold} -> {result}")
+        return result
+
+
 async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
     """Настраивает обработчики подписки"""
     
@@ -149,16 +197,64 @@ async def build_subscription_message(info: dict, state: FSMContext, config=None)
             "4. Обновите/синхронизируйте подписку в приложении\n\n"
         )
         
-        # Показываем планы продления
-        renewal_plans = await get_renewal_plans()
-        if renewal_plans:
-            text += "💳 <b>Продлить подписку:</b>\n"
-            for plan_id, plan_data in list(renewal_plans.items())[:3]:  # Показываем первые 3
-                price_text = format_price_both(plan_data['price_rub'], plan_data['price_stars'])
-                text += f"• {plan_data['title']} - {price_text}\n"
-            text += "\n"
+        text += (
+            "<b>Детали VPN</b>:\n"
+            "• Быстрый и безопасный VPN\n"
+            "• Обход всех блокировок\n"
+            "• Высокая скорость\n\n"
+        )
         
-        builder.row(InlineKeyboardButton(text="💳 Продлить подписку", callback_data="show_renewal_plans"))
+        # Всегда показываем возможность продления, если подписка активна
+        renewal_plans = await get_renewal_plans()
+        subscription_plans = await get_subscription_plans()
+        
+        # Проверяем, должна ли показываться скидка
+        show_discount = await should_show_discount(days_remaining)
+        
+        if show_discount:
+            # Если скидка активна - показываем текст про скидку
+            text += "🎁 <b>Специальное предложение!</b>\n\n"
+            text += "🔥 Успей продлить <b>VPN</b> по специальной цене:\n\n"
+            
+            # Показываем цены продления с зачеркнутыми обычными ценами
+            for plan_id in renewal_plans:
+                renew_plan = renewal_plans[plan_id]
+                # Находим обычную цену (убираем _renew из plan_id)
+                base_plan_id = plan_id.replace('_renew', '')
+                base_plan = subscription_plans.get(base_plan_id, {})
+                old_price = format_price_rub(base_plan.get('price_rub', 0))
+                new_price = format_price_rub(renew_plan['price_rub'])
+                
+                text += f"{renew_plan['title'].replace(' 🔥', '')} <s>{old_price}</s> - {new_price}\n"
+            text += "\n"
+        else:
+            # Если скидки нет - просто показываем обычный текст
+            text += "💡 Вы можете продлить подписку в любое время:\n\n"
+        
+        # Всегда показываем кнопки продления
+        # Но если скидка не активна, убираем "🔥" из названий и показываем обычные цены
+        for plan_id, plan_data in renewal_plans.items():
+            if show_discount:
+                # Если скидка активна - показываем скидочные цены с "🔥"
+                button_title = plan_data['title']
+                button_price_rub = plan_data['price_rub']
+                button_price_stars = plan_data['price_stars']
+            else:
+                # Если скидка не активна - убираем "🔥" и показываем обычные цены
+                # Находим обычный план (убираем _renew из plan_id)
+                base_plan_id = plan_id.replace('_renew', '')
+                base_plan = subscription_plans.get(base_plan_id, plan_data)
+                button_title = plan_data['title'].replace(' 🔥', '')
+                button_price_rub = base_plan.get('price_rub', plan_data['price_rub'])
+                button_price_stars = base_plan.get('price_stars', plan_data['price_stars'])
+            
+            builder.button(
+                text=f"{button_title} - {format_price_both(button_price_rub, button_price_stars)}",
+                callback_data=f"plan:{plan_id}"
+            )
+        builder.adjust(1)
+        
+        # Кнопка "Назад" всегда
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
     else:
         text = (
@@ -245,6 +341,79 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                         callback_data=f"buy_renewal:{plan_id}:yookassa"
                     )
                 )
+        
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
+        
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        await callback.answer()
+    
+    @dp.callback_query(F.data.startswith("plan:"))
+    async def handle_select_plan(callback: CallbackQuery, state: FSMContext):
+        """Обработчик выбора плана (показывает методы оплаты)"""
+        plan_id = callback.data.split(":")[1]
+        user_id = callback.from_user.id
+        
+        # Получаем планы
+        subscription_plans = await get_subscription_plans()
+        renewal_plans = await get_renewal_plans()
+        ALL_PLANS = {**subscription_plans, **renewal_plans}
+        
+        if plan_id not in ALL_PLANS:
+            await callback.answer("❌ Неверный план", show_alert=True)
+            return
+        
+        is_renewal = plan_id in renewal_plans or '_renew' in plan_id
+        plan_data = renewal_plans.get(plan_id) if is_renewal else subscription_plans.get(plan_id)
+        
+        if not plan_data:
+            await callback.answer("❌ План не найден", show_alert=True)
+            return
+        
+        # Проверяем, есть ли у пользователя активная подписка
+        async with get_connection() as conn:
+            active_sub = await conn.fetchrow('''
+                SELECT subscription_end 
+                FROM users 
+                WHERE user_id = $1 
+                    AND pay_subscribed = TRUE 
+                    AND subscription_end >= CURRENT_DATE
+            ''', user_id)
+        
+        # Если пользователь пытается купить новую подписку, но у него уже есть активная
+        if not is_renewal and active_sub:
+            await callback.answer("❌ У вас уже есть активная подписка! Используйте продление.", show_alert=True)
+            return
+        
+        # Проверяем наличие активной подписки для продления
+        if is_renewal:
+            if not active_sub:
+                await callback.answer("❌ У вас нет активной подписки для продления!", show_alert=True)
+                return
+        
+        # Показываем методы оплаты
+        text = f"💳 <b>{plan_data['title']}</b>\n\n"
+        text += f"Срок: {plan_data['duration']} месяцев\n"
+        text += f"Трафик: {plan_data.get('traffic_gb', 'Безлимитный')} ГБ\n\n"
+        text += "Выберите способ оплаты:"
+        
+        builder = InlineKeyboardBuilder()
+        
+        # Кнопка для оплаты Stars
+        builder.row(
+            InlineKeyboardButton(
+                text=f"⭐ Telegram Stars ({format_price_stars(plan_data['price_stars'])})",
+                callback_data=f"{'buy_renewal' if is_renewal else 'buy_subscription'}:{plan_id}:stars"
+            )
+        )
+        
+        # Кнопка для оплаты YooKassa (если включена)
+        if config.yookassa.enabled:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"💳 Банковская карта ({format_price_rub(plan_data['price_rub'])})",
+                    callback_data=f"{'buy_renewal' if is_renewal else 'buy_subscription'}:{plan_id}:yookassa"
+                )
+            )
         
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
         
