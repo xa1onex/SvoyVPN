@@ -173,6 +173,8 @@ body {
     border-radius: 16px;
     padding: 20px;
     margin: 24px 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .tariff-header {
