@@ -73,20 +73,26 @@ class WebhookServer:
         Формат: text/plain, строки vless://... разделённые \n
         """
         token = (request.match_info.get("token") or "").strip()
-        logger.info(f"Subscription request received: token={token[:10]}..., path={request.path_qs}, remote={request.remote}")
+        logger.info(f"Subscription request received: token={token[:10] if token else 'None'}..., path={request.path_qs}, remote={request.remote}, method={request.method}")
         
         if not token or len(token) < 8:
-            logger.warning(f"Invalid token length: {len(token) if token else 0}")
+            logger.warning(f"Invalid token: token={token}, length={len(token) if token else 0}")
             raise HTTPNotFound()
         
-        async with get_connection() as conn:
-            user_row = await conn.fetchrow(
-                "SELECT user_id, blacklisted, pay_subscribed, subscription_end FROM users WHERE subscription_token = $1",
-                token
-            )
-            
-            if not user_row or user_row.get("blacklisted"):
-                raise HTTPNotFound()
+        try:
+            async with get_connection() as conn:
+                user_row = await conn.fetchrow(
+                    "SELECT user_id, blacklisted, pay_subscribed, subscription_end FROM users WHERE subscription_token = $1",
+                    token
+                )
+                
+                if not user_row:
+                    logger.warning(f"User not found for token: {token[:10]}...")
+                    raise HTTPNotFound()
+                
+                if user_row.get("blacklisted"):
+                    logger.warning(f"User {user_row['user_id']} is blacklisted")
+                    raise HTTPNotFound()
             
             user_id = user_row["user_id"]
             
@@ -159,6 +165,12 @@ class WebhookServer:
                 charset="utf-8",
                 headers=headers
             )
+        except HTTPNotFound:
+            # Пробрасываем HTTPNotFound дальше
+            raise
+        except Exception as e:
+            logger.error(f"Error in handle_subscription: {e}", exc_info=True)
+            raise HTTPNotFound()
     
     @web.middleware
     async def handle_bad_requests_middleware(self, request: web_request.Request, handler):
