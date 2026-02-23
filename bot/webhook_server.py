@@ -73,7 +73,10 @@ class WebhookServer:
         Формат: text/plain, строки vless://... разделённые \n
         """
         token = (request.match_info.get("token") or "").strip()
+        logger.info(f"Subscription request received: token={token[:10]}..., path={request.path_qs}, remote={request.remote}")
+        
         if not token or len(token) < 8:
+            logger.warning(f"Invalid token length: {len(token) if token else 0}")
             raise HTTPNotFound()
         
         async with get_connection() as conn:
@@ -138,6 +141,8 @@ class WebhookServer:
             
             # Формируем ответ
             body = "\n".join([k["vless_link"] for k in keys if k.get("vless_link")])
+            
+            logger.info(f"Returning subscription for user {user_id}: {len(keys)} keys, active={is_active}")
             
             headers = {
                 "Cache-Control": "no-store",
