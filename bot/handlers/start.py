@@ -5,7 +5,7 @@ import secrets
 import logging
 from datetime import datetime, timedelta
 from aiogram import Bot, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
 
 from ..database import get_connection, generate_subscription_token, ensure_subscription_token
