@@ -192,7 +192,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         subscription_status = await get_subscription_status(user_id)
         
         await callback.message.edit_text(
-            await get_main_text(first_name, subscription_status, user_id),
+            await get_main_text(first_name, subscription_status, user_id, is_new_user=False),
             parse_mode="HTML",
             reply_markup=await get_main_keyboard(user_id, config)
         )
