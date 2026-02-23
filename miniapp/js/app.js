@@ -13,6 +13,12 @@ let paymentMethods = [];
 
 // Инициализация приложения
 document.addEventListener('DOMContentLoaded', async () => {
+    // Скрываем бонусный баннер на главном экране
+    const bonusBanner = document.getElementById('bonusBanner');
+    if (bonusBanner) {
+        bonusBanner.style.display = 'none';
+    }
+    
     await initApp();
 });
 

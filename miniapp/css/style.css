@@ -326,6 +326,9 @@ body {
     border-radius: 16px;
     padding: 16px;
     margin: 20px 0;
+    width: 100%;
+    box-sizing: border-box;
+    display: none; /* Скрыт по умолчанию, показывается только на экране тарифов через JS */
 }
 
 .bonus-content {
