@@ -1182,14 +1182,18 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             
             # Если сервер переведен на паузу - деактивируем все ключи этого сервера
             if not new_status:
-                result = await conn.execute('''
-                    UPDATE vpn_keys
-                    SET is_active = FALSE
+                # Сначала получаем количество ключей для деактивации
+                deactivated_count = await conn.fetchval('''
+                    SELECT COUNT(*) FROM vpn_keys
                     WHERE server_id = $1 AND is_active = TRUE
                 ''', server_id)
-                # Получаем количество обновленных строк из результата
-                deactivated_count = int(result.split()[-1]) if result else 0
-                if deactivated_count:
+                
+                if deactivated_count and deactivated_count > 0:
+                    await conn.execute('''
+                        UPDATE vpn_keys
+                        SET is_active = FALSE
+                        WHERE server_id = $1 AND is_active = TRUE
+                    ''', server_id)
                     logger.info(f"Deactivated {deactivated_count} keys for server {server_id} (server paused)")
         
         status_text = "активирован" if new_status else "приостановлен"
@@ -1964,14 +1968,18 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 
                 # Если сервер переведен на паузу - деактивируем все ключи этого сервера
                 if not new_status:
-                    result = await conn.execute('''
-                        UPDATE vpn_keys
-                        SET is_active = FALSE
+                    # Сначала получаем количество ключей для деактивации
+                    deactivated_count = await conn.fetchval('''
+                        SELECT COUNT(*) FROM vpn_keys
                         WHERE server_id = $1 AND is_active = TRUE
                     ''', server_id)
-                    # Получаем количество обновленных строк из результата
-                    deactivated_count = int(result.split()[-1]) if result else 0
-                    if deactivated_count:
+                    
+                    if deactivated_count and deactivated_count > 0:
+                        await conn.execute('''
+                            UPDATE vpn_keys
+                            SET is_active = FALSE
+                            WHERE server_id = $1 AND is_active = TRUE
+                        ''', server_id)
                         logger.info(f"Deactivated {deactivated_count} keys for server {server_id} (server paused)")
             
             status_text = "активирован" if new_status else "приостановлен"
