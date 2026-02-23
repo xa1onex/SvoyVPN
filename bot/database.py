@@ -1,10 +1,12 @@
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
 
 import asyncpg
 import pytz
+from asyncpg.exceptions import UniqueViolationError
 
 _pool: asyncpg.Pool | None = None
 
@@ -180,4 +182,52 @@ async def check_expired_subscriptions() -> None:
         except Exception as e:
             logging.error("Error in check_expired_subscriptions: %s", e)
             raise
+
+
+def generate_subscription_token() -> str:
+    """
+    Генерирует уникальный токен подписки (URL-safe).
+    Длина ~ 32-43 символа, подходит для использования в URL.
+    """
+    return secrets.token_urlsafe(32)
+
+
+async def ensure_subscription_token(user_id: int) -> str:
+    """
+    Гарантирует, что у пользователя есть subscription_token.
+    Создаёт и сохраняет токен, если его нет.
+    """
+    async with get_connection() as conn:
+        existing = await conn.fetchval(
+            "SELECT subscription_token FROM users WHERE user_id = $1",
+            user_id,
+        )
+        if existing:
+            return existing
+
+        # Пытаемся несколько раз на случай редких коллизий/гонок
+        for _ in range(8):
+            token = generate_subscription_token()
+            try:
+                await conn.execute(
+                    """
+                    UPDATE users
+                    SET subscription_token = $1
+                    WHERE user_id = $2 AND subscription_token IS NULL
+                    """,
+                    token,
+                    user_id,
+                )
+            except UniqueViolationError:
+                continue
+
+            # Возвращаем фактическое значение (на случай, если его установили параллельно)
+            current = await conn.fetchval(
+                "SELECT subscription_token FROM users WHERE user_id = $1",
+                user_id,
+            )
+            if current:
+                return current
+
+        raise RuntimeError("Failed to generate unique subscription token")
 
