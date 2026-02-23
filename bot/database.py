@@ -1,0 +1,183 @@
+import logging
+import os
+from contextlib import asynccontextmanager
+from datetime import datetime
+
+import asyncpg
+import pytz
+
+_pool: asyncpg.Pool | None = None
+
+
+async def get_pool() -> asyncpg.Pool:
+    """Создать (при необходимости) и вернуть пул соединений PostgreSQL."""
+    global _pool
+    if _pool is None:
+        db_url = os.getenv("DATABASE_URL")
+        if db_url:
+            _pool = await asyncpg.create_pool(
+                dsn=db_url,
+                min_size=1,
+                max_size=20,
+            )
+        else:
+            _pool = await asyncpg.create_pool(
+                host=os.getenv("DB_HOST", "localhost"),
+                port=int(os.getenv("DB_PORT", "5432")),
+                database=os.getenv("DB_NAME", "vpn_db"),
+                user=os.getenv("DB_USER", "postgres"),
+                password=os.getenv("DB_PASSWORD", ""),
+                min_size=1,
+                max_size=20,
+            )
+        logging.info("PostgreSQL connection pool created")
+    return _pool
+
+
+@asynccontextmanager
+async def get_connection():
+    """Async context manager for DB access."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        yield conn
+
+
+async def init_db() -> None:
+    """Инициализация схемы БД (упрощённый вариант, только нужные сущности)."""
+    async with get_connection() as conn:
+        # users
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                username TEXT,
+                first_name TEXT,
+                registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_activity TIMESTAMP,
+                pay_subscribed BOOLEAN DEFAULT FALSE,
+                subscription_end TIMESTAMP,
+                blacklisted BOOLEAN DEFAULT FALSE,
+                subscription_token TEXT
+            )
+            """
+        )
+
+        # уникальный токен подписки
+        await conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS users_subscription_token_uix
+            ON users(subscription_token)
+            """
+        )
+
+        # servers
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS servers (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                ip TEXT NOT NULL,
+                port INTEGER DEFAULT 54321,
+                protocol TEXT DEFAULT 'https',
+                username TEXT,
+                password TEXT,
+                inbound_id INTEGER NOT NULL,
+                base_url TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP
+            )
+            """
+        )
+
+        # vpn_keys
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vpn_keys (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                server_id INTEGER NOT NULL,
+                vless_client_id TEXT NOT NULL,
+                vless_link TEXT NOT NULL,
+                key_name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                is_active BOOLEAN DEFAULT TRUE,
+                FOREIGN KEY (user_id) REFERENCES users(user_id),
+                FOREIGN KEY (server_id) REFERENCES servers(id)
+            )
+            """
+        )
+
+        # один активный ключ на сервер для пользователя
+        await conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS vpn_keys_user_server_active_uix
+            ON vpn_keys(user_id, server_id)
+            WHERE is_active = TRUE
+            """
+        )
+
+        # payments (упрощённо)
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS payments (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                amount INTEGER,
+                currency TEXT,
+                plan_id TEXT,
+                plan_type TEXT,
+                status TEXT,
+                telegram_payment_charge_id TEXT,
+                yookassa_payment_id TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            )
+            """
+        )
+
+        # индексы идемпотентности
+        await conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS payments_telegram_charge_id_uix
+            ON payments(telegram_payment_charge_id)
+            WHERE telegram_payment_charge_id IS NOT NULL
+            """
+        )
+        await conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS payments_yookassa_payment_id_uix
+            ON payments(yookassa_payment_id)
+            WHERE yookassa_payment_id IS NOT NULL
+            """
+        )
+
+
+async def check_expired_subscriptions() -> None:
+    """Сбрасывает статус подписки для истёкших пользователей (мягко)."""
+    current_time = datetime.now(pytz.timezone("Europe/Moscow")).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    async with get_connection() as conn:
+        try:
+            result = await conn.execute(
+                """
+                UPDATE users
+                SET
+                    pay_subscribed = FALSE,
+                    subscription_end = NULL
+                WHERE
+                    pay_subscribed = TRUE
+                    AND subscription_end < $1
+                """,
+                current_time,
+            )
+            if result and "UPDATE" in result:
+                count = int(result.split()[-1])
+                if count > 0:
+                    logging.info("Disabled %s expired subscriptions", count)
+        except Exception as e:
+            logging.error("Error in check_expired_subscriptions: %s", e)
+            raise
+

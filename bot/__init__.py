@@ -1,0 +1,2 @@
+"""SvoyVPN bot package."""
+
