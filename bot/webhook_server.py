@@ -361,6 +361,9 @@ class WebhookServer:
         if not path:
             return await self.serve_miniapp(request)
         
+        # Убираем начальный слэш, если есть
+        path = path.lstrip('/')
+        
         # Определяем тип файла
         if path.endswith('.css'):
             content_type = 'text/css'
@@ -378,18 +381,25 @@ class WebhookServer:
         miniapp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'miniapp')
         file_path = os.path.join(miniapp_dir, path)
         
+        # Нормализуем путь для безопасности
+        file_path = os.path.normpath(file_path)
+        miniapp_dir = os.path.normpath(miniapp_dir)
+        
         # Проверяем безопасность пути
         if not os.path.abspath(file_path).startswith(os.path.abspath(miniapp_dir)):
+            logger.warning(f"Forbidden path access attempt: {path}")
             return web.Response(text="Forbidden", status=403)
         
         try:
             with open(file_path, 'rb') as f:
                 content = f.read()
+            logger.debug(f"Serving static file: {path} ({len(content)} bytes)")
             return web.Response(body=content, content_type=content_type)
         except FileNotFoundError:
-            return web.Response(text="File not found", status=404)
+            logger.error(f"Static file not found: {file_path} (requested path: {path})")
+            return web.Response(text=f"File not found: {path}", status=404)
         except Exception as e:
-            logger.error(f"Error serving static file {path}: {e}")
+            logger.error(f"Error serving static file {path}: {e}", exc_info=True)
             return web.Response(text="Internal server error", status=500)
     
     def verify_telegram_webapp_data(self, init_data: str, bot_token: str) -> bool:
