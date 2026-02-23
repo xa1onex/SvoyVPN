@@ -68,23 +68,45 @@ async def init_db() -> None:
             """
         )
         
-        # Добавляем уникальный индекс для referral_code
-        await conn.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS users_referral_code_uix
-            ON users(referral_code)
-            WHERE referral_code IS NOT NULL
-            """
-        )
-        
         # Добавляем колонки, если их нет (для существующих БД)
+        # PostgreSQL не поддерживает IF NOT EXISTS для ALTER TABLE ADD COLUMN, поэтому используем проверку
         try:
-            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code TEXT")
-            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_count INTEGER DEFAULT 0")
-            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS invited_by BIGINT")
-            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS renewal_used BOOLEAN DEFAULT FALSE")
+            columns_result = await conn.fetch("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'users'
+            """)
+            existing_columns = {row['column_name'] for row in columns_result}
+            
+            if 'referral_code' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN referral_code TEXT")
+                logging.info("Added referral_code column to users table")
+            
+            if 'referral_count' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN referral_count INTEGER DEFAULT 0")
+                logging.info("Added referral_count column to users table")
+            
+            if 'invited_by' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN invited_by BIGINT")
+                logging.info("Added invited_by column to users table")
+            
+            if 'renewal_used' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN renewal_used BOOLEAN DEFAULT FALSE")
+                logging.info("Added renewal_used column to users table")
         except Exception as e:
             logging.warning(f"Could not add columns to users table: {e}")
+        
+        # Добавляем уникальный индекс для referral_code (после добавления колонки)
+        try:
+            await conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS users_referral_code_uix
+                ON users(referral_code)
+                WHERE referral_code IS NOT NULL
+                """
+            )
+        except Exception as e:
+            logging.warning(f"Could not create referral_code index: {e}")
 
         # уникальный токен подписки
         await conn.execute(
