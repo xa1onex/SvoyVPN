@@ -1179,6 +1179,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             
             new_status = not server['is_active']
             await conn.execute('UPDATE servers SET is_active = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', new_status, server_id)
+            
+            # Если сервер переведен на паузу - деактивируем все ключи этого сервера
+            if not new_status:
+                deactivated_count = await conn.fetchval('''
+                    UPDATE vpn_keys
+                    SET is_active = FALSE
+                    WHERE server_id = $1 AND is_active = TRUE
+                    RETURNING COUNT(*)
+                ''', server_id)
+                if deactivated_count:
+                    logger.info(f"Deactivated {deactivated_count} keys for server {server_id} (server paused)")
         
         status_text = "активирован" if new_status else "приостановлен"
         await message.answer(f"✅ Сервер {status_text}")
@@ -1949,6 +1960,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 
                 new_status = not server['is_active']
                 await conn.execute('UPDATE servers SET is_active = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', new_status, server_id)
+                
+                # Если сервер переведен на паузу - деактивируем все ключи этого сервера
+                if not new_status:
+                    deactivated_count = await conn.fetchval('''
+                        UPDATE vpn_keys
+                        SET is_active = FALSE
+                        WHERE server_id = $1 AND is_active = TRUE
+                        RETURNING COUNT(*)
+                    ''', server_id)
+                    if deactivated_count:
+                        logger.info(f"Deactivated {deactivated_count} keys for server {server_id} (server paused)")
             
             status_text = "активирован" if new_status else "приостановлен"
             await safe_callback_answer(callback, f"✅ Сервер {status_text}")

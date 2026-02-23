@@ -107,14 +107,16 @@ class WebhookServer:
                     FROM users WHERE user_id = $1
                 ''', user_id)
                 
-                # Получаем ключи (один на сервер благодаря уникальному индексу)
+                # Получаем ключи только для активных серверов (один на сервер благодаря уникальному индексу)
                 keys = await conn.fetch('''
-                    SELECT DISTINCT ON (server_id) vless_link, server_id
-                    FROM vpn_keys
-                    WHERE user_id = $1 
-                      AND is_active = TRUE
-                      AND (expires_at IS NULL OR DATE(expires_at) >= CURRENT_DATE)
-                    ORDER BY server_id, id ASC
+                    SELECT DISTINCT ON (k.server_id) k.vless_link, k.server_id
+                    FROM vpn_keys k
+                    INNER JOIN servers s ON k.server_id = s.id
+                    WHERE k.user_id = $1 
+                      AND k.is_active = TRUE
+                      AND s.is_active = TRUE
+                      AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
+                    ORDER BY k.server_id, k.id ASC
                 ''', user_id)
                 
                 # Формируем expire timestamp
@@ -137,13 +139,16 @@ class WebhookServer:
                         # Создаём ключи вне транзакции (используем отдельное соединение)
                         from .subscriptions import create_or_activate_keys_for_all_servers
                         await create_or_activate_keys_for_all_servers(user_id)
-                        # Повторно запрашиваем ключи
+                        # Повторно запрашиваем ключи только для активных серверов
                         keys = await conn.fetch('''
-                            SELECT DISTINCT ON (server_id) vless_link, server_id
-                            FROM vpn_keys
-                            WHERE user_id = $1 AND is_active = TRUE
-                              AND (expires_at IS NULL OR DATE(expires_at) >= CURRENT_DATE)
-                            ORDER BY server_id, id ASC
+                            SELECT DISTINCT ON (k.server_id) k.vless_link, k.server_id
+                            FROM vpn_keys k
+                            INNER JOIN servers s ON k.server_id = s.id
+                            WHERE k.user_id = $1 
+                              AND k.is_active = TRUE
+                              AND s.is_active = TRUE
+                              AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
+                            ORDER BY k.server_id, k.id ASC
                         ''', user_id)
                     except Exception as e:
                         logger.error(f"Failed to auto-create keys for user {user_id}: {e}")

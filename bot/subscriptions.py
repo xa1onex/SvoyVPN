@@ -115,6 +115,18 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                 WHERE is_active = TRUE
                 """
             )
+            
+            # Деактивируем ключи для неактивных серверов
+            await conn.execute('''
+                UPDATE vpn_keys
+                SET is_active = FALSE
+                WHERE user_id = $1
+                  AND is_active = TRUE
+                  AND server_id IN (
+                      SELECT id FROM servers WHERE is_active = FALSE
+                  )
+            ''', user_id)
+            
             if not servers:
                 return
 
