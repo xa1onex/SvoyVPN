@@ -145,37 +145,11 @@ async def setup_start_handler(dp, bot: Bot, config):
 
 async def get_main_text(first_name: str, subscription_status: str, user_id: int = None, is_new_user: bool = False) -> str:
     """Возвращает основной текст с объявлением"""
-    import random
-    from ..database import get_connection
+    from ..database import get_connection, get_announcement_text
     
-    ann = ""
-    async with get_connection() as conn:
-        ann_row = await conn.fetchrow('SELECT text FROM announcements ORDER BY id DESC LIMIT 1')
-        if ann_row:
-            ann = ann_row['text']
-    
-    # Разнообразные приветствия
-    if is_new_user:
-        greetings = [
-            f"👋 Добро пожаловать, <b>{first_name}</b>!",
-            f"🎉 Привет, <b>{first_name}</b>! Рады тебя видеть!",
-            f"🚀 Здравствуй, <b>{first_name}</b>! Добро пожаловать!",
-            f"✨ Приветствуем тебя, <b>{first_name}</b>!",
-            f"🌟 С возвращением, <b>{first_name}</b>!"
-        ]
-        greeting = random.choice(greetings)
-    else:
-        greetings = [
-            f"👋 Рады видеть тебя снова, <b>{first_name}</b>!",
-            f"🎯 Привет, <b>{first_name}</b>! С возвращением!",
-            f"🔥 Здравствуй, <b>{first_name}</b>! Хорошо видеть тебя!",
-            f"💫 Снова ты, <b>{first_name}</b>! Отлично!",
-            f"⚡ Привет, <b>{first_name}</b>! Рады тебя видеть!"
-        ]
-        greeting = random.choice(greetings)
-    
+    ann = await get_announcement_text()
     msg = (
-        f"{greeting}\n\n"
+        f"👋 Рады видеть тебя снова, <b>{first_name}</b>!\n\n"
         f"<b>VPN</b>: <i>{subscription_status}</i>\n\n"
         f"📌 <b>Команды:</b>\n"
         "<i>/start</i> - Перезагрузить бота\n"
