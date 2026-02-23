@@ -48,6 +48,7 @@ class AppConfig(BaseModel):
     payment: PaymentConfig = Field(default_factory=PaymentConfig)
     flyer: FlyerConfig = Field(default_factory=FlyerConfig)
     yookassa: YooKassaConfig = Field(default_factory=YooKassaConfig)
+    subscription_base_url: str | None = Field(None, description="Base URL for subscription links")
 
 
 def load_config() -> AppConfig:
@@ -91,6 +92,15 @@ def load_config() -> AppConfig:
         enabled=os.getenv("YOOKASSA_ENABLED", "false").lower() == "true",
         webhook_url=os.getenv("YOOKASSA_WEBHOOK_URL"),
     )
+    
+    subscription_base_url = (
+        os.getenv("SUBSCRIPTION_BASE_URL") or 
+        os.getenv("PUBLIC_BASE_URL") or 
+        os.getenv("WEBHOOK_BASE_URL") or 
+        None
+    )
+    if subscription_base_url:
+        subscription_base_url = subscription_base_url.rstrip("/")
 
     return AppConfig(
         bot=bot,
@@ -99,5 +109,6 @@ def load_config() -> AppConfig:
         payment=payment,
         flyer=flyer,
         yookassa=yookassa,
+        subscription_base_url=subscription_base_url,
     )
 

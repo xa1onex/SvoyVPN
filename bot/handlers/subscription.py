@@ -24,7 +24,7 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_get_vpn_link(callback: CallbackQuery):
         """Отправляет пользователю ссылку подписки"""
         user_id = callback.from_user.id
-        link = await get_user_subscription_url(user_id)
+        link = await get_user_subscription_url(user_id, config)
         await callback.message.answer(
             "🔗 <b>Получить VPN</b>\n\n"
             "Добавьте эту ссылку в приложение как <b>подписку</b>:\n"
@@ -44,7 +44,7 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
         """Обработчик кнопки Premium"""
         user_id = callback.from_user.id
         info = await get_subscription_info(user_id)
-        text, builder = await build_subscription_message(info, state)
+        text, builder = await build_subscription_message(info, state, config)
         
         await callback.message.edit_text(
             text,
@@ -58,7 +58,7 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
         """Обработчик команды /prem"""
         user_id = message.from_user.id
         info = await get_subscription_info(user_id)
-        text, builder = await build_subscription_message(info, state)
+        text, builder = await build_subscription_message(info, state, config)
         
         await message.answer(
             text,
@@ -120,7 +120,7 @@ async def get_subscription_info(user_id: int) -> dict:
         }
 
 
-async def build_subscription_message(info: dict, state: FSMContext) -> tuple[str, InlineKeyboardMarkup]:
+async def build_subscription_message(info: dict, state: FSMContext, config=None) -> tuple[str, InlineKeyboardMarkup]:
     """Строит сообщение и клавиатуру для подписки"""
     builder = InlineKeyboardBuilder()
     is_active = info['is_active']
@@ -128,7 +128,7 @@ async def build_subscription_message(info: dict, state: FSMContext) -> tuple[str
     end_date_str = info['end_date_str']
     user_id = info['user_id']
     
-    subscription_url = await get_user_subscription_url(user_id)
+    subscription_url = await get_user_subscription_url(user_id, config)
     
     if is_active:
         if days_remaining < 1:
@@ -268,6 +268,6 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         """Возврат в главное меню"""
         user_id = callback.from_user.id
         info = await get_subscription_info(user_id)
-        text, builder = await build_subscription_message(info, state)
+        text, builder = await build_subscription_message(info, state, config)
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await callback.answer()

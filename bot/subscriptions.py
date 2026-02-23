@@ -389,15 +389,32 @@ async def get_subscription_status(user_id: int) -> str:
     return "неактивен"
 
 
-async def get_user_subscription_url(user_id: int) -> str:
+async def get_user_subscription_url(user_id: int, config=None) -> str:
     """Получает URL подписки пользователя"""
-    import os
+    import logging
     from .database import ensure_subscription_token
     
-    token = await ensure_subscription_token(user_id)
-    base_url = (os.getenv("SUBSCRIPTION_BASE_URL") or os.getenv("PUBLIC_BASE_URL") or "").rstrip("/")
+    logger = logging.getLogger(__name__)
     
-    if base_url:
-        return f"{base_url}/sub/{token}"
-    return f"/sub/{token}"
+    token = await ensure_subscription_token(user_id)
+    
+    # Пробуем получить домен из конфига или переменных окружения
+    if config and hasattr(config, 'subscription_base_url') and config.subscription_base_url:
+        base_url = config.subscription_base_url
+    else:
+        import os
+        base_url = (
+            os.getenv("SUBSCRIPTION_BASE_URL") or 
+            os.getenv("PUBLIC_BASE_URL") or 
+            os.getenv("WEBHOOK_BASE_URL") or 
+            ""
+        )
+        base_url = base_url.rstrip("/")
+    
+    if not base_url:
+        logger.warning("SUBSCRIPTION_BASE_URL or PUBLIC_BASE_URL not set in .env, using placeholder")
+        # Возвращаем placeholder, чтобы пользователь видел проблему
+        return f"https://your-domain.com/sub/{token}"
+    
+    return f"{base_url}/sub/{token}"
 
