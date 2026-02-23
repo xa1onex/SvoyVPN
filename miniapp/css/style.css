@@ -95,10 +95,12 @@ body {
 
 .screen {
     display: none;
+    width: 100%;
 }
 
 .screen.active {
     display: block;
+    width: 100%;
 }
 
 .screen-header {
@@ -125,6 +127,8 @@ body {
     font-weight: 700;
     margin: 20px 0 12px;
     color: var(--text-primary);
+    text-align: center;
+    width: 100%;
 }
 
 .screen-description {
@@ -132,6 +136,8 @@ body {
     color: var(--text-secondary);
     margin-bottom: 24px;
     line-height: 1.5;
+    text-align: center;
+    width: 100%;
 }
 
 /* Главный экран */

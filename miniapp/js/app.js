@@ -294,6 +294,16 @@ function showScreen(screenId) {
     if (screen) {
         screen.classList.add('active');
     }
+    
+    // Показываем/скрываем бонусный баннер только на экране тарифов
+    const bonusBanner = document.getElementById('bonusBanner');
+    if (bonusBanner) {
+        if (screenId === 'tariffsScreen') {
+            bonusBanner.style.display = 'block';
+        } else {
+            bonusBanner.style.display = 'none';
+        }
+    }
 }
 
 function showHome() {
