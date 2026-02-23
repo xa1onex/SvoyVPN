@@ -290,6 +290,28 @@ async def init_db() -> None:
         except Exception as e:
             logging.warning(f"Could not initialize discount_settings: {e}")
         
+        # Таблица для настроек пробного периода
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS trial_settings (
+                id SERIAL PRIMARY KEY,
+                days INTEGER DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        
+        # Инициализация настроек пробного периода, если таблица пустая
+        try:
+            trial_count = await conn.fetchval('SELECT COUNT(*) FROM trial_settings')
+            if trial_count == 0:
+                await conn.execute('''
+                    INSERT INTO trial_settings (days, updated_at)
+                    VALUES (0, CURRENT_TIMESTAMP)
+                ''')
+        except Exception as e:
+            logging.warning(f"Could not initialize trial_settings: {e}")
+        
         # Таблица для менеджеров (техподдержка)
         try:
             await conn.execute('''
