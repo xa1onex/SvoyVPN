@@ -21,7 +21,7 @@ from .payments import process_yookassa_payment
 from .plans import get_subscription_plans, get_renewal_plans, PAYMENT_METHODS
 
 # Импортируем обработчики
-from .handlers import start, subscription, payment
+from .handlers import start, subscription, payment, admin
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -157,6 +157,7 @@ async def main():
     await subscription.setup_subscription_handlers(dp, bot, config)
     await payment.setup_payment_handlers(dp, bot, config)
     await start.setup_other_handlers(dp, bot, config)
+    await admin.setup_admin_handlers(dp, bot, config)
     logger.info("All handlers registered")
     
     # Запускаем планировщик

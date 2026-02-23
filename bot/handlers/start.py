@@ -182,35 +182,86 @@ async def setup_other_handlers(dp, bot: Bot, config):
     """Настраивает дополнительные обработчики (invite, help, admin)"""
     
     @dp.callback_query(F.data == "open_invite")
-    async def handle_open_invite(callback: CallbackQuery):
-        """Обработчик кнопки Подарок (реферальная система)"""
-        user_id = callback.from_user.id
-        from ..database import get_connection
+    @dp.message(Command("invite"))
+    async def handle_open_invite(message_or_callback: Message | CallbackQuery):
+        """Обработчик кнопки Подарок и команды /invite (реферальная система)"""
+        if isinstance(message_or_callback, CallbackQuery):
+            callback = message_or_callback
+            message = callback.message
+            await callback.answer()
+        else:
+            message = message_or_callback
+            callback = None
+        
+        user_id = message.from_user.id
+        from urllib.parse import quote
         
         async with get_connection() as conn:
             user_data = await conn.fetchrow(
-                "SELECT referral_code FROM users WHERE user_id = $1",
+                "SELECT referral_code, referral_count FROM users WHERE user_id = $1",
                 user_id
             )
             
-            if user_data:
-                referral_code = user_data.get("referral_code", "")
-                referral_link = f"https://t.me/{bot.username}?start=ref_{referral_code}"
-                
-                await callback.message.answer(
-                    f"🎁 <b>Пригласи друга и получи бонус!</b>\n\n"
-                    f"📎 <b>Ваша реферальная ссылка:</b>\n"
-                    f"<code>{referral_link}</code>\n\n"
-                    f"💡 <b>Как это работает:</b>\n"
-                    f"• Отправьте эту ссылку другу\n"
-                    f"• Когда друг зарегистрируется и купит подписку, вы оба получите бонусные дни\n"
-                    f"• Количество бонусных дней настраивается администратором",
-                    parse_mode="HTML",
-                    disable_web_page_preview=True
-                )
+            if not user_data:
+                await message.answer("❌ Пожалуйста, сначала запустите бота с помощью команды /start")
+                return
+            
+            referral_code = user_data.get("referral_code", "")
+            referral_count = user_data.get("referral_count", 0)
+            
+            # Если реферальный код отсутствует, генерируем новый
+            if not referral_code:
+                import secrets
+                referral_code = secrets.token_hex(4)
+                await conn.execute('''
+                    UPDATE users
+                    SET referral_code = $1
+                    WHERE user_id = $2
+                ''', referral_code, user_id)
+            
+            # Получаем настройки реферальной системы
+            referral_settings = await conn.fetchrow('SELECT inviter_bonus_days, invited_bonus_days FROM referral_settings ORDER BY id DESC LIMIT 1')
+            if not referral_settings:
+                inviter_days = 5
+                invited_days = 3
             else:
-                await callback.message.answer("❌ Ошибка: пользователь не найден")
+                inviter_days = referral_settings['inviter_bonus_days']
+                invited_days = referral_settings['invited_bonus_days']
         
+        bot_username = (await bot.get_me()).username
+        ref_link = f"https://t.me/{bot_username}?start=ref_{referral_code}"
+        text = (
+            f"🎁 <b>Пригласи друга и получи +{inviter_days} {'день' if inviter_days == 1 else 'дня' if inviter_days < 5 else 'дней'} VPN!</b>\n\n"
+            f"🔗 Ваша реферальная ссылка:\n<code>{ref_link}</code>\n\n"
+            f"👥 Приглашено друзей: <i>{referral_count or 0}</i>\n"
+            f"За каждого друга вы получаете +{inviter_days} {'день' if inviter_days == 1 else 'дня' if inviter_days < 5 else 'дней'} VPN, а друг получает +{invited_days} {'день' if invited_days == 1 else 'дня' if invited_days < 5 else 'дней'}!"
+        )
+        
+        # Клавиатура с кнопкой поделиться
+        from aiogram.types import InlineKeyboardMarkup
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="📤 Поделиться",
+                url=f"https://t.me/share/url?url={ref_link}&text={quote('Присоединяйся к VPN боту с моей подпиской!')}"
+            )],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="go_back")]
+        ])
+        
+        await message.answer(text, parse_mode='HTML', reply_markup=keyboard, disable_web_page_preview=True)
+    
+    @dp.callback_query(F.data == "go_back")
+    async def go_back_handler(callback: CallbackQuery):
+        """Обработчик кнопки Назад"""
+        user_id = callback.from_user.id
+        first_name = callback.from_user.first_name or "Пользователь"
+        from ..subscriptions import get_subscription_status
+        subscription_status = await get_subscription_status(user_id)
+        
+        await callback.message.edit_text(
+            text=await get_main_text(first_name, subscription_status, user_id),
+            parse_mode='HTML',
+            reply_markup=await get_main_keyboard(user_id, config)
+        )
         await callback.answer()
     
     @dp.callback_query(F.data == "open_help")
@@ -232,7 +283,4 @@ async def setup_other_handlers(dp, bot: Bot, config):
         await callback.message.answer(help_text, parse_mode="HTML")
         await callback.answer()
     
-    @dp.callback_query(F.data == "admin_panel")
-    async def handle_admin_panel(callback: CallbackQuery):
-        """Обработчик админ-панели (заглушка)"""
-        await callback.answer("Админ-панель в разработке", show_alert=True)
+    # Админ-панель обрабатывается в admin.py
