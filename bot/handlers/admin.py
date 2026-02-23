@@ -1223,19 +1223,18 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 await message.answer("❌ Сервер не найден")
                 return
             
-            # Деактивируем все ключи этого сервера перед удалением
-            deactivated_count = await conn.fetchval('''
+            # Удаляем все ключи этого сервера перед удалением (чтобы не нарушить foreign key constraint)
+            deleted_keys_count = await conn.fetchval('''
                 SELECT COUNT(*) FROM vpn_keys
-                WHERE server_id = $1 AND is_active = TRUE
+                WHERE server_id = $1
             ''', server_id)
             
-            if deactivated_count and deactivated_count > 0:
+            if deleted_keys_count and deleted_keys_count > 0:
                 await conn.execute('''
-                    UPDATE vpn_keys
-                    SET is_active = FALSE
-                    WHERE server_id = $1 AND is_active = TRUE
+                    DELETE FROM vpn_keys
+                    WHERE server_id = $1
                 ''', server_id)
-                logger.info(f"Deactivated {deactivated_count} keys for server {server_id} before deletion")
+                logger.info(f"Deleted {deleted_keys_count} keys for server {server_id} before deletion")
             
             # Удаляем сервер
             await conn.execute('DELETE FROM servers WHERE id = $1', server_id)
@@ -2014,19 +2013,18 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     await safe_callback_answer(callback, "❌ Сервер не найден", show_alert=True)
                     return
                 
-                # Деактивируем все ключи этого сервера перед удалением
-                deactivated_count = await conn.fetchval('''
+                # Удаляем все ключи этого сервера перед удалением (чтобы не нарушить foreign key constraint)
+                deleted_keys_count = await conn.fetchval('''
                     SELECT COUNT(*) FROM vpn_keys
-                    WHERE server_id = $1 AND is_active = TRUE
+                    WHERE server_id = $1
                 ''', server_id)
                 
-                if deactivated_count and deactivated_count > 0:
+                if deleted_keys_count and deleted_keys_count > 0:
                     await conn.execute('''
-                        UPDATE vpn_keys
-                        SET is_active = FALSE
-                        WHERE server_id = $1 AND is_active = TRUE
+                        DELETE FROM vpn_keys
+                        WHERE server_id = $1
                     ''', server_id)
-                    logger.info(f"Deactivated {deactivated_count} keys for server {server_id} before deletion")
+                    logger.info(f"Deleted {deleted_keys_count} keys for server {server_id} before deletion")
                 
                 # Удаляем сервер
                 await conn.execute('DELETE FROM servers WHERE id = $1', server_id)
