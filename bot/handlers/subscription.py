@@ -257,7 +257,7 @@ async def build_subscription_message(info: dict, state: FSMContext, config=None)
         builder.adjust(1)
         
         # Кнопка "Назад" всегда
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
     else:
         text = (
             "❌ Ваш <b>VPN</b> <b>неактивен</b>\n\n"
@@ -590,7 +590,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 logger.error(f"Error sending invoice: {e}", exc_info=True)
                 await callback.answer("❌ Ошибка при создании инвойса. Попробуйте позже.", show_alert=True)
     
-    @dp.callback_query(F.data == "go_back")
+    @dp.callback_query(F.data == "go_back_subscription")
     async def handle_go_back_subscription(callback: CallbackQuery, state: FSMContext):
         """Возврат в меню подписки"""
         user_id = callback.from_user.id
