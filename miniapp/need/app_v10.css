@@ -414,7 +414,51 @@ body {
   animation: pingPulse 1.2s ease-in-out infinite;
 }
 
-/* ── Tariff grid ── */
+/* ── Server Pagination Nav ── */
+.server-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.server-nav__btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--section_bg_color, var(--tg-theme-section-bg-color, #f7f9fb));
+  color: var(--accent_text_color, #3aa8fc);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity .15s, transform .1s;
+  -webkit-tap-highlight-color: transparent;
+  line-height: 1;
+}
+
+.server-nav__btn:active {
+  transform: scale(.9);
+}
+
+.server-nav__btn:disabled {
+  opacity: .3;
+  pointer-events: none;
+}
+
+.server-nav__indicator {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--subtitle_text_color, #8e8e93);
+  min-width: 40px;
+  text-align: center;
+}
+
 .tariff-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

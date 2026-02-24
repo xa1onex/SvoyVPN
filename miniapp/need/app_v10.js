@@ -247,55 +247,115 @@
     }
   }
 
+  const SERVERS_PER_PAGE = 4;
+  let serverPage = 0;
+
+  function createServerCard(s) {
+    const el = document.createElement('div');
+    el.className = 'server-card';
+    el.setAttribute('data-server-id', s.id);
+    el.innerHTML =
+      '<div class="server-card__header">' +
+      '<span class="server-card__flag">' + getFlag(s.name) + '</span>' +
+      '<span class="server-card__name">' + s.name + '</span>' +
+      '</div>' +
+      '<span class="server-card__ip">' + maskIp(s.ip) + '</span>' +
+      '<div class="server-card__ping-wrap"></div>';
+
+    const pingWrap = el.querySelector('.server-card__ping-wrap');
+    renderPingBadge(pingWrap, null);
+    measurePing(s.id).then(function (ms) { renderPingBadge(pingWrap, ms); });
+
+    el.addEventListener('click', function () {
+      haptic('light');
+      renderPingBadge(pingWrap, null);
+      measurePing(s.id).then(function (ms) { renderPingBadge(pingWrap, ms); });
+    });
+
+    return el;
+  }
+
   function renderServers() {
     const w = document.getElementById('serversWrap');
     if (!w) return;
     if (!S.servers.length) {
       w.innerHTML = '<div class="server-card server-card--loading text-muted body">Нет серверов</div>';
+      // Remove old nav if exists
+      var oldNav = document.getElementById('serverNav');
+      if (oldNav) oldNav.remove();
       return;
     }
+
+    var totalPages = Math.ceil(S.servers.length / SERVERS_PER_PAGE);
+    if (serverPage >= totalPages) serverPage = totalPages - 1;
+    if (serverPage < 0) serverPage = 0;
+
+    var start = serverPage * SERVERS_PER_PAGE;
+    var pageServers = S.servers.slice(start, start + SERVERS_PER_PAGE);
+
     w.innerHTML = '';
-    S.servers.forEach((s) => {
-      const el = document.createElement('div');
-      el.className = 'server-card';
-      el.innerHTML =
-        '<div class="server-card__header">' +
-        '<span class="server-card__flag">' + getFlag(s.name) + '</span>' +
-        '<span class="server-card__name">' + s.name + '</span>' +
-        '</div>' +
-        '<span class="server-card__ip">' + maskIp(s.ip) + '</span>' +
-        '<div class="server-card__ping-wrap"></div>';
+    pageServers.forEach(function (s) {
+      w.appendChild(createServerCard(s));
+    });
 
-      const pingWrap = el.querySelector('.server-card__ping-wrap');
+    // Navigation bar
+    var oldNav = document.getElementById('serverNav');
+    if (oldNav) oldNav.remove();
 
-      // Initial ping state
-      renderPingBadge(pingWrap, null);
+    if (totalPages > 1) {
+      var nav = document.createElement('div');
+      nav.id = 'serverNav';
+      nav.className = 'server-nav';
 
-      // Measure ping
-      measurePing(s.id).then((ms) => renderPingBadge(pingWrap, ms));
-
-      // Tap to re-ping
-      el.addEventListener('click', () => {
-        haptic('light');
-        renderPingBadge(pingWrap, null);
-        measurePing(s.id).then((ms) => renderPingBadge(pingWrap, ms));
+      var btnPrev = document.createElement('button');
+      btnPrev.className = 'server-nav__btn';
+      btnPrev.textContent = '‹';
+      btnPrev.disabled = serverPage === 0;
+      btnPrev.addEventListener('click', function () {
+        if (serverPage > 0) {
+          serverPage--;
+          haptic('light');
+          renderServers();
+        }
       });
 
-      w.appendChild(el);
-    });
+      var indicator = document.createElement('span');
+      indicator.className = 'server-nav__indicator';
+      indicator.textContent = (serverPage + 1) + ' / ' + totalPages;
+
+      var btnNext = document.createElement('button');
+      btnNext.className = 'server-nav__btn';
+      btnNext.textContent = '›';
+      btnNext.disabled = serverPage >= totalPages - 1;
+      btnNext.addEventListener('click', function () {
+        if (serverPage < totalPages - 1) {
+          serverPage++;
+          haptic('light');
+          renderServers();
+        }
+      });
+
+      nav.appendChild(btnPrev);
+      nav.appendChild(indicator);
+      nav.appendChild(btnNext);
+
+      w.parentNode.insertBefore(nav, w.nextSibling);
+    }
   }
 
-  // Auto-refresh pings every 60 seconds
+  // Auto-refresh pings every 60 seconds (only visible cards)
   let pingInterval;
   function startPingRefresh() {
     if (pingInterval) clearInterval(pingInterval);
-    pingInterval = setInterval(() => {
+    pingInterval = setInterval(function () {
       if (!S.servers.length) return;
-      document.querySelectorAll('.server-card').forEach((card, i) => {
-        if (i >= S.servers.length) return;
-        const pingWrap = card.querySelector('.server-card__ping-wrap');
+      var start = serverPage * SERVERS_PER_PAGE;
+      var pageServers = S.servers.slice(start, start + SERVERS_PER_PAGE);
+      document.querySelectorAll('.server-card[data-server-id]').forEach(function (card, i) {
+        if (i >= pageServers.length) return;
+        var pingWrap = card.querySelector('.server-card__ping-wrap');
         if (pingWrap) {
-          measurePing(S.servers[i].id).then((ms) => renderPingBadge(pingWrap, ms));
+          measurePing(pageServers[i].id).then(function (ms) { renderPingBadge(pingWrap, ms); });
         }
       });
     }, 60000);
