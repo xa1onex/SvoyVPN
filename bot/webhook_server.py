@@ -404,6 +404,14 @@ class WebhookServer:
                     guessed_type = 'application/javascript'
                 elif file_path.endswith('.svg'):
                     guessed_type = 'image/svg+xml'
+                elif file_path.endswith('.png'):
+                    guessed_type = 'image/png'
+                elif file_path.endswith('.woff2'):
+                    guessed_type = 'font/woff2'
+                elif file_path.endswith('.woff'):
+                    guessed_type = 'font/woff'
+                elif file_path.endswith('.ttf'):
+                    guessed_type = 'font/ttf'
             content_type = guessed_type or "application/octet-stream"
             # Add charset for text-like assets.
             if content_type.startswith("text/") or content_type in {
