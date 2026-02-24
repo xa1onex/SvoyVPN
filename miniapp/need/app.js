@@ -1,4 +1,4 @@
-/* SvoyVPN miniapp UI styled with the Need example CSS, but using SvoyVPN bot API (/api/*). */
+/* SvoyVPN miniapp – landing page style, using Need CSS + SvoyVPN bot API (/api/*). */
 (function () {
   /** @type {any} */
   const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
@@ -14,61 +14,40 @@
 
   const el = {
     spriteHost: /** @type {HTMLElement|null} */ (null),
-    tabPlans: /** @type {HTMLElement|null} */ (null),
-    tabSetup: /** @type {HTMLElement|null} */ (null),
-    tabProfile: /** @type {HTMLElement|null} */ (null),
     plansWrapper: /** @type {HTMLElement|null} */ (null),
     paymentMethodsWrapper: /** @type {HTMLElement|null} */ (null),
     totalPrice: /** @type {HTMLElement|null} */ (null),
     btnPay: /** @type {HTMLButtonElement|null} */ (null),
+    btnCta: /** @type {HTMLButtonElement|null} */ (null),
     subscriptionUrl: /** @type {HTMLInputElement|null} */ (null),
     btnCopySub: /** @type {HTMLElement|null} */ (null),
     profileName: /** @type {HTMLElement|null} */ (null),
-    profileAvatar: /** @type {HTMLElement|null} */ (null),
     profileStatus: /** @type {HTMLElement|null} */ (null),
     profileUntil: /** @type {HTMLElement|null} */ (null),
-    btnRefresh: /** @type {HTMLElement|null} */ (null),
   };
+
+  /* ── Theme ── */
 
   function setThemeFromTelegram() {
     const scheme = tg && tg.colorScheme ? tg.colorScheme : null;
-    document.body.setAttribute("data-theme", scheme === "dark" ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", scheme === "dark" ? "dark" : "light");
   }
+
+  /* ── SVG Sprite ── */
 
   async function injectSprite() {
     try {
       const res = await fetch("/miniapp/need/assets/sprite.svg", { cache: "force-cache" });
       if (!res.ok) return;
       let text = await res.text();
-      // XML header can break HTML parsing in some contexts.
-      text = text.replace(/^<\\?xml[^>]*>\\s*/i, "");
+      text = text.replace(/^<\?xml[^>]*>\s*/i, "");
       if (el.spriteHost) el.spriteHost.innerHTML = text;
     } catch {
       // ignore
     }
   }
 
-  function showTab(tabName) {
-    const tabs = [
-      { name: "plans", el: el.tabPlans },
-      { name: "setup", el: el.tabSetup },
-      { name: "profile", el: el.tabProfile },
-    ];
-    for (const t of tabs) {
-      if (!t.el) continue;
-      t.el.classList.toggle("svoy-tab--active", t.name === tabName);
-    }
-
-    document.querySelectorAll("[data-tab-button]").forEach((btn) => {
-      const name = btn.getAttribute("data-tab-button");
-      const isActive = name === tabName;
-      btn.setAttribute("aria-selected", isActive ? "true" : "false");
-      const svg = btn.querySelector("svg");
-      if (svg) svg.style.color = `var(${isActive ? "--accent_text_color" : "--subtitle_text_color"})`;
-      const label = btn.querySelector("p");
-      if (label) label.style.color = `var(${isActive ? "--accent_text_color" : "--subtitle_text_color"})`;
-    });
-  }
+  /* ── Formatters ── */
 
   function formatRub(value) {
     try {
@@ -90,6 +69,8 @@
     }
   }
 
+  /* ── API helper ── */
+
   async function apiGetJson(url, options) {
     const res = await fetch(url, options);
     if (!res.ok) {
@@ -105,6 +86,8 @@
     return res.json();
   }
 
+  /* ── Data loading ── */
+
   async function loadUser() {
     if (!tg || !tg.initData) return;
     try {
@@ -117,8 +100,7 @@
       state.subscription = data.subscription || null;
       renderProfile();
       renderSubscriptionUrl();
-    } catch (e) {
-      // For first load, don't spam. Still show something in profile.
+    } catch {
       renderProfile();
     }
   }
@@ -150,6 +132,8 @@
     }
   }
 
+  /* ── Rendering ── */
+
   function renderTariffs() {
     if (!el.plansWrapper) return;
     el.plansWrapper.innerHTML = "";
@@ -167,8 +151,9 @@
 
       const monthTitle = document.createElement("div");
       monthTitle.className = "_plan-card-section_q2m4m_65";
+      const monthWord = t.months === 1 ? "месяц" : t.months >= 2 && t.months <= 4 ? "месяца" : "месяцев";
       monthTitle.innerHTML = `<div class="_month-count-title_q2m4m_58">${t.months}</div>
-        <div class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_medium_1hgcm_75 svoy-muted">${t.months === 1 ? "month" : "months"}</div>`;
+        <div class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_medium_1hgcm_75 svoy-muted">${monthWord}</div>`;
 
       const price = document.createElement("div");
       price.className = "_plan-card-section_q2m4m_65";
@@ -179,7 +164,7 @@
       )}</div>
         <div class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_regular_1hgcm_72 svoy-muted">${formatRub(
           perMonth
-        )} / mo</div>`;
+        )} / мес</div>`;
 
       if (t.popular) {
         const badge = document.createElement("div");
@@ -206,13 +191,14 @@
       row.addEventListener("click", () => {
         state.selectedPaymentMethodId = m.id;
         renderPaymentMethods();
+        updateTotal();
       });
 
       const left = document.createElement("div");
       left.className = "_cell-provider-inner_mdt1z_101";
       left.innerHTML = `<div class="_title-row_mdt1z_116">
           <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">${m.name || m.id}</p>
-          ${m.badge ? `<span class="_badge_mdt1z_122">${m.badge}</span>` : ""}
+          ${m.badge ? `<span class="_badge_mdt1z_122"><span class="_root_1hgcm_29 _size_subtitle3_1hgcm_63" style="color: var(--button_text_color);">${m.badge}</span></span>` : ""}
         </div>
         ${m.description ? `<p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted">${m.description}</p>` : ""}`;
 
@@ -240,24 +226,6 @@
     }
   }
 
-  async function copyText(text) {
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      tg?.HapticFeedback?.notificationOccurred?.("success");
-      tg?.showAlert?.("Скопировано");
-    } catch {
-      // fallback
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      ta.remove();
-      tg?.showAlert?.("Скопировано");
-    }
-  }
-
   function renderSubscriptionUrl() {
     const url = state.subscription && state.subscription.subscriptionUrl ? state.subscription.subscriptionUrl : "";
     if (el.subscriptionUrl) el.subscriptionUrl.value = url;
@@ -268,41 +236,41 @@
     const sub = state.subscription;
 
     if (el.profileName) el.profileName.textContent = user?.firstName || user?.username || "User";
-    if (el.profileAvatar) {
-      if (user?.photoUrl) {
-        el.profileAvatar.style.backgroundImage = `url(${user.photoUrl})`;
-        el.profileAvatar.style.backgroundSize = "cover";
-        el.profileAvatar.style.backgroundPosition = "center";
-      } else {
-        el.profileAvatar.style.backgroundImage = "";
-      }
-    }
 
-    const subscriptionInfo = document.getElementById("subscriptionInfo");
-    const profileSubscriptionDetails = document.getElementById("profileSubscriptionDetails");
-    
     if (sub) {
       if (el.profileStatus) {
         el.profileStatus.textContent = sub.isActive ? "Активна" : "Неактивна";
         el.profileStatus.style.color = sub.isActive ? "var(--accent_text_color)" : "var(--subtitle_text_color)";
       }
       if (el.profileUntil) {
-        el.profileUntil.textContent = sub.endDate ? `До ${formatDateIso(sub.endDate)}` : "Нет подписки";
-      }
-      
-      if (subscriptionInfo) subscriptionInfo.style.display = "block";
-      if (profileSubscriptionDetails) {
-        const details = [];
-        if (sub.startDate) details.push(`Начало: ${formatDateIso(sub.startDate)}`);
-        if (sub.endDate) details.push(`Окончание: ${formatDateIso(sub.endDate)}`);
-        profileSubscriptionDetails.textContent = details.length ? details.join(" • ") : "Информация о подписке";
+        el.profileUntil.textContent = sub.endDate ? `до ${formatDateIso(sub.endDate)}` : "";
       }
     } else {
       if (el.profileStatus) el.profileStatus.textContent = "Нет подписки";
       if (el.profileUntil) el.profileUntil.textContent = "";
-      if (subscriptionInfo) subscriptionInfo.style.display = "none";
     }
   }
+
+  /* ── Clipboard ── */
+
+  async function copyText(text) {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      tg?.HapticFeedback?.notificationOccurred?.("success");
+      tg?.showAlert?.("Скопировано");
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      tg?.showAlert?.("Скопировано");
+    }
+  }
+
+  /* ── Payment ── */
 
   async function createPayment() {
     if (!state.selectedTariffId || !state.selectedPaymentMethodId) return;
@@ -335,37 +303,33 @@
     }
   }
 
+  /* ── DOM binding ── */
+
   function bindDom() {
     el.spriteHost = document.getElementById("svgSpriteHost");
-    el.tabPlans = document.getElementById("tabPlans");
-    el.tabSetup = document.getElementById("tabSetup");
-    el.tabProfile = document.getElementById("tabProfile");
     el.plansWrapper = document.getElementById("plansWrapper");
     el.paymentMethodsWrapper = document.getElementById("paymentMethodsWrapper");
     el.totalPrice = document.getElementById("totalPrice");
     el.btnPay = /** @type {HTMLButtonElement|null} */ (document.getElementById("btnPay"));
+    el.btnCta = /** @type {HTMLButtonElement|null} */ (document.getElementById("btnCta"));
     el.subscriptionUrl = /** @type {HTMLInputElement|null} */ (document.getElementById("subscriptionUrl"));
     el.btnCopySub = document.getElementById("btnCopySub");
     el.profileName = document.getElementById("profileName");
-    el.profileAvatar = document.getElementById("profileAvatar");
     el.profileStatus = document.getElementById("profileStatus");
     el.profileUntil = document.getElementById("profileUntil");
-    el.btnRefresh = document.getElementById("btnRefresh");
 
-    document.querySelectorAll("[data-tab-button]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const name = btn.getAttribute("data-tab-button");
-        if (name) {
-          tg?.HapticFeedback?.impactOccurred?.("medium");
-          showTab(name);
-        }
-      });
+    // CTA scrolls to tariff section
+    el.btnCta?.addEventListener("click", () => {
+      tg?.HapticFeedback?.impactOccurred?.("medium");
+      const target = document.getElementById("sectionTariffs");
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
     el.btnPay?.addEventListener("click", createPayment);
     el.btnCopySub?.addEventListener("click", () => copyText(el.subscriptionUrl?.value || ""));
-    el.btnRefresh?.addEventListener("click", loadUser);
   }
+
+  /* ── Init ── */
 
   document.addEventListener("DOMContentLoaded", async () => {
     bindDom();
@@ -381,10 +345,8 @@
     }
 
     setThemeFromTelegram();
-    showTab("plans");
 
     await Promise.allSettled([loadTariffs(), loadPaymentMethods(), loadUser()]);
     updateTotal();
   });
 })();
-
