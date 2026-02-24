@@ -531,13 +531,28 @@ class WebhookServer:
                     elif isinstance(end_date, str):
                         end_date_str = end_date
                 
+                # --- Fetch accurate Photo from Telegram API --- #
+                photo_url_fetched = user_data.get('photo_url', '')
+                try:
+                    # Attempt to fetch high-res photo if not provided by initData
+                    if not photo_url_fetched and self.bot:
+                        profile_photos = await self.bot.get_user_profile_photos(user_id, limit=1)
+                        if profile_photos and profile_photos.photos:
+                            first_photo_array = profile_photos.photos[0]
+                            if first_photo_array:
+                                best_photo = first_photo_array[-1]
+                                file_info = await self.bot.get_file(best_photo.file_id)
+                                photo_url_fetched = f"https://api.telegram.org/file/bot{self.bot.token}/{file_info.file_path}"
+                except Exception as ex:
+                    logger.warning(f"Could not fetch profile photo for user {user_id}: {ex}")
+
                 return web.json_response({
                     "user": {
                         "id": user_id,
                         "firstName": user_data.get('first_name', ''),
                         "lastName": user_data.get('last_name', ''),
                         "username": user_data.get('username', ''),
-                        "photoUrl": user_data.get('photo_url', '')
+                        "photoUrl": photo_url_fetched
                     },
                     "subscription": {
                         "isActive": is_active,
