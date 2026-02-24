@@ -60,6 +60,14 @@
     try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(style); } catch (_) { }
   }
 
+  /* ═══════ Theme ═══════ */
+  function applyTheme() {
+    const scheme = (tg && tg.colorScheme) ||
+      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', scheme);
+    document.body.setAttribute('data-theme', scheme);
+  }
+
   /* ═══════ Sprite loader ═══════ */
   async function loadSprite() {
     try {
@@ -216,12 +224,29 @@
 
   /* ═══════ Render: User & Subscription ═══════ */
   function renderUser() {
-    // Avatar — first letter of name
     const avatar = document.getElementById('avatar');
     if (S.user) {
       const name = [S.user.firstName, S.user.lastName].filter(Boolean).join(' ') || 'U';
       document.getElementById('profileName').textContent = name;
-      if (avatar) avatar.textContent = name.charAt(0).toUpperCase();
+
+      // Avatar: try photo from API, then from tg.initDataUnsafe, then letter fallback
+      const photoUrl = S.user.photoUrl || S.user.photo_url ||
+        (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.photo_url);
+      if (photoUrl && avatar) {
+        avatar.innerHTML = '';
+        avatar.style.overflow = 'hidden';
+        const img = document.createElement('img');
+        img.src = photoUrl;
+        img.alt = name;
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;';
+        img.onerror = function () {
+          avatar.innerHTML = name.charAt(0).toUpperCase();
+          avatar.style.overflow = '';
+        };
+        avatar.appendChild(img);
+      } else if (avatar) {
+        avatar.textContent = name.charAt(0).toUpperCase();
+      }
     }
 
     // Subscription
@@ -325,15 +350,31 @@
   /* ═══════ Init ═══════ */
   document.addEventListener('DOMContentLoaded', () => {
     // Telegram WebApp
+    // Apply theme BEFORE anything else
+    applyTheme();
+
     if (tg) {
       tg.ready();
       tg.expand();
+      tg.onEvent && tg.onEvent('themeChanged', applyTheme);
       tg.setHeaderColor && tg.setHeaderColor('bg_color');
       tg.setBackgroundColor && tg.setBackgroundColor('bg_color');
     }
 
     // Load SVG sprite
     loadSprite();
+
+    // Pre-fill user info from tg immediately (before API call)
+    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+      const u = tg.initDataUnsafe.user;
+      S.user = {
+        firstName: u.first_name || '',
+        lastName: u.last_name || '',
+        username: u.username || '',
+        photoUrl: u.photo_url || '',
+      };
+      renderUser();
+    }
 
     // Tab bar navigation
     document.querySelectorAll('.tab').forEach((btn) => {
