@@ -184,7 +184,7 @@
       if (t.popular) {
         const badge = document.createElement("div");
         badge.className = "_badge_q2m4m_72";
-        badge.innerHTML = `<svg class="svoy-icon" viewBox="0 0 40 40" aria-hidden="true"><use href="#stars.static"></use></svg>`;
+        badge.innerHTML = `<svg viewBox="0 0 40 40" aria-hidden="true" style="width:100%;height:100%;"><use href="#stars.static"></use></svg>`;
         card.appendChild(badge);
       }
 

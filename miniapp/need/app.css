@@ -1,9 +1,36 @@
+/* ========================================
+   SvoyVPN MiniApp Styles (based on Need example)
+   ======================================== */
+
+:root {
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
 .svoy-hidden {
   display: none !important;
 }
 
+/* ========================================
+   Tab System
+   ======================================== */
+
 .svoy-tab {
   display: none;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 100vh;
+  padding-bottom: calc(80px + var(--safe-area-inset-bottom));
 }
 
 .svoy-tab.svoy-tab--active {
@@ -12,14 +39,20 @@
 
 .svoy-tab-inner {
   width: 100%;
+  max-width: 678px;
   padding: 0 16px;
   box-sizing: border-box;
 }
 
+/* ========================================
+   Icons
+   ======================================== */
+
 .svoy-icon {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   display: inline-block;
+  flex-shrink: 0;
 }
 
 .svoy-icon use {
@@ -30,94 +63,23 @@
   color: var(--subtitle_text_color);
 }
 
-/* Mobile fixes */
-@media (max-width: 768px) {
-  .svoy-tab-inner {
-    padding: 0 16px;
-  }
-  
-  ._root_q2m4m_1,
-  ._subscription_1mhws_27,
-  #paymentMethodsWrapper,
-  div[style*="width: 100%"] {
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-  }
-  
-  ._plans-wrapper_q2m4m_8 {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-    padding-bottom: 4px;
-  }
-  
-  ._plans-wrapper_q2m4m_8::-webkit-scrollbar {
-    display: none;
-  }
-  
-  ._plan-card_q2m4m_12 {
-    min-width: calc((100% - 10px) / 2) !important;
-    flex-shrink: 0;
-  }
-  
-  ._buttons_1sq9h_87 {
-    position: fixed !important;
-    left: 0 !important;
-    bottom: calc(74px + var(--safe-area-inset-bottom)) !important;
-    width: 100% !important;
-    padding: 8px 16px 12px !important;
-    box-sizing: border-box !important;
-    background-color: var(--bg_color) !important;
-    border-top: 1px solid var(--separator_color) !important;
-    z-index: 10 !important;
-    margin: 0 !important;
-  }
-  
-  ._root_1sq9h_1 {
-    padding-bottom: calc(120px + var(--safe-area-inset-bottom)) !important;
-  }
-  
-  ._heading_1sq9h_29 {
-    padding-top: 16px !important;
-    padding-bottom: 16px !important;
-  }
-  
-  ._section_mdt1z_50 {
-    width: 100% !important;
-    box-sizing: border-box;
-  }
-}
+/* ========================================
+   Tab Bar (Bottom Navigation)
+   ======================================== */
 
-@media (min-width: 769px) {
-  .svoy-tab-inner {
-    padding: 0 24px;
-    max-width: 678px;
-    margin: 0 auto;
-  }
-}
-
-/* Tab bar navigation */
 ._root_l9l9n_8 {
   position: fixed;
   bottom: 0;
   left: 0;
-  width: 100%;
+  right: 0;
   display: flex;
   align-items: center;
-  height: calc(55px + var(--safe-area-inset-bottom));
+  justify-content: center;
+  height: calc(60px + var(--safe-area-inset-bottom));
+  padding-bottom: var(--safe-area-inset-bottom);
   background-color: var(--bg_color);
-  border-top: 1px solid var(--separator_color);
-  z-index: 100;
-}
-
-@media (min-width: 769px) {
-  ._root_l9l9n_8 {
-    display: none;
-  }
+  border-top: 0.5px solid var(--separator_color);
+  z-index: 1000;
 }
 
 ._item_l9l9n_22 {
@@ -127,13 +89,12 @@
   align-items: center;
   justify-content: center;
   flex: 1;
-  gap: 1px;
-  padding: 6px 8px calc(7px + var(--safe-area-inset-bottom));
-  box-sizing: border-box;
+  gap: 2px;
+  padding: 8px;
   background: none;
   border: none;
   color: var(--subtitle_text_color);
-  transition: color 0.3s ease;
+  transition: color 0.2s ease;
 }
 
 ._item_l9l9n_22[aria-selected="true"] {
@@ -144,6 +105,7 @@
   width: 24px;
   height: 24px;
   color: inherit;
+  fill: currentColor;
 }
 
 ._item_l9l9n_22 p {
@@ -153,106 +115,364 @@
   margin: 0;
 }
 
-/* Ensure tabs are properly displayed */
-._root_1sq9h_1,
-._root_10snw_1,
-._root_sjbjr_1 {
+/* ========================================
+   Main Wrapper
+   ======================================== */
+
+._wrapper_l9l9n_1 {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+._wrapper_l9l9n_1._is-show-tab-bar_l9l9n_1 {
+  padding-bottom: calc(60px + var(--safe-area-inset-bottom));
+}
+
+/* ========================================
+   Plans Section Styles
+   ======================================== */
+
+._root_1sq9h_1 {
+  padding-top: 20px;
+}
+
+._wrapper_1sq9h_22 {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+._heading_1sq9h_29 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  flex: 1;
-  width: 100%;
-  padding-top: 30px;
-  box-sizing: border-box;
+  gap: 4px;
+  padding: 16px 0;
 }
 
-@media (max-width: 768px) {
-  ._root_1sq9h_1,
-  ._root_10snw_1,
-  ._root_sjbjr_1 {
-    min-height: calc(100vh - 104px);
-    padding-bottom: calc(74px + var(--safe-area-inset-bottom));
-  }
-}
-
-@media (min-width: 769px) {
-  ._root_1sq9h_1,
-  ._root_10snw_1,
-  ._root_sjbjr_1 {
-    padding-bottom: 66px;
-  }
-}
-
-/* Profile tab specific styles */
-._container_sjbjr_7 {
-  flex: 1;
-  width: 100%;
+/* Plans grid */
+._root_q2m4m_1 {
   display: flex;
   flex-direction: column;
+  gap: 16px;
+}
+
+._heading_q2m4m_25 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+}
+
+._plans-wrapper_q2m4m_8 {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-bottom: 4px;
+}
+
+._plans-wrapper_q2m4m_8::-webkit-scrollbar {
+  display: none;
+}
+
+._plan-card_q2m4m_12 {
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: calc(25% - 8px);
+  flex: 1;
+  padding: 20px 12px;
+  background-color: var(--section_bg_color);
+  border-radius: 20px;
+  transition: box-shadow 0.2s ease;
+}
+
+._plan-card_q2m4m_12._is-active_q2m4m_54 {
+  box-shadow: inset 0 0 0 2px var(--accent_text_color);
+}
+
+._month-count-title_q2m4m_58 {
+  font-size: 36px;
+  line-height: 40px;
+  font-weight: 700;
+}
+
+._plan-card-section_q2m4m_65 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+._badge_q2m4m_72 {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+._badge_q2m4m_72 svg {
+  width: 24px;
+  height: 24px;
+  fill: var(--accent_text_color);
+}
+
+/* Subscription / Total section */
+._subscription_1mhws_27 {
+  padding: 0;
+}
+
+._price-card_otjfp_43 {
+  background-color: var(--section_bg_color);
+  border-radius: 20px;
+  padding: 16px 20px;
+}
+
+._price-row_otjfp_52 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Payment methods */
+._section_mdt1z_50 {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+._cell-provider_mdt1z_85 {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  background-color: var(--section_bg_color);
+  border-radius: 20px;
+  gap: 12px;
+  transition: background-color 0.2s ease;
+}
+
+._cell-provider_mdt1z_85._is-active {
+  background-color: var(--section_bg_color);
+}
+
+._cell-provider-inner_mdt1z_101 {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 2px;
+}
+
+._title-row_mdt1z_116 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+._badge_mdt1z_122 {
+  background-color: var(--button_color);
+  color: var(--button_text_color);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+._cell-checkmark_mdt1z_107 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--accent_text_color);
+}
+
+._cell-checkmark_mdt1z_107 svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Pay button */
+._buttons_1sq9h_87 {
+  padding: 16px 0;
+  margin-top: auto;
+}
+
+._root_iw2y8_9 {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 52px;
+  border: none;
+  border-radius: 26px;
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+._root_iw2y8_9:hover {
+  transform: scale(0.98);
+}
+
+._root_iw2y8_9:disabled,
+._root_iw2y8_9._is-disabled_iw2y8_58 {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+._view_brand_iw2y8_113 {
+  background-color: var(--button_color);
+}
+
+._inner_iw2y8_23 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* ========================================
+   Setup Section Styles
+   ======================================== */
+
+._root_10snw_1 {
+  padding-top: 20px;
+}
+
+._wrapper_10snw_22 {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+._heading_10snw_29 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0;
+}
+
+._card_10snw_102 {
+  background-color: var(--section_bg_color);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+._field-wrapper_10snw_115 {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+._field_10snw_115 {
+  flex: 1;
+  height: 56px;
+  padding: 0 100px 0 16px;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--text_color);
+}
+
+._field_10snw_115::placeholder {
+  color: var(--subtitle_text_color);
+}
+
+._field-action-wrapper_10snw_133 {
+  position: absolute;
+  right: 8px;
+}
+
+._field-action_10snw_133 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  background-color: var(--second_button_color);
+  border: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent_text_color);
+  cursor: pointer;
+}
+
+._root_3mis4_1 {
+  background-color: var(--section_bg_color);
+  border-radius: 20px;
+  padding: 16px;
+}
+
+._inner_l4idp_37 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ========================================
+   Profile Section Styles
+   ======================================== */
+
+._root_sjbjr_1 {
+  padding-top: 20px;
+}
+
+._container_sjbjr_7 {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0 16px;
 }
 
 ._heading_sjbjr_11 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding-top: 24px;
-  padding-bottom: 16px;
-  box-sizing: border-box;
-}
-
-@media (min-width: 769px) {
-  ._heading_sjbjr_11 {
-    padding-top: 28px;
-    padding-bottom: 16px;
-  }
+  gap: 6px;
+  padding: 24px 0;
 }
 
 ._avatar_sjbjr_27 {
-  width: 96px;
-  height: 96px;
+  width: 80px;
+  height: 80px;
   border-radius: 50%;
-  overflow: hidden;
-}
-
-@media (min-width: 769px) {
-  ._avatar_sjbjr_27 {
-    width: 154px;
-    height: 154px;
-  }
+  background-size: cover;
+  background-position: center;
 }
 
 ._main_sjbjr_44 {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  gap: 24px;
-  padding: 8px 16px 16px;
-  box-sizing: border-box;
-}
-
-@media (min-width: 769px) {
-  ._main_sjbjr_44 {
-    padding: 8px 80px 16px;
-  }
+  gap: 16px;
 }
 
 ._section_sjbjr_62 {
   background-color: var(--section_bg_color);
-  border-radius: 26px;
+  border-radius: 20px;
   overflow: hidden;
 }
 
 ._cell_sjbjr_68 {
   cursor: pointer;
-  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 56px;
-  padding: 0 16px;
-  box-sizing: border-box;
-  transition: background-color 0.3s ease;
+  padding: 14px 16px;
+  transition: background-color 0.2s ease;
 }
 
 ._cell_sjbjr_68:hover {
@@ -263,18 +483,33 @@
   flex: 1;
 }
 
-/* Ensure wrapper has proper padding for tab bar */
-._wrapper_l9l9n_1._is-show-tab-bar_l9l9n_1 {
-  padding-bottom: calc(74px + var(--safe-area-inset-bottom));
-}
+/* ========================================
+   Responsive adjustments
+   ======================================== */
 
-/* Make sure tab bar is always visible on mobile */
-@media (max-width: 768px) {
-  ._root_l9l9n_8 {
-    display: flex !important;
+@media (max-width: 480px) {
+  ._plan-card_q2m4m_12 {
+    min-width: calc(50% - 5px);
+    flex: 0 0 calc(50% - 5px);
   }
   
-  body {
-    padding-bottom: calc(74px + var(--safe-area-inset-bottom));
+  ._plans-wrapper_q2m4m_8 {
+    flex-wrap: wrap;
+  }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+  ._plan-card_q2m4m_12 {
+    min-width: calc(25% - 8px);
+  }
+}
+
+@media (min-width: 769px) {
+  .svoy-tab-inner {
+    padding: 0 24px;
+  }
+  
+  ._container_sjbjr_7 {
+    padding: 0 24px;
   }
 }
