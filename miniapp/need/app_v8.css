@@ -288,35 +288,131 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ── Server chips (horizontal scroll) ── */
-.servers-scroll {
-  display: flex;
+/* ── Server Cards Grid ── */
+.server-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding-bottom: 2px;
   margin-top: 8px;
+  width: 100%;
 }
 
-.servers-scroll::-webkit-scrollbar {
-  display: none;
+.server-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--section_bg_color, var(--tg-theme-section-bg-color, #f7f9fb));
+  cursor: pointer;
+  transition: transform .15s, box-shadow .2s;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
 }
 
-.server-chip {
-  flex-shrink: 0;
+.server-card:active {
+  transform: scale(.97);
+}
+
+.server-card--loading {
+  grid-column: 1 / -1;
+  text-align: center;
+  cursor: default;
+  padding: 20px;
+}
+
+.server-card__header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  background: var(--section_bg_color, var(--tg-theme-section-bg-color, #f7f9fb));
-  font-size: 13px;
-  font-weight: 500;
+  gap: 8px;
 }
 
-.server-chip .flag {
-  font-size: 18px;
+.server-card__flag {
+  font-size: 24px;
   line-height: 1;
+}
+
+.server-card__name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.server-card__ip {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--subtitle_text_color, #8e8e93);
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  letter-spacing: -.02em;
+}
+
+.server-card__ping {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.server-card__ping-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--subtitle_text_color, #8e8e93);
+  flex-shrink: 0;
+}
+
+.server-card__ping-dot--good {
+  background: #34c759;
+  box-shadow: 0 0 6px rgba(52, 199, 89, .5);
+}
+
+.server-card__ping-dot--medium {
+  background: #ff9f0a;
+  box-shadow: 0 0 6px rgba(255, 159, 10, .5);
+}
+
+.server-card__ping-dot--bad {
+  background: #ff3b30;
+  box-shadow: 0 0 6px rgba(255, 59, 48, .5);
+}
+
+.server-card__ping-text {
+  color: var(--subtitle_text_color, #8e8e93);
+}
+
+.server-card__ping-text--good {
+  color: #34c759;
+}
+
+.server-card__ping-text--medium {
+  color: #ff9f0a;
+}
+
+.server-card__ping-text--bad {
+  color: #ff3b30;
+}
+
+@keyframes pingPulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: .4;
+  }
+}
+
+.server-card__ping--loading .server-card__ping-dot {
+  animation: pingPulse 1.2s ease-in-out infinite;
 }
 
 /* ── Tariff grid ── */

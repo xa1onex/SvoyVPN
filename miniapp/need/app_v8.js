@@ -198,20 +198,107 @@
   }
 
   /* ═══════ Render: Servers ═══════ */
+  function maskIp(ip) {
+    if (!ip) return '•••';
+    const parts = ip.split('.');
+    if (parts.length === 4) return parts[0] + '.' + parts[1] + '.*.*';
+    return ip;
+  }
+
+  function pingClass(ms) {
+    if (ms < 100) return 'good';
+    if (ms < 250) return 'medium';
+    return 'bad';
+  }
+
+  function renderPingBadge(container, ms) {
+    if (ms === null || ms === undefined) {
+      container.innerHTML =
+        '<span class="server-card__ping server-card__ping--loading">' +
+        '<span class="server-card__ping-dot"></span>' +
+        '<span class="server-card__ping-text">Проверка…</span></span>';
+      return;
+    }
+    if (ms === -1) {
+      container.innerHTML =
+        '<span class="server-card__ping">' +
+        '<span class="server-card__ping-dot server-card__ping-dot--bad"></span>' +
+        '<span class="server-card__ping-text server-card__ping-text--bad">Недоступен</span></span>';
+      return;
+    }
+    const cls = pingClass(ms);
+    container.innerHTML =
+      '<span class="server-card__ping">' +
+      '<span class="server-card__ping-dot server-card__ping-dot--' + cls + '"></span>' +
+      '<span class="server-card__ping-text server-card__ping-text--' + cls + '">' + ms + ' мс</span></span>';
+  }
+
+  async function measurePing(serverId) {
+    try {
+      const t0 = performance.now();
+      const r = await fetch('/miniapp/api/ping?id=' + serverId, { cache: 'no-store' });
+      const t1 = performance.now();
+      if (!r.ok) return -1;
+      const d = await r.json();
+      if (d && typeof d.ping === 'number') return d.ping;
+      return Math.round(t1 - t0);
+    } catch (_) {
+      return -1;
+    }
+  }
+
   function renderServers() {
     const w = document.getElementById('serversWrap');
     if (!w) return;
     if (!S.servers.length) {
-      w.innerHTML = '<div class="server-chip text-muted body">Нет серверов</div>';
+      w.innerHTML = '<div class="server-card server-card--loading text-muted body">Нет серверов</div>';
       return;
     }
     w.innerHTML = '';
     S.servers.forEach((s) => {
       const el = document.createElement('div');
-      el.className = 'server-chip';
-      el.innerHTML = `<span class="flag">${getFlag(s.name)}</span>${s.name}`;
+      el.className = 'server-card';
+      el.innerHTML =
+        '<div class="server-card__header">' +
+        '<span class="server-card__flag">' + getFlag(s.name) + '</span>' +
+        '<span class="server-card__name">' + s.name + '</span>' +
+        '</div>' +
+        '<span class="server-card__ip">' + maskIp(s.ip) + '</span>' +
+        '<div class="server-card__ping-wrap"></div>';
+
+      const pingWrap = el.querySelector('.server-card__ping-wrap');
+
+      // Initial ping state
+      renderPingBadge(pingWrap, null);
+
+      // Measure ping
+      measurePing(s.id).then((ms) => renderPingBadge(pingWrap, ms));
+
+      // Tap to re-ping
+      el.addEventListener('click', () => {
+        haptic('light');
+        renderPingBadge(pingWrap, null);
+        measurePing(s.id).then((ms) => renderPingBadge(pingWrap, ms));
+      });
+
       w.appendChild(el);
     });
+  }
+
+  // Auto-refresh pings every 60 seconds
+  let pingInterval;
+  function startPingRefresh() {
+    if (pingInterval) clearInterval(pingInterval);
+    pingInterval = setInterval(() => {
+      if (!S.servers.length) return;
+      document.querySelectorAll('.server-card').forEach((card, i) => {
+        if (i >= S.servers.length) return;
+        const pingWrap = card.querySelector('.server-card__ping-wrap');
+        if (pingWrap) {
+          measurePing(S.servers[i].id).then((ms) => renderPingBadge(pingWrap, ms));
+        }
+      });
+    }, 60000);
   }
 
   /* ═══════ Render: Total ═══════ */
@@ -308,6 +395,7 @@
     if (Array.isArray(servers)) {
       S.servers = servers;
       renderServers();
+      startPingRefresh();
     } else {
       renderServers(); // show "Нет серверов"
     }

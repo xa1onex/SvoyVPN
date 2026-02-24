@@ -86,11 +86,13 @@ class WebhookServer:
         self.app.router.add_get('/api/payment-methods', self.api_get_payment_methods)
         self.app.router.add_post('/api/payment/create', self.api_create_payment)
         self.app.router.add_get('/api/servers', self.api_get_servers)
+        self.app.router.add_get('/api/ping', self.api_ping_server)
         self.app.router.add_post('/miniapp/api/user', self.api_get_user)
         self.app.router.add_get('/miniapp/api/tariffs', self.api_get_tariffs)
         self.app.router.add_get('/miniapp/api/payment-methods', self.api_get_payment_methods)
         self.app.router.add_post('/miniapp/api/payment/create', self.api_create_payment)
         self.app.router.add_get('/miniapp/api/servers', self.api_get_servers)
+        self.app.router.add_get('/miniapp/api/ping', self.api_ping_server)
         
         # Static files catch-all
         self.app.router.add_get('/miniapp/{path:.*}', self.serve_miniapp_static)
@@ -741,13 +743,77 @@ class WebhookServer:
         try:
             async with get_connection() as conn:
                 rows = await conn.fetch(
-                    "SELECT id, name FROM servers ORDER BY id"
+                    "SELECT id, name, ip, port, protocol, is_active FROM servers WHERE is_active = TRUE ORDER BY id"
                 )
-                servers = [{"id": r["id"], "name": r["name"]} for r in rows]
-            logger.info(f"api_get_servers: found {len(servers)} servers in DB")
+                servers = [{
+                    "id": r["id"],
+                    "name": r["name"],
+                    "ip": r["ip"],
+                    "port": r["port"],
+                    "protocol": r["protocol"],
+                } for r in rows]
+            logger.info(f"api_get_servers: found {len(servers)} active servers in DB")
             return web.json_response(servers)
         except Exception as e:
             logger.error(f"Error in api_get_servers: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_ping_server(self, request: web_request.Request) -> web.Response:
+        """API: Пинг сервера по ID"""
+        import asyncio
+        server_id_str = request.query.get('id', '')
+        if not server_id_str or not server_id_str.isdigit():
+            return web.json_response({"error": "id required"}, status=400)
+        
+        server_id = int(server_id_str)
+        
+        try:
+            async with get_connection() as conn:
+                row = await conn.fetchrow(
+                    "SELECT ip FROM servers WHERE id = $1 AND is_active = TRUE", server_id
+                )
+                if not row:
+                    return web.json_response({"error": "Server not found"}, status=404)
+                
+                ip = row['ip']
+            
+            # ICMP ping с таймаутом 3 секунды
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    'ping', '-c', '1', '-W', '3', ip,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+                
+                if proc.returncode == 0:
+                    output = stdout.decode()
+                    # Parse "time=12.3 ms" from ping output
+                    import re
+                    match = re.search(r'time[=<]([\d.]+)', output)
+                    if match:
+                        ping_ms = round(float(match.group(1)))
+                        return web.json_response({"ping": ping_ms, "ip": ip})
+                
+                # Ping failed — try TCP connect as fallback
+                try:
+                    t0 = asyncio.get_event_loop().time()
+                    _, writer = await asyncio.wait_for(
+                        asyncio.open_connection(ip, 443), timeout=3
+                    )
+                    t1 = asyncio.get_event_loop().time()
+                    writer.close()
+                    await writer.wait_closed()
+                    ping_ms = round((t1 - t0) * 1000)
+                    return web.json_response({"ping": ping_ms, "ip": ip})
+                except Exception:
+                    return web.json_response({"ping": -1, "ip": ip})
+                    
+            except (asyncio.TimeoutError, Exception):
+                return web.json_response({"ping": -1, "ip": ip})
+                
+        except Exception as e:
+            logger.error(f"Error in api_ping_server: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def run(self, host: str = "0.0.0.0", port: int = 8080):
