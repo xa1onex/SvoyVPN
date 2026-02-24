@@ -63,11 +63,10 @@ body {
 /* ── Tab Bar ── */
 .tab-bar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-around;
   flex-shrink: 0;
-  height: 56px;
-  padding-bottom: var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  padding: 10px 0 calc(10px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   background: var(--section_bg_color, var(--tg-theme-section-bg-color, #f7f9fb));
   border-top: .5px solid var(--separator_color, rgba(0, 0, 0, .08));
 }
@@ -78,8 +77,8 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 6px 0;
+  gap: 4px;
+  padding: 4px 0;
   border: none;
   background: none;
   cursor: pointer;
@@ -93,12 +92,12 @@ body {
 }
 
 .tab-bar .tab-icon {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
 }
 
 .tab-bar .tab-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: .01em;
 }
@@ -706,7 +705,7 @@ body {
 /* ── Toast ── */
 .toast {
   position: fixed;
-  bottom: calc(72px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  bottom: calc(84px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   left: 50%;
   transform: translateX(-50%) translateY(20px);
   background: rgba(0, 0, 0, .75);
