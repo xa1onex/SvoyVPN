@@ -715,12 +715,15 @@ class WebhookServer:
         """API: Получить список серверов (публичная информация)"""
         try:
             async with get_connection() as conn:
-                # Временно убрали фильтр is_active = TRUE на случай, если в прод БД NULL или FALSE
+                # Временно берем is_active для дебага
                 rows = await conn.fetch(
-                    "SELECT id, name FROM servers ORDER BY id"
+                    "SELECT id, name, is_active FROM servers ORDER BY id"
                 )
-                servers = [{"id": r["id"], "name": r["name"]} for r in rows]
+                servers = [{"id": r["id"], "name": f"{r['name']} ({r['is_active']})"} for r in rows]
             logger.info(f"api_get_servers returned {len(servers)} servers")
+            if not servers:
+                # Если серверов действительно 0, покажем это прямо в интерфейсе!
+                servers = [{"id": -1, "name": "DEBUG: DB returned 0 rows"}]
             return web.json_response(servers)
         except Exception as e:
             logger.error(f"Error in api_get_servers: {e}", exc_info=True)

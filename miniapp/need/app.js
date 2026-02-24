@@ -138,9 +138,14 @@
   async function api(url, opts) {
     try {
       const r = await fetch(url, opts);
-      if (!r.ok) return null;
-      return await r.json();
-    } catch (_) {
+      const d = await r.json();
+      if (!r.ok) {
+        showToast('API Error: ' + (d.error || r.status), 5000);
+        return null;
+      }
+      return d;
+    } catch (e) {
+      showToast('Fetch Error: ' + e.message, 5000);
       return null;
     }
   }
