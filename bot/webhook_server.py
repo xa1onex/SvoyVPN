@@ -80,7 +80,12 @@ class WebhookServer:
         self.app.router.add_get('/miniapp', self.serve_miniapp)
         self.app.router.add_get('/miniapp/', self.serve_miniapp)
         
-        # Miniapp API routes (MUST be before static catch-all)
+        # API routes — registered at BOTH paths for cache compatibility
+        self.app.router.add_post('/api/user', self.api_get_user)
+        self.app.router.add_get('/api/tariffs', self.api_get_tariffs)
+        self.app.router.add_get('/api/payment-methods', self.api_get_payment_methods)
+        self.app.router.add_post('/api/payment/create', self.api_create_payment)
+        self.app.router.add_get('/api/servers', self.api_get_servers)
         self.app.router.add_post('/miniapp/api/user', self.api_get_user)
         self.app.router.add_get('/miniapp/api/tariffs', self.api_get_tariffs)
         self.app.router.add_get('/miniapp/api/payment-methods', self.api_get_payment_methods)
