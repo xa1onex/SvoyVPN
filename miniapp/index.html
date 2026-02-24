@@ -17,218 +17,165 @@
 
   <script src="/miniapp/need/libs/telegram-web-app.js"></script>
 
-  <link rel="stylesheet" href="/miniapp/need/assets/index.css?v=5" />
-  <link rel="stylesheet" href="/miniapp/need/app.css?v=5" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index.css?v=6" />
+  <link rel="stylesheet" href="/miniapp/need/app.css?v=6" />
 
-  <script defer src="/miniapp/need/app.js?v=5"></script>
+  <script defer src="/miniapp/need/app.js?v=6"></script>
 </head>
 
 <body>
-  <!-- SVG sprite injector -->
   <div id="svgSpriteHost" aria-hidden="true" style="display:none;"></div>
 
-  <div class="_wrapper_l9l9n_1 svoy-wrapper">
+  <div class="svoy-wrapper">
 
-    <!-- ══════════════════ SCREEN: VPN ══════════════════ -->
+    <!-- ══════════ SCREEN: VPN (main) ══════════ -->
     <div id="screenVpn" class="svoy-screen svoy-screen--active">
-
-      <!-- Hero -->
-      <section class="_root_ne31a_1" style="padding: 24px 16px 32px;">
-        <div class="_inner_ne31a_20" style="max-width: 678px; width: 100%;">
-          <!-- Animated Logo -->
-          <div style="display:flex; align-items:center; justify-content:center; margin-bottom: 16px;">
-            <div class="_root_4nzf4_12" style="width: 100px; height: 100px;">
-              <div class="_first_4nzf4_19"></div>
-              <div class="_second_4nzf4_34"></div>
-              <div class="_third_4nzf4_49"></div>
-              <div class="_icon-node_4nzf4_68" style="width: 40px; height: 40px;">
-                <svg viewBox="0 0 26 26" aria-hidden="true" style="color: #fff;">
-                  <use href="#vpn.tab-bar"></use>
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <p class="_root_1hgcm_29 _size_title2_1hgcm_39 _weight_bold_1hgcm_81 _align_center_1hgcm_88">
-            Быстрый и приватный VPN от SvoyVPN
-          </p>
-          <p class="_root_1hgcm_29 _size_body_1hgcm_51 _weight_regular_1hgcm_72 _align_center_1hgcm_88 svoy-muted"
-            style="margin-top: 10px; max-width: 326px; margin-left: auto; margin-right: auto;">
-            Войдите через Telegram, выберите тариф и получите готовые VPN-конфигурации.
-          </p>
-        </div>
-      </section>
-
-      <!-- Tariffs -->
-      <section style="padding: 0 16px 16px; max-width: 678px; width: 100%; margin: 0 auto; box-sizing: border-box;">
-        <div class="_root_q2m4m_1 _size_m_q2m4m_8" style="width: 100%;">
-          <div class="_heading_q2m4m_25">
-            <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78">Тариф</p>
-            <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted">Выберите период</p>
-          </div>
-          <div id="plansWrapper" class="_plans-wrapper_q2m4m_8"></div>
-        </div>
-
-        <!-- Total -->
-        <div class="_subscription_1mhws_27" style="width: 100%; margin-top: 16px;">
-          <div class="_price-card_otjfp_43">
-            <div class="_price-row_otjfp_52">
-              <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Итого</p>
-              <p id="totalPrice" class="_root_1hgcm_29 _size_headline_1hgcm_47 _weight_bold_1hgcm_81">—</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Payment methods -->
-        <div style="width: 100%; margin-top: 16px;">
-          <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78" style="padding: 8px 16px">Способ
-            оплаты</p>
-          <div id="paymentMethodsWrapper" class="_section_mdt1z_50" style="width: 100%;"></div>
-        </div>
-
-        <!-- Pay -->
-        <div style="width: 100%; margin-top: 16px;">
-          <button id="btnPay" class="_root_iw2y8_9 _is-wide_iw2y8_63 _size_m_iw2y8_67 _view_brand_iw2y8_113" disabled>
-            <span class="_inner_iw2y8_23">
-              <span class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78"
-                style="color: var(--button_text_color)">Оплатить</span>
-            </span>
-          </button>
-        </div>
-
-        <!-- Server locations (dynamic) -->
-        <div style="width: 100%; margin-top: 24px;">
-          <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78" style="padding: 8px 16px;">
-            Локации серверов</p>
-          <div id="serversWrapper" class="_root_1e3vs_1" style="padding-bottom: 16px;"></div>
-        </div>
-      </section>
-    </div>
-
-    <!-- ══════════════════ SCREEN: SETUP ══════════════════ -->
-    <div id="screenSetup" class="svoy-screen">
-
-      <section style="padding: 24px 16px; max-width: 678px; width: 100%; margin: 0 auto; box-sizing: border-box;">
-        <!-- Logo small -->
-        <div style="display:flex; align-items:center; justify-content:center; margin-bottom: 16px;">
-          <div class="_root_4nzf4_12" style="width: 72px; height: 72px;">
+      <div class="svoy-screen-inner">
+        <!-- Logo -->
+        <div class="svoy-hero-logo">
+          <div class="_root_4nzf4_12" style="width:88px;height:88px;">
             <div class="_first_4nzf4_19"></div>
             <div class="_second_4nzf4_34"></div>
             <div class="_third_4nzf4_49"></div>
-            <div class="_icon-node_4nzf4_68" style="width: 28px; height: 28px;">
-              <svg viewBox="0 0 26 26" aria-hidden="true" style="color: #fff;">
+            <div class="_icon-node_4nzf4_68" style="width:36px;height:36px;">
+              <svg viewBox="0 0 26 26" style="color:#fff;">
                 <use href="#vpn.tab-bar"></use>
               </svg>
             </div>
           </div>
         </div>
 
-        <p class="_root_1hgcm_29 _size_title2_1hgcm_39 _weight_bold_1hgcm_81 _align_center_1hgcm_88">Настройка VPN</p>
-        <p class="_root_1hgcm_29 _size_body_1hgcm_51 _weight_regular_1hgcm_72 _align_center_1hgcm_88 svoy-muted"
-          style="margin-top: 10px;">
-          Скопируйте ссылку подписки и добавьте в VPN-приложение.
-        </p>
+        <p class="_root_1hgcm_29 _size_title2_1hgcm_39 _weight_bold_1hgcm_81 _align_center_1hgcm_88">SvoyVPN</p>
+        <p id="vpnStatus" class="_root_1hgcm_29 _size_body_1hgcm_51 _align_center_1hgcm_88 svoy-muted"
+          style="margin-top:6px;">Быстрый и приватный VPN</p>
 
-        <!-- Subscription URL -->
-        <div style="margin-top: 24px; width: 100%;">
-          <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78" style="padding: 8px 0;">Ссылка
-            подписки</p>
-          <div class="_card_10snw_102" style="width: 100%;">
-            <div class="_field-wrapper_10snw_115">
-              <input id="subscriptionUrl" class="_field_10snw_115" type="text"
-                placeholder="Ссылка появится после покупки" readonly />
-              <div class="_field-action-wrapper_10snw_133">
-                <button id="btnCopySub" class="_field-action_10snw_133" type="button">Копировать</button>
-              </div>
-            </div>
+        <!-- Subscription card -->
+        <div class="svoy-status-card">
+          <div class="svoy-status-row">
+            <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Подписка</p>
+            <p id="vpnSubBadge" class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-badge-inactive">Неактивна</p>
+          </div>
+          <div class="svoy-status-row">
+            <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted">Действует до</p>
+            <p id="vpnSubUntil" class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_medium_1hgcm_75">—</p>
           </div>
         </div>
 
-        <!-- How it works -->
-        <div style="margin-top: 24px; width: 100%;">
-          <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78" style="padding: 8px 0;">Как это
-            работает</p>
-          <div class="_root_l4idp_1" style="padding-bottom: 0;">
-            <div class="_card_l4idp_15">
-              <div
-                style="width: 28px; min-width: 28px; height: 28px; border-radius: 50%; background-color: var(--accent_text_color); display: flex; align-items: center; justify-content: center;">
-                <span class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78"
-                  style="color: var(--button_text_color);">1</span>
-              </div>
-              <div class="_inner_l4idp_37">
-                <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Скопируйте ссылку</p>
-                <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted" style="margin-top: 4px;">Нажмите
-                  «Копировать» выше, чтобы скопировать ссылку подписки.</p>
-              </div>
-            </div>
-            <div class="_card_l4idp_15">
-              <div
-                style="width: 28px; min-width: 28px; height: 28px; border-radius: 50%; background-color: var(--accent_text_color); display: flex; align-items: center; justify-content: center;">
-                <span class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78"
-                  style="color: var(--button_text_color);">2</span>
-              </div>
-              <div class="_inner_l4idp_37">
-                <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Откройте VPN-приложение</p>
-                <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted" style="margin-top: 4px;">Установите
-                  V2RayTun, Hiddify или другое совместимое приложение.</p>
-              </div>
-            </div>
-            <div class="_card_l4idp_15">
-              <div
-                style="width: 28px; min-width: 28px; height: 28px; border-radius: 50%; background-color: var(--accent_text_color); display: flex; align-items: center; justify-content: center;">
-                <span class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78"
-                  style="color: var(--button_text_color);">3</span>
-              </div>
-              <div class="_inner_l4idp_37">
-                <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Добавьте подписку</p>
-                <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted" style="margin-top: 4px;">Вставьте ссылку в
-                  приложение — серверы подключатся автоматически.</p>
-              </div>
-            </div>
-          </div>
+        <!-- CTA -->
+        <button id="btnChoosePlan" class="_root_iw2y8_9 _is-wide_iw2y8_63 _size_m_iw2y8_67 _view_brand_iw2y8_113"
+          style="margin-top:16px;">
+          <span class="_inner_iw2y8_23">
+            <span class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78"
+              style="color:var(--button_text_color)">Выбрать тариф</span>
+          </span>
+        </button>
+
+        <!-- Server locations -->
+        <div style="margin-top:20px;width:100%;">
+          <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78" style="margin-bottom:8px;">
+            Локации серверов</p>
+          <div id="serversWrapper" class="svoy-servers-grid"></div>
         </div>
-      </section>
+      </div>
     </div>
 
-    <!-- ══════════════════ SCREEN: PROFILE ══════════════════ -->
-    <div id="screenProfile" class="svoy-screen">
+    <!-- ══════════ SCREEN: PLAN (tariffs + payment) ══════════ -->
+    <div id="screenPlan" class="svoy-screen">
+      <div class="svoy-screen-inner">
+        <!-- Back -->
+        <button id="btnBackFromPlan" class="svoy-back-btn">← Назад</button>
 
-      <section style="padding: 24px 16px; max-width: 678px; width: 100%; margin: 0 auto; box-sizing: border-box;">
-        <!-- Avatar -->
-        <div style="display:flex; align-items:center; justify-content:center; margin-bottom: 16px;">
-          <div id="profileAvatar" class="svoy-avatar">
-            <svg viewBox="0 0 26 26" aria-hidden="true" style="color: #fff; width: 28px; height: 28px;">
+        <p class="_root_1hgcm_29 _size_title3_1hgcm_43 _weight_bold_1hgcm_81" style="margin-bottom:12px;">Тариф</p>
+        <div id="plansWrapper" class="svoy-tariff-grid"></div>
+
+        <!-- Payment method -->
+        <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78"
+          style="margin-top:16px;margin-bottom:8px;">Способ оплаты</p>
+        <div id="paymentMethodsWrapper"></div>
+
+        <!-- Total + Pay -->
+        <div class="svoy-pay-row">
+          <div>
+            <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted">Итого</p>
+            <p id="totalPrice" class="_root_1hgcm_29 _size_title3_1hgcm_43 _weight_bold_1hgcm_81">—</p>
+          </div>
+          <button id="btnPay" class="_root_iw2y8_9 _size_m_iw2y8_67 _view_brand_iw2y8_113" disabled
+            style="min-width:140px;">
+            <span class="_inner_iw2y8_23">
+              <span class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78"
+                style="color:var(--button_text_color)">Оплатить</span>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ SCREEN: SETUP ══════════ -->
+    <div id="screenSetup" class="svoy-screen">
+      <div class="svoy-screen-inner">
+        <p class="_root_1hgcm_29 _size_title3_1hgcm_43 _weight_bold_1hgcm_81" style="margin-bottom:4px;">Настройка VPN
+        </p>
+        <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted" style="margin-bottom:16px;">Скопируйте ссылку и
+          добавьте в приложение</p>
+
+        <!-- Subscription URL -->
+        <div class="_card_10snw_102" style="width:100%;">
+          <div class="_field-wrapper_10snw_115">
+            <input id="subscriptionUrl" class="_field_10snw_115" type="text" placeholder="Ссылка появится после покупки"
+              readonly />
+            <div class="_field-action-wrapper_10snw_133">
+              <button id="btnCopySub" class="_field-action_10snw_133" type="button">Копировать</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Steps -->
+        <div style="margin-top:20px;width:100%;">
+          <div class="_card_l4idp_15 svoy-step-card">
+            <div class="svoy-step-num">1</div>
+            <div class="_inner_l4idp_37">
+              <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Скопируйте ссылку</p>
+              <p class="_root_1hgcm_29 _size_subtitle3_1hgcm_63 svoy-muted">Нажмите «Копировать» выше</p>
+            </div>
+          </div>
+          <div class="_card_l4idp_15 svoy-step-card">
+            <div class="svoy-step-num">2</div>
+            <div class="_inner_l4idp_37">
+              <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Откройте VPN-приложение</p>
+              <p class="_root_1hgcm_29 _size_subtitle3_1hgcm_63 svoy-muted">V2RayTun, Hiddify или другое</p>
+            </div>
+          </div>
+          <div class="_card_l4idp_15 svoy-step-card">
+            <div class="svoy-step-num">3</div>
+            <div class="_inner_l4idp_37">
+              <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Добавьте подписку</p>
+              <p class="_root_1hgcm_29 _size_subtitle3_1hgcm_63 svoy-muted">Вставьте ссылку — серверы подключатся</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ SCREEN: PROFILE ══════════ -->
+    <div id="screenProfile" class="svoy-screen">
+      <div class="svoy-screen-inner">
+        <div class="svoy-hero-logo">
+          <div class="svoy-avatar">
+            <svg viewBox="0 0 26 26" style="color:#fff;width:28px;height:28px;">
               <use href="#profile"></use>
             </svg>
           </div>
         </div>
-
-        <p id="profileName" class="_root_1hgcm_29 _size_title2_1hgcm_39 _weight_bold_1hgcm_81 _align_center_1hgcm_88">
+        <p id="profileName" class="_root_1hgcm_29 _size_title3_1hgcm_43 _weight_bold_1hgcm_81 _align_center_1hgcm_88">
           Пользователь</p>
-        <p id="profileStatus"
-          class="_root_1hgcm_29 _size_body_1hgcm_51 _weight_regular_1hgcm_72 _align_center_1hgcm_88 svoy-muted"
-          style="margin-top: 6px;">—</p>
+        <p id="profileStatus" class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _align_center_1hgcm_88 svoy-muted"
+          style="margin-top:4px;">—</p>
 
-        <!-- Subscription -->
-        <div style="margin-top: 24px; width: 100%;">
-          <div class="_card_l4idp_15" style="flex-direction: column; align-items: stretch; gap: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Подписка</p>
-              <p id="profileSubBadge" class="_root_1hgcm_29 _size_subtitle2_1hgcm_59"
-                style="color: var(--accent_text_color);">—</p>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted">Действует до</p>
-              <p id="profileUntil" class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_medium_1hgcm_75">—</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Subscription URL -->
-        <div style="margin-top: 16px; width: 100%;">
-          <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78" style="padding: 8px 0;">Ссылка
+        <!-- Sub URL -->
+        <div style="margin-top:16px;width:100%;">
+          <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78" style="margin-bottom:6px;">Ссылка
             подписки</p>
-          <div class="_card_10snw_102" style="width: 100%;">
+          <div class="_card_10snw_102" style="width:100%;">
             <div class="_field-wrapper_10snw_115">
               <input id="profileSubUrl" class="_field_10snw_115" type="text" placeholder="—" readonly />
               <div class="_field-action-wrapper_10snw_133">
@@ -239,38 +186,32 @@
         </div>
 
         <!-- Links -->
-        <div style="margin-top: 24px; width: 100%; display: flex; flex-direction: column; gap: 8px;">
+        <div style="margin-top:16px;width:100%;display:flex;flex-direction:column;gap:6px;">
           <div class="_card_l4idp_15 svoy-link-card" id="btnChannel">
-            <div
-              style="width: 28px; min-width: 28px; height: 28px; border-radius: 50%; background-color: var(--accent_text_color); display: flex; align-items: center; justify-content: center;">
-              <svg viewBox="0 0 26 26" aria-hidden="true"
-                style="color: var(--button_text_color); width: 16px; height: 16px;">
+            <div class="svoy-step-num" style="background:var(--accent_text_color);">
+              <svg viewBox="0 0 26 26" style="color:var(--button_text_color);width:14px;height:14px;">
                 <use href="#telegram"></use>
               </svg>
             </div>
             <div class="_inner_l4idp_37">
               <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Канал</p>
-              <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted">Новости и обновления</p>
             </div>
           </div>
           <div class="_card_l4idp_15 svoy-link-card" id="btnSupport">
-            <div
-              style="width: 28px; min-width: 28px; height: 28px; border-radius: 50%; background-color: var(--accent_text_color); display: flex; align-items: center; justify-content: center;">
-              <svg viewBox="0 0 26 26" aria-hidden="true"
-                style="color: var(--button_text_color); width: 16px; height: 16px;">
+            <div class="svoy-step-num" style="background:var(--accent_text_color);">
+              <svg viewBox="0 0 26 26" style="color:var(--button_text_color);width:14px;height:14px;">
                 <use href="#support.static"></use>
               </svg>
             </div>
             <div class="_inner_l4idp_37">
               <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Поддержка</p>
-              <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted">Если не получается подключиться</p>
             </div>
           </div>
         </div>
-      </section>
+      </div>
     </div>
 
-    <!-- ══════════════════ BOTTOM TAB BAR ══════════════════ -->
+    <!-- ══════════ BOTTOM TAB BAR ══════════ -->
     <nav id="tabBar" class="svoy-tab-bar">
       <button class="svoy-tab svoy-tab--active" data-screen="screenVpn">
         <svg class="svoy-tab-icon" viewBox="0 0 26 26">
