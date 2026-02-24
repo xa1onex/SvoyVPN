@@ -78,14 +78,17 @@ class WebhookServer:
         
         # Miniapp routes
         self.app.router.add_get('/miniapp', self.serve_miniapp)
-        self.app.router.add_get('/miniapp/{path:.*}', self.serve_miniapp_static)
+        self.app.router.add_get('/miniapp/', self.serve_miniapp)
         
-        # Miniapp API routes
-        self.app.router.add_post('/api/user', self.api_get_user)
-        self.app.router.add_get('/api/tariffs', self.api_get_tariffs)
-        self.app.router.add_get('/api/payment-methods', self.api_get_payment_methods)
-        self.app.router.add_post('/api/payment/create', self.api_create_payment)
-        self.app.router.add_get('/api/servers', self.api_get_servers)
+        # Miniapp API routes (MUST be before static catch-all)
+        self.app.router.add_post('/miniapp/api/user', self.api_get_user)
+        self.app.router.add_get('/miniapp/api/tariffs', self.api_get_tariffs)
+        self.app.router.add_get('/miniapp/api/payment-methods', self.api_get_payment_methods)
+        self.app.router.add_post('/miniapp/api/payment/create', self.api_create_payment)
+        self.app.router.add_get('/miniapp/api/servers', self.api_get_servers)
+        
+        # Static files catch-all
+        self.app.router.add_get('/miniapp/{path:.*}', self.serve_miniapp_static)
         
         self.app.middlewares.append(self.handle_bad_requests_middleware)
         self.runner = None

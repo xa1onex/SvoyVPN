@@ -288,9 +288,9 @@
   /* ═══════ Load Data ═══════ */
   async function loadData() {
     const [tariffs, pm, servers] = await Promise.all([
-      api('/api/tariffs'),
-      api('/api/payment-methods'),
-      api('/api/servers'),
+      api('/miniapp/api/tariffs'),
+      api('/miniapp/api/payment-methods'),
+      api('/miniapp/api/servers'),
     ]);
 
     if (Array.isArray(tariffs) && tariffs.length) {
@@ -315,7 +315,7 @@
 
   async function loadUser() {
     if (!tg || !tg.initData) return;
-    const d = await api('/api/user', {
+    const d = await api('/miniapp/api/user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ initData: tg.initData }),
@@ -334,7 +334,7 @@
       showToast('Оплата доступна только в Telegram');
       return;
     }
-    const d = await api('/api/payment/create', {
+    const d = await api('/miniapp/api/payment/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
