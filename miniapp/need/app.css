@@ -12,6 +12,8 @@
 
 .svoy-tab-inner {
   width: 100%;
+  padding: 0 16px;
+  box-sizing: border-box;
 }
 
 .svoy-icon {
@@ -28,3 +30,251 @@
   color: var(--subtitle_text_color);
 }
 
+/* Mobile fixes */
+@media (max-width: 768px) {
+  .svoy-tab-inner {
+    padding: 0 16px;
+  }
+  
+  ._root_q2m4m_1,
+  ._subscription_1mhws_27,
+  #paymentMethodsWrapper,
+  div[style*="width: 100%"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  
+  ._plans-wrapper_q2m4m_8 {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding-bottom: 4px;
+  }
+  
+  ._plans-wrapper_q2m4m_8::-webkit-scrollbar {
+    display: none;
+  }
+  
+  ._plan-card_q2m4m_12 {
+    min-width: calc((100% - 10px) / 2) !important;
+    flex-shrink: 0;
+  }
+  
+  ._buttons_1sq9h_87 {
+    position: fixed !important;
+    left: 0 !important;
+    bottom: calc(74px + var(--safe-area-inset-bottom)) !important;
+    width: 100% !important;
+    padding: 8px 16px 12px !important;
+    box-sizing: border-box !important;
+    background-color: var(--bg_color) !important;
+    border-top: 1px solid var(--separator_color) !important;
+    z-index: 10 !important;
+    margin: 0 !important;
+  }
+  
+  ._root_1sq9h_1 {
+    padding-bottom: calc(120px + var(--safe-area-inset-bottom)) !important;
+  }
+  
+  ._heading_1sq9h_29 {
+    padding-top: 16px !important;
+    padding-bottom: 16px !important;
+  }
+  
+  ._section_mdt1z_50 {
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+}
+
+@media (min-width: 769px) {
+  .svoy-tab-inner {
+    padding: 0 24px;
+    max-width: 678px;
+    margin: 0 auto;
+  }
+}
+
+/* Tab bar navigation */
+._root_l9l9n_8 {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  height: calc(55px + var(--safe-area-inset-bottom));
+  background-color: var(--bg_color);
+  border-top: 1px solid var(--separator_color);
+  z-index: 100;
+}
+
+@media (min-width: 769px) {
+  ._root_l9l9n_8 {
+    display: none;
+  }
+}
+
+._item_l9l9n_22 {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 1px;
+  padding: 6px 8px calc(7px + var(--safe-area-inset-bottom));
+  box-sizing: border-box;
+  background: none;
+  border: none;
+  color: var(--subtitle_text_color);
+  transition: color 0.3s ease;
+}
+
+._item_l9l9n_22[aria-selected="true"] {
+  color: var(--accent_text_color);
+}
+
+._item_l9l9n_22 svg {
+  width: 24px;
+  height: 24px;
+  color: inherit;
+}
+
+._item_l9l9n_22 p {
+  font-size: 10px;
+  line-height: 12px;
+  color: inherit;
+  margin: 0;
+}
+
+/* Ensure tabs are properly displayed */
+._root_1sq9h_1,
+._root_10snw_1,
+._root_sjbjr_1 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  width: 100%;
+  padding-top: 30px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  ._root_1sq9h_1,
+  ._root_10snw_1,
+  ._root_sjbjr_1 {
+    min-height: calc(100vh - 104px);
+    padding-bottom: calc(74px + var(--safe-area-inset-bottom));
+  }
+}
+
+@media (min-width: 769px) {
+  ._root_1sq9h_1,
+  ._root_10snw_1,
+  ._root_sjbjr_1 {
+    padding-bottom: 66px;
+  }
+}
+
+/* Profile tab specific styles */
+._container_sjbjr_7 {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+._heading_sjbjr_11 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 24px;
+  padding-bottom: 16px;
+  box-sizing: border-box;
+}
+
+@media (min-width: 769px) {
+  ._heading_sjbjr_11 {
+    padding-top: 28px;
+    padding-bottom: 16px;
+  }
+}
+
+._avatar_sjbjr_27 {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+@media (min-width: 769px) {
+  ._avatar_sjbjr_27 {
+    width: 154px;
+    height: 154px;
+  }
+}
+
+._main_sjbjr_44 {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 24px;
+  padding: 8px 16px 16px;
+  box-sizing: border-box;
+}
+
+@media (min-width: 769px) {
+  ._main_sjbjr_44 {
+    padding: 8px 80px 16px;
+  }
+}
+
+._section_sjbjr_62 {
+  background-color: var(--section_bg_color);
+  border-radius: 26px;
+  overflow: hidden;
+}
+
+._cell_sjbjr_68 {
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  transition: background-color 0.3s ease;
+}
+
+._cell_sjbjr_68:hover {
+  background-color: var(--quaternary_fill_background);
+}
+
+._cell_sjbjr_68 p {
+  flex: 1;
+}
+
+/* Ensure wrapper has proper padding for tab bar */
+._wrapper_l9l9n_1._is-show-tab-bar_l9l9n_1 {
+  padding-bottom: calc(74px + var(--safe-area-inset-bottom));
+}
+
+/* Make sure tab bar is always visible on mobile */
+@media (max-width: 768px) {
+  ._root_l9l9n_8 {
+    display: flex !important;
+  }
+  
+  body {
+    padding-bottom: calc(74px + var(--safe-area-inset-bottom));
+  }
+}

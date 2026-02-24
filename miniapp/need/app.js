@@ -10,7 +10,6 @@
     paymentMethods: /** @type {Array<any>} */ ([]),
     selectedTariffId: /** @type {string|null} */ (null),
     selectedPaymentMethodId: /** @type {string|null} */ (null),
-    deviceCount: 1,
   };
 
   const el = {
@@ -20,8 +19,6 @@
     tabProfile: /** @type {HTMLElement|null} */ (null),
     plansWrapper: /** @type {HTMLElement|null} */ (null),
     paymentMethodsWrapper: /** @type {HTMLElement|null} */ (null),
-    deviceRange: /** @type {HTMLInputElement|null} */ (null),
-    deviceCount: /** @type {HTMLElement|null} */ (null),
     totalPrice: /** @type {HTMLElement|null} */ (null),
     btnPay: /** @type {HTMLButtonElement|null} */ (null),
     subscriptionUrl: /** @type {HTMLInputElement|null} */ (null),
@@ -234,7 +231,7 @@
 
   function updateTotal() {
     const tariff = state.tariffs.find((t) => t.id === state.selectedTariffId);
-    const total = (tariff ? Number(tariff.price || 0) : 0) * Math.max(1, Number(state.deviceCount || 1));
+    const total = tariff ? Number(tariff.price || 0) : 0;
     if (el.totalPrice) el.totalPrice.textContent = formatRub(total);
 
     if (el.btnPay) {
@@ -281,8 +278,30 @@
       }
     }
 
-    if (el.profileStatus) el.profileStatus.textContent = sub?.isActive ? "Active" : "Inactive";
-    if (el.profileUntil) el.profileUntil.textContent = sub?.endDate ? `Until ${formatDateIso(sub.endDate)}` : "";
+    const subscriptionInfo = document.getElementById("subscriptionInfo");
+    const profileSubscriptionDetails = document.getElementById("profileSubscriptionDetails");
+    
+    if (sub) {
+      if (el.profileStatus) {
+        el.profileStatus.textContent = sub.isActive ? "Активна" : "Неактивна";
+        el.profileStatus.style.color = sub.isActive ? "var(--accent_text_color)" : "var(--subtitle_text_color)";
+      }
+      if (el.profileUntil) {
+        el.profileUntil.textContent = sub.endDate ? `До ${formatDateIso(sub.endDate)}` : "Нет подписки";
+      }
+      
+      if (subscriptionInfo) subscriptionInfo.style.display = "block";
+      if (profileSubscriptionDetails) {
+        const details = [];
+        if (sub.startDate) details.push(`Начало: ${formatDateIso(sub.startDate)}`);
+        if (sub.endDate) details.push(`Окончание: ${formatDateIso(sub.endDate)}`);
+        profileSubscriptionDetails.textContent = details.length ? details.join(" • ") : "Информация о подписке";
+      }
+    } else {
+      if (el.profileStatus) el.profileStatus.textContent = "Нет подписки";
+      if (el.profileUntil) el.profileUntil.textContent = "";
+      if (subscriptionInfo) subscriptionInfo.style.display = "none";
+    }
   }
 
   async function createPayment() {
@@ -298,7 +317,6 @@
           initData: tg ? tg.initData : "",
           tariffId: state.selectedTariffId,
           paymentMethod: state.selectedPaymentMethodId,
-          deviceCount: state.deviceCount,
         }),
       });
 
@@ -324,8 +342,6 @@
     el.tabProfile = document.getElementById("tabProfile");
     el.plansWrapper = document.getElementById("plansWrapper");
     el.paymentMethodsWrapper = document.getElementById("paymentMethodsWrapper");
-    el.deviceRange = /** @type {HTMLInputElement|null} */ (document.getElementById("deviceRange"));
-    el.deviceCount = document.getElementById("deviceCount");
     el.totalPrice = document.getElementById("totalPrice");
     el.btnPay = /** @type {HTMLButtonElement|null} */ (document.getElementById("btnPay"));
     el.subscriptionUrl = /** @type {HTMLInputElement|null} */ (document.getElementById("subscriptionUrl"));
@@ -344,19 +360,6 @@
           showTab(name);
         }
       });
-    });
-
-    el.deviceRange?.addEventListener("input", () => {
-      const v = Math.max(1, Number(el.deviceRange?.value || 1));
-      state.deviceCount = v;
-      if (el.deviceCount) el.deviceCount.textContent = String(v);
-      const max = Math.max(1, Number(el.deviceRange?.max || 1));
-      const percent = max === 1 ? 0 : ((v - 1) / (max - 1)) * 100;
-      const activeLine = document.getElementById("deviceActiveLine");
-      const pointer = document.getElementById("devicePointer");
-      if (activeLine) activeLine.style.width = `${percent}%`;
-      if (pointer) pointer.style.left = `${percent}%`;
-      updateTotal();
     });
 
     el.btnPay?.addEventListener("click", createPayment);
@@ -379,19 +382,6 @@
 
     setThemeFromTelegram();
     showTab("plans");
-
-    // Sync initial device slider UI.
-    if (el.deviceRange) {
-      const v = Math.max(1, Number(el.deviceRange.value || 1));
-      state.deviceCount = v;
-      if (el.deviceCount) el.deviceCount.textContent = String(v);
-      const max = Math.max(1, Number(el.deviceRange.max || 1));
-      const percent = max === 1 ? 0 : ((v - 1) / (max - 1)) * 100;
-      const activeLine = document.getElementById("deviceActiveLine");
-      const pointer = document.getElementById("devicePointer");
-      if (activeLine) activeLine.style.width = `${percent}%`;
-      if (pointer) pointer.style.left = `${percent}%`;
-    }
 
     await Promise.allSettled([loadTariffs(), loadPaymentMethods(), loadUser()]);
     updateTotal();
