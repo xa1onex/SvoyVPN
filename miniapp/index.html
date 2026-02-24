@@ -24,7 +24,29 @@
 </head>
 
 <body>
-  <div id="svgSpriteHost" aria-hidden="true" style="display:none;"></div>
+  <div id="svgSpriteHost" aria-hidden="true" style="display:none;">
+    <svg xmlns="http://www.w3.org/2000/svg">
+      <symbol id="vpn.tab-bar" viewBox="0 0 24 24">
+        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" />
+      </symbol>
+      <symbol id="gear" viewBox="0 0 24 24">
+        <path
+          d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+      </symbol>
+      <symbol id="profile" viewBox="0 0 24 24">
+        <path
+          d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z" />
+      </symbol>
+      <symbol id="telegram" viewBox="0 0 24 24">
+        <path
+          d="M9.78 18.65l.28-3.96 7.2-6.5c.32-.28-.07-.44-.49-.16l-8.89 5.6-3.83-1.2c-.83-.27-.85-.83.17-1.23l14.99-5.78c.69-.25 1.3.17 1.08.97l-2.55 12.02c-.19.88-.72 1.1-1.46.68l-3.88-2.86-1.87 1.8c-.2.2-.38.38-.77.38z" />
+      </symbol>
+      <symbol id="support.static" viewBox="0 0 24 24">
+        <path
+          d="M12 1c-4.97 0-9 4.03-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7c0-4.97-4.03-9-9-9z" />
+      </symbol>
+    </svg>
+  </div>
 
   <div class="svoy-wrapper">
 
@@ -33,16 +55,12 @@
       <div class="svoy-screen-inner">
         <!-- Logo -->
         <div class="svoy-hero-logo">
-          <div class="_root_4nzf4_12" style="width:88px;height:88px;">
-            <div class="_first_4nzf4_19"></div>
-            <div class="_second_4nzf4_34"></div>
-            <div class="_third_4nzf4_49"></div>
-            <div class="_icon-node_4nzf4_68" style="width:36px;height:36px;">
-              <svg viewBox="0 0 26 26" style="color:#fff;">
-                <use href="#vpn.tab-bar"></use>
-              </svg>
-            </div>
-          </div>
+          <svg width="80" height="80" viewBox="0 0 88 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="44" cy="44" r="44" fill="var(--button_color)" fill-opacity="0.1" />
+            <circle cx="44" cy="44" r="32" fill="var(--button_color)" fill-opacity="0.2" />
+            <circle cx="44" cy="44" r="20" fill="var(--button_color)" />
+            <path d="M44 32L36 40V48C36 53.55 39.84 58.74 44 60C48.16 58.74 52 53.55 52 48V40L44 32Z" fill="white" />
+          </svg>
         </div>
 
         <p class="_root_1hgcm_29 _size_title2_1hgcm_39 _weight_bold_1hgcm_81 _align_center_1hgcm_88">SvoyVPN</p>
@@ -113,9 +131,9 @@
     <!-- ══════════ SCREEN: SETUP ══════════ -->
     <div id="screenSetup" class="svoy-screen">
       <div class="svoy-screen-inner">
-        <p class="_root_1hgcm_29 _size_title3_1hgcm_43 _weight_bold_1hgcm_81" style="margin-bottom:4px;">Настройка VPN
+        <p class="_root_1hgcm_29 _size_title3_1hgcm_43 _weight_bold_1hgcm_81" style="margin-bottom:2px;">Настройка VPN
         </p>
-        <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted" style="margin-bottom:16px;">Скопируйте ссылку и
+        <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted" style="margin-bottom:12px;">Скопируйте ссылку и
           добавьте в приложение</p>
 
         <!-- Subscription URL -->
@@ -130,7 +148,7 @@
         </div>
 
         <!-- Steps -->
-        <div style="margin-top:20px;width:100%;">
+        <div style="margin-top:12px;width:100%;">
           <div class="_card_l4idp_15 svoy-step-card">
             <div class="svoy-step-num">1</div>
             <div class="_inner_l4idp_37">
@@ -161,7 +179,9 @@
       <div class="svoy-screen-inner">
         <div class="svoy-hero-logo">
           <div class="svoy-avatar">
-            <svg viewBox="0 0 26 26" style="color:#fff;width:28px;height:28px;">
+            <img id="avatarImage" src=""
+              style="width:100%;height:100%;border-radius:50%;display:none;object-fit:cover;" />
+            <svg id="avatarPlaceholder" viewBox="0 0 26 26" style="color:#fff;width:28px;height:28px;">
               <use href="#profile"></use>
             </svg>
           </div>

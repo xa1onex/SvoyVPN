@@ -141,6 +141,18 @@
     if (state.user) {
       const n = [state.user.firstName, state.user.lastName].filter(Boolean).join(' ') || 'Пользователь';
       document.getElementById('profileName').textContent = n;
+
+      const img = document.getElementById('avatarImage');
+      const placeholder = document.getElementById('avatarPlaceholder');
+      const photo = state.user.photoUrl || state.user.photo_url;
+      if (photo && img && placeholder) {
+        img.src = photo;
+        img.style.display = 'block';
+        placeholder.style.display = 'none';
+      } else if (img && placeholder) {
+        img.style.display = 'none';
+        placeholder.style.display = 'block';
+      }
     }
     const sub = state.subscription;
     const badge = document.getElementById('vpnSubBadge');
