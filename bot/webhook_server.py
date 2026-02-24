@@ -85,6 +85,7 @@ class WebhookServer:
         self.app.router.add_get('/api/tariffs', self.api_get_tariffs)
         self.app.router.add_get('/api/payment-methods', self.api_get_payment_methods)
         self.app.router.add_post('/api/payment/create', self.api_create_payment)
+        self.app.router.add_get('/api/servers', self.api_get_servers)
         
         self.app.middlewares.append(self.handle_bad_requests_middleware)
         self.runner = None
@@ -695,6 +696,19 @@ class WebhookServer:
             logger.error(f"Error in api_create_payment: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
     
+    async def api_get_servers(self, request: web_request.Request) -> web.Response:
+        """API: Получить список активных серверов (публичная информация)"""
+        try:
+            async with get_connection() as conn:
+                rows = await conn.fetch(
+                    "SELECT id, name FROM servers WHERE is_active = TRUE ORDER BY id"
+                )
+                servers = [{"id": r["id"], "name": r["name"]} for r in rows]
+            return web.json_response(servers)
+        except Exception as e:
+            logger.error(f"Error in api_get_servers: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
     async def run(self, host: str = "0.0.0.0", port: int = 8080):
         """Запустить вебхук сервер"""
         # Настраиваем фильтр для логов

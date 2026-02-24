@@ -1,98 +1,135 @@
-/* SvoyVPN landing page overrides for Need CSS framework */
+/* SvoyVPN – Screen-based layout with bottom tab bar */
 
-/* ── Sections ── */
+/* ── Wrapper & Screens ── */
+.svoy-wrapper {
+  padding-bottom: 60px;
+  /* space for tab bar */
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
-.svoy-section {
+.svoy-screen {
+  display: none;
+  flex-direction: column;
+  align-items: center;
   width: 100%;
+}
+
+.svoy-screen--active {
+  display: flex;
 }
 
 .svoy-muted {
   color: var(--subtitle_text_color);
 }
 
-/* ── Tariff cards: horizontal scroll on very small screens ── */
-@media (max-width: 768px) {
-  ._plans-wrapper_q2m4m_8 {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
+/* ── Bottom Tab Bar ── */
+.svoy-tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  height: 56px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background-color: var(--secondary_bg_color);
+  border-top: 0.5px solid var(--divider_color, rgba(0, 0, 0, .08));
+  z-index: 999;
+}
 
-  ._plans-wrapper_q2m4m_8::-webkit-scrollbar {
-    display: none;
-  }
+.svoy-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 4px 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: color .15s;
+  color: var(--subtitle_text_color);
+}
 
-  ._plan-card_q2m4m_12 {
-    min-width: calc((100% - 10px) / 2) !important;
-    flex-shrink: 0;
-  }
+.svoy-tab--active {
+  color: var(--accent_text_color);
+}
 
-  ._root_q2m4m_1,
-  ._subscription_1mhws_27,
-  #paymentMethodsWrapper {
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box;
+.svoy-tab-icon {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.svoy-tab-label {
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* ── Tariff Grid ── */
+.svoy-tariff-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+@media (max-width: 340px) {
+  .svoy-tariff-grid {
+    grid-template-columns: 1fr;
   }
 }
 
-/* ── Server location cards: 2 columns on tablet ── */
-@media (min-width: 769px) {
-  ._root_1e3vs_1 {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-  }
-
-  ._card_1e3vs_18 {
-    width: calc((100% - 16px) / 2);
-    min-width: calc((100% - 16px) / 2);
-  }
+/* ── Servers Grid (dynamic) ── */
+.svoy-servers-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  width: 100%;
+  padding: 0 0 8px;
 }
 
-/* ── CTA button glow effect ── */
-#btnCta {
-  position: relative;
-  overflow: hidden;
+.svoy-server-card {
+  gap: 8px !important;
+  padding: 12px !important;
 }
 
-#btnCta::after {
-  content: "";
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 20px;
-  height: 200%;
-  background-color: #fff;
-  transform: rotate(45deg);
-  filter: blur(30px);
-  opacity: 0.5;
-  overflow: visible;
-  will-change: left, filter;
-  z-index: 3;
-  animation: cta-light 2s linear infinite;
-}
-
-@keyframes cta-light {
-  0% { left: -50%; }
-  100% { left: 150%; }
-}
-
-/* ── How it works cards: row on desktop ── */
-@media (min-width: 1200px) {
-  ._root_l4idp_1 {
-    flex-direction: row;
+@media (max-width: 400px) {
+  .svoy-servers-grid {
+    grid-template-columns: 1fr;
   }
 }
 
-/* ── Payment button fixed on mobile ── */
-@media (max-width: 768px) {
-  #sectionTariffs > div:last-child {
-    position: sticky;
-    bottom: 0;
-    padding: 8px 0 calc(8px + var(--safe-area-inset-bottom, 0px));
-    background-color: var(--bg_color);
-    z-index: 10;
-  }
+/* ── Profile Avatar ── */
+.svoy-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background-color: var(--accent_text_color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Profile Link Cards ── */
+.svoy-link-card {
+  cursor: pointer;
+  transition: opacity .15s;
+}
+
+.svoy-link-card:active {
+  opacity: .7;
+}
+
+/* ── Pay button ── */
+#btnPay:disabled {
+  opacity: .45;
+  pointer-events: none;
 }
