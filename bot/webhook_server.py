@@ -538,20 +538,22 @@ class WebhookServer:
                     elif isinstance(end_date, str):
                         end_date_str = end_date
                 
-                # --- Fetch accurate Photo from Telegram API --- #
+                # --- Fetch profile photo via Bot API --- #
                 photo_url_fetched = user_data.get('photo_url', '')
-                try:
-                    # Attempt to fetch high-res photo if not provided by initData
-                    if not photo_url_fetched and self.bot:
-                        profile_photos = await self.bot.get_user_profile_photos(user_id, limit=1)
-                        if profile_photos and profile_photos.photos:
-                            first_photo_array = profile_photos.photos[0]
-                            if first_photo_array:
-                                best_photo = first_photo_array[-1]
-                                file_info = await self.bot.get_file(best_photo.file_id)
-                                photo_url_fetched = f"https://api.telegram.org/file/bot{self.bot.token}/{file_info.file_path}"
-                except Exception as ex:
-                    logger.warning(f"Could not fetch profile photo for user {user_id}: {ex}")
+                if not photo_url_fetched:
+                    try:
+                        if self.bot:
+                            photos_result = await self.bot.get_user_profile_photos(user_id=user_id, limit=1)
+                            if photos_result and photos_result.photos and len(photos_result.photos) > 0:
+                                sizes = photos_result.photos[0]  # list of PhotoSize
+                                if sizes and len(sizes) > 0:
+                                    biggest = sizes[-1]
+                                    file_obj = await self.bot.get_file(biggest.file_id)
+                                    if file_obj and file_obj.file_path:
+                                        photo_url_fetched = f"https://api.telegram.org/file/bot{self.bot.token}/{file_obj.file_path}"
+                                        logger.info(f"Fetched profile photo for user {user_id}: {photo_url_fetched}")
+                    except Exception as ex:
+                        logger.warning(f"Could not fetch profile photo for user {user_id}: {ex}", exc_info=True)
 
                 return web.json_response({
                     "user": {
@@ -722,15 +724,11 @@ class WebhookServer:
         """API: Получить список серверов (публичная информация)"""
         try:
             async with get_connection() as conn:
-                # Временно берем is_active для дебага
                 rows = await conn.fetch(
-                    "SELECT id, name, is_active FROM servers ORDER BY id"
+                    "SELECT id, name FROM servers ORDER BY id"
                 )
-                servers = [{"id": r["id"], "name": f"{r['name']} ({r['is_active']})"} for r in rows]
-            logger.info(f"api_get_servers returned {len(servers)} servers")
-            if not servers:
-                # Если серверов действительно 0, покажем это прямо в интерфейсе!
-                servers = [{"id": -1, "name": "DEBUG: DB returned 0 rows"}]
+                servers = [{"id": r["id"], "name": r["name"]} for r in rows]
+            logger.info(f"api_get_servers: found {len(servers)} servers in DB")
             return web.json_response(servers)
         except Exception as e:
             logger.error(f"Error in api_get_servers: {e}", exc_info=True)
