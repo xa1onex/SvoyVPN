@@ -712,13 +712,15 @@ class WebhookServer:
             return web.json_response({"error": str(e)}, status=500)
     
     async def api_get_servers(self, request: web_request.Request) -> web.Response:
-        """API: Получить список активных серверов (публичная информация)"""
+        """API: Получить список серверов (публичная информация)"""
         try:
             async with get_connection() as conn:
+                # Временно убрали фильтр is_active = TRUE на случай, если в прод БД NULL или FALSE
                 rows = await conn.fetch(
-                    "SELECT id, name FROM servers WHERE is_active = TRUE ORDER BY id"
+                    "SELECT id, name FROM servers ORDER BY id"
                 )
                 servers = [{"id": r["id"], "name": r["name"]} for r in rows]
+            logger.info(f"api_get_servers returned {len(servers)} servers")
             return web.json_response(servers)
         except Exception as e:
             logger.error(f"Error in api_get_servers: {e}", exc_info=True)
