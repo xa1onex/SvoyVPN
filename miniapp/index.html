@@ -13,33 +13,88 @@
             box-sizing: border-box;
         }
 
+        @font-face {
+            font-family: Inter;
+            src: url('https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiA.woff2') format('woff2');
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: Inter;
+            src: url('https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiA.woff2') format('woff2');
+            font-weight: 500;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: Inter;
+            src: url('https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiA.woff2') format('woff2');
+            font-weight: 600;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: Inter;
+            src: url('https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiA.woff2') format('woff2');
+            font-weight: 700;
+            font-style: normal;
+            font-display: swap;
+        }
+
         :root {
-            --bg-primary: #1a1a2e;
-            --bg-secondary: #16213e;
-            --bg-card: #0f3460;
-            --accent-blue: #00d4ff;
-            --accent-blue-dark: #0099cc;
-            --text-primary: #ffffff;
-            --text-secondary: #b0b0b0;
-            --text-muted: #808080;
-            --border-color: #2a2a3e;
-            --success: #00ff88;
-            --error: #ff4444;
-            --warning: #ffaa00;
+            --bg_color: rgba(255, 255, 255, 1);
+            --text_color: rgba(26, 38, 50, 1);
+            --subtitle_text_color: rgba(142, 142, 147, 1);
+            --accent_text_color: rgba(58, 168, 252, 1);
+            --button_text_color: #FFFFFF;
+            --button_color: #3AA8FC;
+            --second_button_color: rgba(58, 168, 252, .1);
+            --section_bg_color: rgba(247, 249, 251, 1);
+            --separator_color: #DFE7EF;
+            --accent-white: rgba(255, 255, 255, 1);
+            --accent-black: rgba(5, 25, 46, 1);
+            --destructive_text_color: rgba(255, 45, 85, 1);
+            --quaternary_fill_background: rgba(116, 116, 128, .08);
+            --warning_color: rgba(255, 204, 0, 1);
+            --safe-area-inset-bottom: var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom));
+            --safe-area-inset-top: var(--tg-safe-area-inset-top, env(safe-area-inset-top));
+        }
+
+        [data-theme="dark"] {
+            --bg_color: rgba(24, 34, 45, 1);
+            --text_color: rgba(255, 255, 255, 1);
+            --subtitle_text_color: rgba(219, 245, 255, 1);
+            --accent_text_color: rgba(58, 168, 252, 1);
+            --button_text_color: #FFFFFF;
+            --button_color: #3AA8FC;
+            --second_button_color: rgba(58, 168, 252, .1);
+            --section_bg_color: rgba(33, 48, 63, 1);
+            --separator_color: rgba(56, 70, 86, 1);
+            --accent-white: rgba(255, 255, 255, 1);
+            --accent-black: rgba(5, 25, 46, 1);
+            --destructive_text_color: rgba(255, 55, 95, 1);
+            --quaternary_fill_background: rgba(118, 118, 128, .16);
+            --warning_color: rgba(255, 204, 0, 1);
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            overflow-x: hidden;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, Inter, Arial, sans-serif;
+            font-size: 14px;
+            backface-visibility: hidden;
+            text-rendering: optimizelegibility;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+            -webkit-tap-highlight-color: rgba(0,0,0,0);
+            min-height: 100%;
+            color: var(--text_color);
+            background-color: var(--bg_color);
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100vh;
             box-sizing: border-box;
+            overflow-x: hidden;
         }
 
         .app-container {
@@ -50,7 +105,7 @@
             max-width: 100%;
             margin: 0;
             padding: 0;
-            background: var(--bg-primary);
+            background: var(--bg_color);
             box-sizing: border-box;
             overflow-x: hidden;
         }
@@ -61,8 +116,8 @@
             align-items: center;
             justify-content: space-between;
             padding: 12px 16px;
-            background: var(--bg-primary);
-            border-bottom: 1px solid var(--border-color);
+            background: var(--bg_color);
+            border-bottom: 0.33px solid var(--separator_color);
             position: sticky;
             top: 0;
             z-index: 100;
@@ -71,16 +126,16 @@
         .btn-close, .btn-menu, .btn-close-screen {
             background: none;
             border: none;
-            color: var(--text-primary);
+            color: var(--text_color);
             font-size: 16px;
             cursor: pointer;
             padding: 8px;
             border-radius: 8px;
-            transition: background 0.2s;
+            transition: background 0.3s ease;
         }
 
         .btn-close:hover, .btn-menu:hover, .btn-close-screen:hover {
-            background: var(--bg-secondary);
+            background: var(--quaternary_fill_background);
         }
 
         .header-center {
@@ -89,15 +144,17 @@
         }
 
         .app-title {
-            font-size: 18px;
+            font-size: 17px;
             font-weight: 600;
-            color: var(--text-primary);
+            line-height: 22px;
+            color: var(--text_color);
             margin: 0;
         }
 
         .app-subtitle {
-            font-size: 12px;
-            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 100%;
+            color: var(--subtitle_text_color);
             margin: 0;
         }
 
@@ -105,13 +162,14 @@
         .main-content {
             flex: 1;
             padding: 20px 16px;
-            padding-bottom: 80px;
+            padding-bottom: calc(80px + var(--safe-area-inset-bottom));
             overflow-y: auto;
             position: relative;
             width: 100%;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
+            background: var(--bg_color);
         }
 
         .screen {
@@ -140,7 +198,7 @@
         .btn-back {
             background: none;
             border: none;
-            color: var(--text-primary);
+            color: var(--text_color);
             font-size: 16px;
             cursor: pointer;
             padding: 8px;
@@ -150,18 +208,20 @@
         }
 
         .screen-title {
-            font-size: 24px;
-            font-weight: 700;
+            font-size: 28px;
+            line-height: 35px;
+            font-weight: 600;
             margin: 20px 0 12px;
-            color: var(--text-primary);
+            color: var(--text_color);
             text-align: center;
             width: 100%;
             box-sizing: border-box;
         }
 
         .screen-description {
-            font-size: 14px;
-            color: var(--text-secondary);
+            font-size: 17px;
+            line-height: 22px;
+            color: var(--text_color);
             margin-bottom: 24px;
             line-height: 1.5;
             text-align: center;
@@ -189,12 +249,13 @@
         .logo-inner {
             width: 100%;
             height: 100%;
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-blue-dark));
+            background: var(--accent_text_color);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 8px 24px rgba(0, 212, 255, 0.3);
+            box-shadow: 0 0 40px rgba(58, 168, 252, 0.3);
+            position: relative;
         }
 
         .logo-icon {
@@ -202,8 +263,8 @@
         }
 
         .tariff-section {
-            background: var(--bg-card);
-            border-radius: 16px;
+            background: var(--section_bg_color);
+            border-radius: 26px;
             padding: 20px;
             margin: 24px auto;
             width: 100%;
@@ -219,27 +280,30 @@
         }
 
         .tariff-label {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-primary);
+            font-size: 17px;
+            line-height: 22px;
+            font-weight: 500;
+            color: var(--text_color);
         }
 
         .btn-update {
-            background: var(--accent-blue);
+            background: var(--button_color);
             border: none;
-            color: var(--text-primary);
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 14px;
+            color: var(--button_text_color);
+            padding: 10px 16px;
+            border-radius: 26px;
+            font-size: 15px;
+            line-height: 20px;
             cursor: pointer;
             display: flex;
             align-items: center;
             gap: 6px;
-            font-weight: 500;
+            font-weight: 600;
+            transition: transform 0.3s ease;
         }
 
         .btn-update:hover {
-            background: var(--accent-blue-dark);
+            transform: scale(0.98);
         }
 
         .subscription-info {
@@ -247,8 +311,8 @@
             justify-content: space-between;
             margin-bottom: 16px;
             padding: 16px 0;
-            border-top: 1px solid var(--border-color);
-            border-bottom: 1px solid var(--border-color);
+            border-top: 0.33px solid var(--separator_color);
+            border-bottom: 0.33px solid var(--separator_color);
         }
 
         .info-left, .info-right {
@@ -259,24 +323,24 @@
 
         .info-label {
             font-size: 12px;
-            color: var(--text-secondary);
+            color: var(--subtitle_text_color);
         }
 
         .info-value {
             font-size: 14px;
-            color: var(--text-primary);
+            color: var(--text_color);
             font-weight: 500;
         }
 
         .info-date {
             font-size: 14px;
-            color: var(--text-primary);
+            color: var(--text_color);
             font-weight: 500;
         }
 
         .info-status {
             font-size: 12px;
-            color: var(--text-secondary);
+            color: var(--subtitle_text_color);
         }
 
         .info-status.active {
@@ -295,22 +359,22 @@
 
         .url-input {
             flex: 1;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
+            background: var(--quaternary_fill_background);
+            border: 0.33px solid var(--separator_color);
             border-radius: 8px;
             padding: 12px;
-            color: var(--text-primary);
+            color: var(--text_color);
             font-size: 12px;
             font-family: monospace;
         }
 
         .btn-copy {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
+            background: var(--quaternary_fill_background);
+            border: 0.33px solid var(--separator_color);
             border-radius: 8px;
             padding: 12px;
             cursor: pointer;
-            color: var(--text-primary);
+            color: var(--text_color);
             font-size: 16px;
             display: flex;
             align-items: center;
@@ -322,50 +386,63 @@
         .btn-primary {
             width: 100%;
             max-width: 100%;
-            background: var(--accent-blue);
+            background: var(--button_color);
             border: none;
-            color: var(--text-primary);
-            padding: 16px;
-            border-radius: 12px;
-            font-size: 16px;
+            color: var(--button_text_color);
+            padding: 14px;
+            border-radius: 30px;
+            font-size: 20px;
+            line-height: 24px;
             font-weight: 600;
             cursor: pointer;
             margin: 20px auto 0;
-            transition: background 0.2s;
+            transition: transform 0.3s ease;
             box-sizing: border-box;
             display: block;
+            position: relative;
+            overflow: hidden;
         }
 
         .btn-primary:hover:not(:disabled) {
-            background: var(--accent-blue-dark);
+            transform: scale(0.98);
         }
 
         .btn-primary:disabled {
-            opacity: 0.5;
+            opacity: 0.6;
             cursor: not-allowed;
+            pointer-events: none;
         }
 
         .btn-secondary {
             width: 100%;
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            color: var(--text-primary);
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 14px;
+            background: var(--second_button_color);
+            border: none;
+            color: var(--accent_text_color);
+            padding: 14px 16px;
+            border-radius: 26px;
+            font-size: 15px;
+            line-height: 20px;
+            font-weight: 600;
             cursor: pointer;
             margin-top: 12px;
+            transition: transform 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            transform: scale(0.98);
         }
 
         /* Экран тарифов */
         .bonus-banner {
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-blue-dark));
-            border-radius: 16px;
-            padding: 16px;
+            background: var(--accent_text_color);
+            border-radius: 26px;
+            padding: 13px 16px;
             margin: 20px 0;
             width: 100%;
             box-sizing: border-box;
             display: none; /* Скрыт по умолчанию, показывается только на экране тарифов через JS */
+            position: relative;
+            overflow: hidden;
         }
 
         .bonus-content {
@@ -379,14 +456,18 @@
         }
 
         .bonus-title {
-            font-size: 16px;
+            font-size: 17px;
+            line-height: 22px;
             font-weight: 600;
             margin-bottom: 4px;
+            color: var(--button_text_color);
         }
 
         .bonus-subtitle {
-            font-size: 12px;
-            opacity: 0.9;
+            font-size: 15px;
+            line-height: 20px;
+            opacity: 0.6;
+            color: var(--button_text_color);
         }
 
         .bonus-icons {
@@ -410,10 +491,11 @@
         }
 
         .section-title {
-            font-size: 18px;
-            font-weight: 600;
+            font-size: 17px;
+            line-height: 22px;
+            font-weight: 500;
             margin-bottom: 16px;
-            color: var(--text-primary);
+            color: var(--text_color);
         }
 
         .tariffs-grid {
@@ -424,24 +506,27 @@
         }
 
         .tariff-card {
-            background: var(--bg-card);
-            border: 2px solid var(--border-color);
-            border-radius: 16px;
-            padding: 20px;
+            background: var(--section_bg_color);
+            border: none;
+            border-radius: 26px;
+            padding: 24px 3px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: box-shadow 0.3s ease;
             position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
         }
 
         .tariff-card:hover {
-            border-color: var(--accent-blue);
-            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
         }
 
         .tariff-card.selected {
-            border-color: var(--accent-blue);
-            background: rgba(0, 212, 255, 0.1);
+            box-shadow: inset 0 0 0 2px var(--accent_text_color);
         }
 
         .tariff-card.popular::before {
@@ -449,8 +534,8 @@
             position: absolute;
             top: 12px;
             right: 12px;
-            background: var(--accent-blue);
-            color: var(--text-primary);
+            background: var(--button_color);
+            color: var(--text_color);
             padding: 4px 8px;
             border-radius: 6px;
             font-size: 10px;
@@ -458,47 +543,64 @@
         }
 
         .tariff-number {
-            font-size: 36px;
-            font-weight: 700;
-            color: var(--text-primary);
+            font-size: 40px;
+            line-height: 40px;
+            font-weight: 600;
+            color: var(--text_color);
             margin-bottom: 4px;
         }
 
         .tariff-period {
-            font-size: 14px;
-            color: var(--text-secondary);
+            font-size: 17px;
+            line-height: 22px;
+            color: var(--text_color);
             margin-bottom: 12px;
         }
 
         .tariff-benefit {
-            font-size: 12px;
-            color: var(--accent-blue);
+            font-size: 15px;
+            line-height: 20px;
+            color: var(--accent_text_color);
             margin-bottom: 12px;
-            font-weight: 500;
+            font-weight: 400;
         }
 
         .tariff-price {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--text-primary);
+            font-size: 17px;
+            line-height: 22px;
+            font-weight: 400;
+            color: var(--text_color);
             margin-bottom: 4px;
         }
 
         .tariff-price-old {
-            font-size: 14px;
-            color: var(--text-muted);
+            font-size: 15px;
+            line-height: 20px;
+            color: var(--accent_text_color);
             text-decoration: line-through;
             margin-bottom: 4px;
+            position: relative;
+        }
+
+        .tariff-price-old::before {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            height: 2px;
+            background-color: var(--accent_text_color);
         }
 
         .tariff-price-month {
             font-size: 12px;
-            color: var(--text-secondary);
+            color: var(--subtitle_text_color);
         }
 
         .countries-section {
-            background: var(--bg-card);
-            border-radius: 12px;
+            background: var(--section_bg_color);
+            border-radius: 26px;
             padding: 16px;
             margin: 20px 0;
             cursor: pointer;
@@ -509,7 +611,7 @@
             align-items: center;
             gap: 12px;
             font-size: 14px;
-            color: var(--text-primary);
+            color: var(--text_color);
         }
 
         .countries-icon {
@@ -531,7 +633,7 @@
         .payment-icon {
             width: 100px;
             height: 100px;
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-blue-dark));
+            background: var(--accent_text_color);
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -541,15 +643,16 @@
         }
 
         .payment-title {
-            font-size: 20px;
-            font-weight: 600;
+            font-size: 17px;
+            line-height: 22px;
+            font-weight: 500;
             text-align: center;
             margin: 20px 0 12px;
         }
 
         .device-selector {
-            background: var(--bg-card);
-            border-radius: 16px;
+            background: var(--section_bg_color);
+            border-radius: 19px;
             padding: 20px;
             margin: 24px 0;
         }
@@ -559,14 +662,17 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 16px;
-            font-size: 14px;
-            color: var(--text-primary);
+            font-size: 15px;
+            line-height: 20px;
+            font-weight: 500;
+            color: var(--text_color);
         }
 
         .device-count {
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--accent-blue);
+            font-size: 17px;
+            line-height: 22px;
+            font-weight: 500;
+            color: var(--accent_text_color);
         }
 
         .device-slider {
@@ -577,7 +683,7 @@
             width: 100%;
             height: 6px;
             border-radius: 3px;
-            background: var(--bg-secondary);
+            background: var(--quaternary_fill_background);
             outline: none;
             -webkit-appearance: none;
         }
@@ -588,7 +694,7 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background: var(--accent-blue);
+            background: var(--button_color);
             cursor: pointer;
         }
 
@@ -596,7 +702,7 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background: var(--accent-blue);
+            background: var(--button_color);
             cursor: pointer;
             border: none;
         }
@@ -605,20 +711,24 @@
             display: flex;
             justify-content: space-between;
             margin-top: 8px;
-            font-size: 12px;
-            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 14px;
+            font-weight: 400;
+            color: var(--subtitle_text_color);
         }
 
         .device-hint {
-            font-size: 12px;
-            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 14px;
+            font-weight: 400;
+            color: var(--subtitle_text_color);
             margin-top: 12px;
             line-height: 1.4;
         }
 
         .cloudflare-banner {
-            background: var(--bg-card);
-            border-radius: 12px;
+            background: var(--section_bg_color);
+            border-radius: 26px;
             padding: 16px;
             margin: 20px 0;
             display: flex;
@@ -631,7 +741,9 @@
             align-items: center;
             gap: 8px;
             color: var(--success);
-            font-size: 14px;
+            font-size: 15px;
+            line-height: 20px;
+            font-weight: 500;
         }
 
         .check-icon {
@@ -649,7 +761,9 @@
 
         .cloudflare-text {
             font-size: 10px;
-            color: var(--text-secondary);
+            line-height: 13px;
+            font-weight: 400;
+            color: var(--subtitle_text_color);
             margin-bottom: 4px;
         }
 
@@ -657,10 +771,12 @@
             display: flex;
             gap: 12px;
             font-size: 10px;
+            line-height: 13px;
+            font-weight: 400;
         }
 
         .cloudflare-link {
-            color: var(--accent-blue);
+            color: var(--accent_text_color);
             text-decoration: none;
         }
 
@@ -669,25 +785,25 @@
         }
 
         .payment-method {
-            background: var(--bg-card);
-            border: 2px solid var(--border-color);
-            border-radius: 12px;
-            padding: 16px;
+            background: var(--section_bg_color);
+            border: none;
+            border-radius: 26px;
+            padding: 13px 16px;
             margin-bottom: 12px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: box-shadow 0.3s ease;
+            gap: 12px;
         }
 
         .payment-method:hover {
-            border-color: var(--accent-blue);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
         }
 
         .payment-method.selected {
-            border-color: var(--accent-blue);
-            background: rgba(0, 212, 255, 0.1);
+            box-shadow: inset 0 0 0 2px var(--accent_text_color);
         }
 
         .payment-method-left {
@@ -704,7 +820,7 @@
             align-items: center;
             justify-content: center;
             font-size: 20px;
-            background: var(--bg-secondary);
+            background: var(--quaternary_fill_background);
         }
 
         .payment-method-info {
@@ -713,39 +829,46 @@
         }
 
         .payment-method-name {
-            font-size: 14px;
+            font-size: 17px;
+            line-height: 22px;
             font-weight: 500;
-            color: var(--text-primary);
+            color: var(--text_color);
         }
 
         .payment-method-desc {
-            font-size: 12px;
-            color: var(--text-secondary);
+            font-size: 15px;
+            line-height: 20px;
+            font-weight: 400;
+            color: var(--subtitle_text_color);
         }
 
         .payment-method-badge {
             font-size: 10px;
-            color: var(--accent-blue);
+            line-height: 13px;
+            font-weight: 400;
+            color: var(--accent_text_color);
             margin-top: 2px;
         }
 
         .payment-method-check {
             font-size: 20px;
-            color: var(--accent-blue);
+            color: var(--accent_text_color);
         }
 
         /* Экран настройки */
         .app-selector {
-            background: var(--bg-card);
-            border-radius: 16px;
+            background: var(--section_bg_color);
+            border-radius: 26px;
             padding: 20px;
             margin: 20px 0;
         }
 
         .selector-label {
             display: block;
-            font-size: 14px;
-            color: var(--text-secondary);
+            font-size: 15px;
+            line-height: 20px;
+            font-weight: 500;
+            color: var(--subtitle_text_color);
             margin-bottom: 12px;
         }
 
@@ -757,20 +880,22 @@
 
         .app-btn {
             flex: 1;
-            background: var(--bg-secondary);
-            border: 2px solid var(--border-color);
+            background: var(--quaternary_fill_background);
+            border: 0.33px solid var(--separator_color);
             border-radius: 8px;
             padding: 12px;
-            color: var(--text-primary);
-            font-size: 14px;
+            color: var(--text_color);
+            font-size: 15px;
+            line-height: 20px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
         }
 
         .app-btn.active {
-            background: var(--accent-blue);
-            border-color: var(--accent-blue);
-            color: var(--text-primary);
+            background: var(--button_color);
+            border-color: var(--accent_text_color);
+            color: var(--text_color);
         }
 
         .os-selector-container {
@@ -779,12 +904,14 @@
 
         .os-selector {
             width: 100%;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
+            background: var(--quaternary_fill_background);
+            border: 0.33px solid var(--separator_color);
             border-radius: 8px;
             padding: 12px;
-            color: var(--text-primary);
-            font-size: 14px;
+            color: var(--text_color);
+            font-size: 15px;
+            line-height: 20px;
+            font-weight: 500;
             cursor: pointer;
             appearance: none;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ffffff' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
@@ -794,8 +921,8 @@
         }
 
         .instruction-step {
-            background: var(--bg-card);
-            border-radius: 16px;
+            background: var(--section_bg_color);
+            border-radius: 26px;
             padding: 20px;
             margin: 20px 0;
             display: flex;
@@ -805,7 +932,7 @@
         .step-icon {
             width: 40px;
             height: 40px;
-            background: var(--accent-blue);
+            background: var(--button_color);
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -819,16 +946,18 @@
         }
 
         .step-content h3 {
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 17px;
+            line-height: 22px;
+            font-weight: 500;
             margin-bottom: 8px;
-            color: var(--text-primary);
+            color: var(--text_color);
         }
 
         .step-content p {
-            font-size: 14px;
-            color: var(--text-secondary);
-            line-height: 1.5;
+            font-size: 15px;
+            line-height: 20px;
+            font-weight: 400;
+            color: var(--subtitle_text_color);
             margin-bottom: 12px;
         }
 
@@ -840,12 +969,13 @@
 
         .btn-store {
             flex: 1;
-            background: var(--accent-blue);
+            background: var(--button_color);
             border: none;
-            color: var(--text-primary);
+            color: var(--text_color);
             padding: 12px;
             border-radius: 8px;
-            font-size: 14px;
+            font-size: 15px;
+            line-height: 20px;
             font-weight: 500;
             cursor: pointer;
         }
@@ -860,19 +990,20 @@
             width: 80px;
             height: 80px;
             border-radius: 50%;
-            background: var(--bg-card);
+            background: var(--section_bg_color);
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 40px;
             margin: 0 auto 12px;
-            border: 2px solid var(--border-color);
+            border: 0.33px solid var(--separator_color);
         }
 
         .profile-name {
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--text-primary);
+            font-size: 17px;
+            line-height: 22px;
+            font-weight: 500;
+            color: var(--text_color);
         }
 
         .profile-url {
@@ -886,8 +1017,8 @@
         }
 
         .menu-item {
-            background: var(--bg-card);
-            border-radius: 12px;
+            background: var(--section_bg_color);
+            border-radius: 26px;
             padding: 16px;
             margin-bottom: 12px;
             display: flex;
@@ -898,7 +1029,7 @@
         }
 
         .menu-item:hover {
-            background: var(--bg-secondary);
+            background: var(--quaternary_fill_background);
         }
 
         .menu-icon {
@@ -909,13 +1040,15 @@
 
         .menu-item span:nth-child(2) {
             flex: 1;
-            font-size: 14px;
-            color: var(--text-primary);
+            font-size: 17px;
+            line-height: 22px;
+            font-weight: 400;
+            color: var(--text_color);
         }
 
         .menu-arrow {
             font-size: 18px;
-            color: var(--text-secondary);
+            color: var(--subtitle_text_color);
         }
 
         /* Адаптивность */
@@ -950,7 +1083,7 @@
         }
     </style>
 </head>
-<body>
+<body data-theme="dark">
     <div class="app-container">
         <!-- Header -->
         <header class="app-header">
