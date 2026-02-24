@@ -397,6 +397,13 @@ class WebhookServer:
                 content = f.read()
             logger.debug(f"Serving static file: {path} ({len(content)} bytes)")
             guessed_type, _ = mimetypes.guess_type(file_path)
+            if not guessed_type:
+                if file_path.endswith('.css'):
+                    guessed_type = 'text/css'
+                elif file_path.endswith('.js'):
+                    guessed_type = 'application/javascript'
+                elif file_path.endswith('.svg'):
+                    guessed_type = 'image/svg+xml'
             content_type = guessed_type or "application/octet-stream"
             # Add charset for text-like assets.
             if content_type.startswith("text/") or content_type in {
