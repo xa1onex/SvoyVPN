@@ -1,0 +1,30 @@
+.svoy-hidden {
+  display: none !important;
+}
+
+.svoy-tab {
+  display: none;
+}
+
+.svoy-tab.svoy-tab--active {
+  display: flex;
+}
+
+.svoy-tab-inner {
+  width: 100%;
+}
+
+.svoy-icon {
+  width: 28px;
+  height: 28px;
+  display: inline-block;
+}
+
+.svoy-icon use {
+  pointer-events: none;
+}
+
+.svoy-muted {
+  color: var(--subtitle_text_color);
+}
+

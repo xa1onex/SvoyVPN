@@ -4,6 +4,7 @@ HTTP сервер для обработки вебхуков (YooKassa, Flyer) �
 import json
 import logging
 import os
+import mimetypes
 import hashlib
 import hmac
 from datetime import datetime
@@ -19,6 +20,20 @@ from .subscriptions import create_or_activate_keys_for_all_servers, get_user_sub
 from .plans import get_subscription_plans, get_renewal_plans
 
 logger = logging.getLogger(__name__)
+
+# Ensure common static MIME types for miniapp assets.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("application/json", ".json")
+mimetypes.add_type("application/json", ".map")
+mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("font/woff", ".woff")
+mimetypes.add_type("font/ttf", ".ttf")
+mimetypes.add_type("image/x-icon", ".ico")
+mimetypes.add_type("image/svg+xml", ".svg")
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("application/wasm", ".wasm")
 
 
 class BadStatusLineFilter(logging.Filter):
@@ -364,20 +379,6 @@ class WebhookServer:
         # Убираем начальный слэш, если есть
         path = path.lstrip('/')
         
-        # Определяем тип файла
-        if path.endswith('.css'):
-            content_type = 'text/css'
-        elif path.endswith('.js'):
-            content_type = 'application/javascript'
-        elif path.endswith('.png'):
-            content_type = 'image/png'
-        elif path.endswith('.jpg') or path.endswith('.jpeg'):
-            content_type = 'image/jpeg'
-        elif path.endswith('.svg'):
-            content_type = 'image/svg+xml'
-        else:
-            content_type = 'text/plain'
-        
         miniapp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'miniapp')
         file_path = os.path.join(miniapp_dir, path)
         
@@ -394,6 +395,17 @@ class WebhookServer:
             with open(file_path, 'rb') as f:
                 content = f.read()
             logger.debug(f"Serving static file: {path} ({len(content)} bytes)")
+            guessed_type, _ = mimetypes.guess_type(file_path)
+            content_type = guessed_type or "application/octet-stream"
+            # Add charset for text-like assets.
+            if content_type.startswith("text/") or content_type in {
+                "application/javascript",
+                "text/javascript",
+                "application/json",
+                "image/svg+xml",
+                "application/xml",
+            }:
+                return web.Response(body=content, content_type=content_type, charset="utf-8")
             return web.Response(body=content, content_type=content_type)
         except FileNotFoundError:
             logger.error(f"Static file not found: {file_path} (requested path: {path})")
