@@ -4,7 +4,6 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-
   <title>SvoyVPN</title>
   <meta property="og:title" content="SvoyVPN" />
   <meta property="og:type" content="website" />
@@ -17,243 +16,196 @@
 
   <script src="/miniapp/need/libs/telegram-web-app.js"></script>
 
-  <link rel="stylesheet" href="/miniapp/need/assets/index.css?v=6" />
-  <link rel="stylesheet" href="/miniapp/need/app.css?v=6" />
+  <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
+  <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/miniapp/need/assets/index.css" />
+  <link rel="stylesheet" href="/miniapp/need/app.css" />
 
-  <script defer src="/miniapp/need/app.js?v=6"></script>
+  <script defer src="/miniapp/need/app.js"></script>
 </head>
 
 <body>
-  <div id="svgSpriteHost" aria-hidden="true" style="display:none;">
-    <svg xmlns="http://www.w3.org/2000/svg">
-      <symbol id="vpn.tab-bar" viewBox="0 0 24 24">
-        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" />
-      </symbol>
-      <symbol id="gear" viewBox="0 0 24 24">
-        <path
-          d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
-      </symbol>
-      <symbol id="profile" viewBox="0 0 24 24">
-        <path
-          d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z" />
-      </symbol>
-      <symbol id="telegram" viewBox="0 0 24 24">
-        <path
-          d="M9.78 18.65l.28-3.96 7.2-6.5c.32-.28-.07-.44-.49-.16l-8.89 5.6-3.83-1.2c-.83-.27-.85-.83.17-1.23l14.99-5.78c.69-.25 1.3.17 1.08.97l-2.55 12.02c-.19.88-.72 1.1-1.46.68l-3.88-2.86-1.87 1.8c-.2.2-.38.38-.77.38z" />
-      </symbol>
-      <symbol id="support.static" viewBox="0 0 24 24">
-        <path
-          d="M12 1c-4.97 0-9 4.03-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7c0-4.97-4.03-9-9-9z" />
-      </symbol>
-    </svg>
-  </div>
 
-  <div class="svoy-wrapper">
+  <!-- SVG sprite host — заполняется через JS из sprite.svg -->
+  <div id="spriteHost" aria-hidden="true" style="display:none;"></div>
 
-    <!-- ══════════ SCREEN: VPN (main) ══════════ -->
-    <div id="screenVpn" class="svoy-screen svoy-screen--active">
-      <div class="svoy-screen-inner">
-        <!-- Logo -->
-        <div class="svoy-hero-logo">
-          <svg width="80" height="80" viewBox="0 0 88 88" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="44" cy="44" r="44" fill="var(--button_color)" fill-opacity="0.1" />
-            <circle cx="44" cy="44" r="32" fill="var(--button_color)" fill-opacity="0.2" />
-            <circle cx="44" cy="44" r="20" fill="var(--button_color)" />
-            <path d="M44 32L36 40V48C36 53.55 39.84 58.74 44 60C48.16 58.74 52 53.55 52 48V40L44 32Z" fill="white" />
-          </svg>
-        </div>
+  <div class="app">
 
-        <p class="_root_1hgcm_29 _size_title2_1hgcm_39 _weight_bold_1hgcm_81 _align_center_1hgcm_88">SvoyVPN</p>
-        <p id="vpnStatus" class="_root_1hgcm_29 _size_body_1hgcm_51 _align_center_1hgcm_88 svoy-muted"
-          style="margin-top:6px;">Быстрый и приватный VPN</p>
+    <!-- ═══ SCREEN: VPN ═══ -->
+    <div id="screenVpn" class="screen active">
+      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
 
-        <!-- Subscription card -->
-        <div class="svoy-status-card">
-          <div class="svoy-status-row">
-            <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Подписка</p>
-            <p id="vpnSubBadge" class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-badge-inactive">Неактивна</p>
-          </div>
-          <div class="svoy-status-row">
-            <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted">Действует до</p>
-            <p id="vpnSubUntil" class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_medium_1hgcm_75">—</p>
-          </div>
-        </div>
-
-        <!-- CTA -->
-        <button id="btnChoosePlan" class="_root_iw2y8_9 _is-wide_iw2y8_63 _size_m_iw2y8_67 _view_brand_iw2y8_113"
-          style="margin-top:16px;">
-          <span class="_inner_iw2y8_23">
-            <span class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78"
-              style="color:var(--button_text_color)">Выбрать тариф</span>
-          </span>
-        </button>
-
-        <!-- Server locations -->
-        <div style="margin-top:20px;width:100%;">
-          <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78" style="margin-bottom:8px;">
-            Локации серверов</p>
-          <div id="serversWrapper" class="svoy-servers-grid"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══════════ SCREEN: PLAN (tariffs + payment) ══════════ -->
-    <div id="screenPlan" class="svoy-screen">
-      <div class="svoy-screen-inner">
-        <!-- Back -->
-        <button id="btnBackFromPlan" class="svoy-back-btn">← Назад</button>
-
-        <p class="_root_1hgcm_29 _size_title3_1hgcm_43 _weight_bold_1hgcm_81" style="margin-bottom:12px;">Тариф</p>
-        <div id="plansWrapper" class="svoy-tariff-grid"></div>
-
-        <!-- Payment method -->
-        <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78"
-          style="margin-top:16px;margin-bottom:8px;">Способ оплаты</p>
-        <div id="paymentMethodsWrapper"></div>
-
-        <!-- Total + Pay -->
-        <div class="svoy-pay-row">
-          <div>
-            <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted">Итого</p>
-            <p id="totalPrice" class="_root_1hgcm_29 _size_title3_1hgcm_43 _weight_bold_1hgcm_81">—</p>
-          </div>
-          <button id="btnPay" class="_root_iw2y8_9 _size_m_iw2y8_67 _view_brand_iw2y8_113" disabled
-            style="min-width:140px;">
-            <span class="_inner_iw2y8_23">
-              <span class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78"
-                style="color:var(--button_text_color)">Оплатить</span>
-            </span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══════════ SCREEN: SETUP ══════════ -->
-    <div id="screenSetup" class="svoy-screen">
-      <div class="svoy-screen-inner">
-        <p class="_root_1hgcm_29 _size_title3_1hgcm_43 _weight_bold_1hgcm_81" style="margin-bottom:2px;">Настройка VPN
-        </p>
-        <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 svoy-muted" style="margin-bottom:12px;">Скопируйте ссылку и
-          добавьте в приложение</p>
-
-        <!-- Subscription URL -->
-        <div class="_card_10snw_102" style="width:100%;">
-          <div class="_field-wrapper_10snw_115">
-            <input id="subscriptionUrl" class="_field_10snw_115" type="text" placeholder="Ссылка появится после покупки"
-              readonly />
-            <div class="_field-action-wrapper_10snw_133">
-              <button id="btnCopySub" class="_field-action_10snw_133" type="button">Копировать</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Steps -->
-        <div style="margin-top:12px;width:100%;">
-          <div class="_card_l4idp_15 svoy-step-card">
-            <div class="svoy-step-num">1</div>
-            <div class="_inner_l4idp_37">
-              <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Скопируйте ссылку</p>
-              <p class="_root_1hgcm_29 _size_subtitle3_1hgcm_63 svoy-muted">Нажмите «Копировать» выше</p>
-            </div>
-          </div>
-          <div class="_card_l4idp_15 svoy-step-card">
-            <div class="svoy-step-num">2</div>
-            <div class="_inner_l4idp_37">
-              <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Откройте VPN-приложение</p>
-              <p class="_root_1hgcm_29 _size_subtitle3_1hgcm_63 svoy-muted">V2RayTun, Hiddify или другое</p>
-            </div>
-          </div>
-          <div class="_card_l4idp_15 svoy-step-card">
-            <div class="svoy-step-num">3</div>
-            <div class="_inner_l4idp_37">
-              <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Добавьте подписку</p>
-              <p class="_root_1hgcm_29 _size_subtitle3_1hgcm_63 svoy-muted">Вставьте ссылку — серверы подключатся</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══════════ SCREEN: PROFILE ══════════ -->
-    <div id="screenProfile" class="svoy-screen">
-      <div class="svoy-screen-inner">
-        <div class="svoy-hero-logo">
-          <div class="svoy-avatar">
-            <img id="avatarImage" src=""
-              style="width:100%;height:100%;border-radius:50%;display:none;object-fit:cover;" />
-            <svg id="avatarPlaceholder" viewBox="0 0 26 26" style="color:#fff;width:28px;height:28px;">
-              <use href="#profile"></use>
+        <!-- Animated logo -->
+        <div class="logo-anim">
+          <div class="ring" style="--ring-opacity:.15;"></div>
+          <div class="ring" style="--ring-opacity:.25;"></div>
+          <div class="ring" style="--ring-opacity:.35;"></div>
+          <div class="logo-core">
+            <svg viewBox="0 0 24 24">
+              <use href="#vpn.tab-bar"></use>
             </svg>
           </div>
         </div>
-        <p id="profileName" class="_root_1hgcm_29 _size_title3_1hgcm_43 _weight_bold_1hgcm_81 _align_center_1hgcm_88">
-          Пользователь</p>
-        <p id="profileStatus" class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _align_center_1hgcm_88 svoy-muted"
-          style="margin-top:4px;">—</p>
 
-        <!-- Sub URL -->
-        <div style="margin-top:16px;width:100%;">
-          <p class="_root_1hgcm_29 _size_subtitle2_1hgcm_59 _weight_semibold_1hgcm_78" style="margin-bottom:6px;">Ссылка
-            подписки</p>
-          <div class="_card_10snw_102" style="width:100%;">
-            <div class="_field-wrapper_10snw_115">
-              <input id="profileSubUrl" class="_field_10snw_115" type="text" placeholder="—" readonly />
-              <div class="_field-action-wrapper_10snw_133">
-                <button id="btnCopyProfile" class="_field-action_10snw_133" type="button">Копировать</button>
-              </div>
-            </div>
+        <div class="gap-8"></div>
+        <p class="title text-center">SvoyVPN</p>
+        <p id="vpnStatus" class="body text-muted text-center" style="margin-top:4px;">Быстрый и приватный VPN</p>
+
+        <!-- Status card -->
+        <div class="card status-card" style="margin-top:16px;">
+          <div class="status-row">
+            <span class="subtitle">Подписка</span>
+            <span id="subBadge" class="caption text-danger">Неактивна</span>
+          </div>
+          <div class="status-row">
+            <span class="body text-muted">Действует до</span>
+            <span id="subUntil" class="body">—</span>
           </div>
         </div>
 
-        <!-- Links -->
-        <div style="margin-top:16px;width:100%;display:flex;flex-direction:column;gap:6px;">
-          <div class="_card_l4idp_15 svoy-link-card" id="btnChannel">
-            <div class="svoy-step-num" style="background:var(--accent_text_color);">
-              <svg viewBox="0 0 26 26" style="color:var(--button_text_color);width:14px;height:14px;">
-                <use href="#telegram"></use>
-              </svg>
-            </div>
-            <div class="_inner_l4idp_37">
-              <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Канал</p>
-            </div>
-          </div>
-          <div class="_card_l4idp_15 svoy-link-card" id="btnSupport">
-            <div class="svoy-step-num" style="background:var(--accent_text_color);">
-              <svg viewBox="0 0 26 26" style="color:var(--button_text_color);width:14px;height:14px;">
-                <use href="#support.static"></use>
-              </svg>
-            </div>
-            <div class="_inner_l4idp_37">
-              <p class="_root_1hgcm_29 _size_subtitle1_1hgcm_55 _weight_semibold_1hgcm_78">Поддержка</p>
-            </div>
-          </div>
+        <div class="gap-12"></div>
+        <button id="btnChoosePlan" class="btn-primary">Выбрать тариф</button>
+
+        <!-- Servers -->
+        <p class="section-title">Локации серверов</p>
+        <div id="serversWrap" class="servers-scroll">
+          <div class="server-chip text-muted body">Загрузка…</div>
         </div>
+
       </div>
     </div>
 
-    <!-- ══════════ BOTTOM TAB BAR ══════════ -->
-    <nav id="tabBar" class="svoy-tab-bar">
-      <button class="svoy-tab svoy-tab--active" data-screen="screenVpn">
-        <svg class="svoy-tab-icon" viewBox="0 0 26 26">
+    <!-- ═══ SCREEN: PLAN ═══ -->
+    <div id="screenPlan" class="screen">
+      <div class="screen-content" style="display:flex;flex-direction:column;">
+
+        <button id="btnBack" class="btn-back">← Назад</button>
+        <p class="title-s">Выберите тариф</p>
+        <div class="gap-12"></div>
+        <div id="tariffsWrap" class="tariff-grid"></div>
+
+        <p class="section-title">Способ оплаты</p>
+        <div id="pmWrap" class="pm-list"></div>
+
+        <div class="pay-row">
+          <div>
+            <p class="total-label">Итого</p>
+            <p id="totalPrice" class="total-price">—</p>
+          </div>
+          <button id="btnPay" class="btn-primary" disabled>Оплатить</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: SETUP ═══ -->
+    <div id="screenSetup" class="screen">
+      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
+
+        <p class="title-s">Настройка VPN</p>
+        <p class="body text-muted text-center" style="margin-top:4px;">Скопируйте ссылку и добавьте в приложение</p>
+
+        <div class="gap-16"></div>
+
+        <div class="copy-field">
+          <input id="subUrlSetup" type="text" placeholder="Ссылка появится после покупки" readonly />
+          <button id="btnCopySetup" class="btn-copy">Копировать</button>
+        </div>
+
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              <p class="step-title">Скопируйте ссылку</p>
+              <p class="step-desc">Нажмите «Копировать» выше</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              <p class="step-title">Откройте VPN-приложение</p>
+              <p class="step-desc">V2RayTun, Hiddify или другое</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              <p class="step-title">Добавьте подписку</p>
+              <p class="step-desc">Вставьте ссылку — серверы подключатся</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: PROFILE ═══ -->
+    <div id="screenProfile" class="screen">
+      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
+
+        <div class="gap-8"></div>
+        <div id="avatar" class="avatar">?</div>
+        <div class="gap-8"></div>
+        <p id="profileName" class="title-s text-center">Пользователь</p>
+        <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px;">—</p>
+
+        <p class="section-title">Ссылка подписки</p>
+        <div class="copy-field">
+          <input id="subUrlProfile" type="text" placeholder="—" readonly />
+          <button id="btnCopyProfile" class="btn-copy">Копировать</button>
+        </div>
+
+        <div class="link-list">
+          <div class="link-card" id="btnChannel">
+            <div class="link-icon">
+              <svg viewBox="0 0 24 24">
+                <use href="#telegram"></use>
+              </svg>
+            </div>
+            <span class="link-name">Канал</span>
+            <span class="link-arrow">›</span>
+          </div>
+          <div class="link-card" id="btnSupport">
+            <div class="link-icon">
+              <svg viewBox="0 0 24 24">
+                <use href="#support.static"></use>
+              </svg>
+            </div>
+            <span class="link-name">Поддержка</span>
+            <span class="link-arrow">›</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ═══ TAB BAR ═══ -->
+    <nav id="tabBar" class="tab-bar">
+      <button class="tab active" data-screen="screenVpn">
+        <svg class="tab-icon" viewBox="0 0 24 24">
           <use href="#vpn.tab-bar"></use>
         </svg>
-        <span class="svoy-tab-label">VPN</span>
+        <span class="tab-label">VPN</span>
       </button>
-      <button class="svoy-tab" data-screen="screenSetup">
-        <svg class="svoy-tab-icon" viewBox="0 0 26 26">
+      <button class="tab" data-screen="screenSetup">
+        <svg class="tab-icon" viewBox="0 0 24 24">
           <use href="#gear"></use>
         </svg>
-        <span class="svoy-tab-label">Настройка</span>
+        <span class="tab-label">Настройка</span>
       </button>
-      <button class="svoy-tab" data-screen="screenProfile">
-        <svg class="svoy-tab-icon" viewBox="0 0 26 26">
+      <button class="tab" data-screen="screenProfile">
+        <svg class="tab-icon" viewBox="0 0 24 24">
           <use href="#profile"></use>
         </svg>
-        <span class="svoy-tab-label">Профиль</span>
+        <span class="tab-label">Профиль</span>
       </button>
     </nav>
 
   </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
 </body>
 
 </html>
