@@ -18,10 +18,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v33.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v33.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v34.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v34.css" />
 
-  <script defer src="/miniapp/need/app_v33.js"></script>
+  <script defer src="/miniapp/need/app_v34.js"></script>
 </head>
 
 <body>
@@ -80,13 +80,17 @@
         <button id="btnChoosePlan" class="btn-primary">Выбрать тариф</button>
 
         <!-- Servers -->
-        <p class="section-title" style="display:flex;align-items:center;gap:6px;">
-          <svg style="width:16px;height:16px;" viewBox="0 0 24 24" fill="currentColor">
-            <path
-              d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-          </svg>
-          Доступные сервера
-        </p>
+        <div
+          style="display:flex; justify-content:space-between; align-items:flex-end; width:100%; margin-top:20px; margin-bottom:6px;">
+          <p class="section-title" style="display:flex;align-items:center;gap:6px; margin:0; width:auto;">
+            <svg style="width:16px;height:16px;" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+            </svg>
+            Доступные сервера
+          </p>
+          <div id="serverNavPlaceholder"></div>
+        </div>
         <div id="serversWrap" class="server-grid">
           <div class="server-card server-card--loading text-muted body">Загрузка…</div>
         </div>
