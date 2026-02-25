@@ -20,11 +20,13 @@
     (function () {
       var tg = window.Telegram && window.Telegram.WebApp;
       if (!tg) return;
-      var params = tg.themeParams || {};
       var scheme = tg.colorScheme || 'light';
-      var bg = params.bg_color || (scheme === 'dark' ? '#18222d' : '#ffffff');
+      /* Exact colors from design system: dark = #18222d, light = #ffffff */
+      var bg = scheme === 'dark' ? '#18222d' : '#ffffff';
+      var secBg = scheme === 'dark' ? '#21303f' : '#f7f9fb';
       try { tg.setHeaderColor && tg.setHeaderColor(bg); } catch (_) { }
       try { tg.setBackgroundColor && tg.setBackgroundColor(bg); } catch (_) { }
+      try { tg.setBottomBarColor && tg.setBottomBarColor(secBg); } catch (_) { }
     })();
   </script>
 
