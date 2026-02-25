@@ -87,12 +87,14 @@ class WebhookServer:
         self.app.router.add_post('/api/payment/create', self.api_create_payment)
         self.app.router.add_get('/api/servers', self.api_get_servers)
         self.app.router.add_get('/api/ping', self.api_ping_server)
+        self.app.router.add_get('/api/referral', self.api_get_referral)
         self.app.router.add_post('/miniapp/api/user', self.api_get_user)
         self.app.router.add_get('/miniapp/api/tariffs', self.api_get_tariffs)
         self.app.router.add_get('/miniapp/api/payment-methods', self.api_get_payment_methods)
         self.app.router.add_post('/miniapp/api/payment/create', self.api_create_payment)
         self.app.router.add_get('/miniapp/api/servers', self.api_get_servers)
         self.app.router.add_get('/miniapp/api/ping', self.api_ping_server)
+        self.app.router.add_get('/miniapp/api/referral', self.api_get_referral)
         
         # Static files catch-all
         self.app.router.add_get('/miniapp/{path:.*}', self.serve_miniapp_static)
@@ -850,3 +852,71 @@ class WebhookServer:
                 logger.info("Webhook server stopped")
             except Exception as e:
                 logger.error(f"Error stopping webhook server: {e}")
+
+    async def api_get_referral(self, request: web_request.Request) -> web.Response:
+        """API: Получить реферальную информацию пользователя"""
+        init_data = request.query.get('initData', '')
+        if not init_data:
+            return web.json_response({"error": "initData required"}, status=400)
+
+        try:
+            if not self.bot:
+                return web.json_response({"error": "Bot not initialized"}, status=500)
+
+            bot_token = self.bot.token
+            if not self.verify_telegram_webapp_data(init_data, bot_token):
+                return web.json_response({"error": "Invalid initData"}, status=403)
+
+            parsed_data = self.parse_telegram_init_data(init_data)
+            user_str = parsed_data.get('user', '{}')
+            user_data = json.loads(user_str) if user_str else {}
+            user_id = int(user_data.get('id', 0))
+            if not user_id:
+                return web.json_response({"error": "User ID not found"}, status=400)
+
+            async with get_connection() as conn:
+                row = await conn.fetchrow(
+                    "SELECT referral_code, referral_count FROM users WHERE user_id = $1",
+                    user_id
+                )
+                if not row:
+                    return web.json_response({"error": "User not found"}, status=404)
+
+                referral_code = row['referral_code'] or ''
+                referral_count = row['referral_count'] or 0
+
+                if not referral_code:
+                    import secrets as _sec
+                    referral_code = _sec.token_hex(4)
+                    await conn.execute(
+                        "UPDATE users SET referral_code = $1 WHERE user_id = $2",
+                        referral_code, user_id
+                    )
+
+                ref_settings = await conn.fetchrow(
+                    'SELECT inviter_bonus_days, invited_bonus_days FROM referral_settings ORDER BY id DESC LIMIT 1'
+                )
+                inviter_days = ref_settings['inviter_bonus_days'] if ref_settings else 5
+                invited_days = ref_settings['invited_bonus_days'] if ref_settings else 3
+
+            try:
+                me = await self.bot.get_me()
+                bot_username = me.username
+            except Exception:
+                bot_username = 'SvoyVPN_bot'
+
+            ref_link = f"https://t.me/{bot_username}?start=ref_{referral_code}"
+
+            return web.json_response({
+                "referralCode": referral_code,
+                "referralCount": referral_count,
+                "inviterBonusDays": inviter_days,
+                "invitedBonusDays": invited_days,
+                "refLink": ref_link,
+            })
+
+        except Exception as e:
+            logger.error(f"Error in api_get_referral: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+
