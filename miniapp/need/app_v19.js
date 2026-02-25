@@ -53,7 +53,7 @@
   function getFlag(name) {
     const n = (name || '').toLowerCase();
     for (const [k, v] of Object.entries(FLAGS)) if (n.includes(k)) return v;
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>';
+    return '🌍';
   }
 
   function haptic(style) {
@@ -269,7 +269,7 @@
     el.setAttribute('data-server-id', s.id);
     el.innerHTML =
       '<div class="server-card__header">' +
-      '<span class="server-card__flag" style="display:flex;align-items:center;justify-content:center;width:24px;color:var(--accent_text_color, #3aa8fc);">' + getFlag(s.name) + '</span>' +
+      '<span class="server-card__flag">' + getFlag(s.name) + '</span>' +
       '<span class="server-card__name">' + s.name + '</span>' +
       '</div>' +
       '<span class="server-card__ip">' + maskIp(s.ip) + '</span>' +

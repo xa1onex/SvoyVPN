@@ -92,8 +92,9 @@ body {
 }
 
 .tab-bar .tab-icon {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  /* Standardized for all icons */
+  height: 24px;
 }
 
 .tab-bar .tab-label {
@@ -105,12 +106,12 @@ body {
 /* ── Animated Logo ── */
 .logo-anim {
   position: relative;
-  width: 80px;
-  height: 80px;
+  width: 192px;
+  /* Huge size for main screen */
+  height: 192px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transform: scale(1.6);
   margin: 32px 0;
 }
 
@@ -143,8 +144,9 @@ body {
 }
 
 .logo-anim .logo-core {
-  width: 40px;
-  height: 40px;
+  width: 84px;
+  /* Larger core circle */
+  height: 84px;
   border-radius: 50%;
   background: var(--accent_text_color, #3aa8fc);
   display: flex;
