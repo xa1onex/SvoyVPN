@@ -75,11 +75,15 @@
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', bgColor);
 
-    /* Telegram WebApp API */
+    /* Telegram WebApp API — force themeParams then use string keys */
     if (tg) {
-      try { tg.setHeaderColor && tg.setHeaderColor(bgColor); } catch (_) { }
-      try { tg.setBackgroundColor && tg.setBackgroundColor(bgColor); } catch (_) { }
-      try { tg.setBottomBarColor && tg.setBottomBarColor(secBgColor); } catch (_) { }
+      if (tg.themeParams) {
+        tg.themeParams.bg_color = bgColor;
+        tg.themeParams.secondary_bg_color = secBgColor;
+      }
+      try { tg.setHeaderColor('bg_color'); } catch (_) { }
+      try { tg.setBackgroundColor('bg_color'); } catch (_) { }
+      try { tg.setBottomBarColor('secondary_bg_color'); } catch (_) { }
     }
   }
 
