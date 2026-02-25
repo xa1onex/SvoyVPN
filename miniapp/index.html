@@ -15,13 +15,25 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/miniapp/need/apple-touch-icon.png" />
 
   <script src="/miniapp/need/libs/telegram-web-app.js"></script>
+  <script>
+    /* Early theme sync — runs before DOMContentLoaded */
+    (function () {
+      var tg = window.Telegram && window.Telegram.WebApp;
+      if (!tg) return;
+      var params = tg.themeParams || {};
+      var scheme = tg.colorScheme || 'light';
+      var bg = params.bg_color || (scheme === 'dark' ? '#18222d' : '#ffffff');
+      try { tg.setHeaderColor && tg.setHeaderColor(bg); } catch (_) { }
+      try { tg.setBackgroundColor && tg.setBackgroundColor(bg); } catch (_) { }
+    })();
+  </script>
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v44.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v44.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v45.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v45.css" />
 
-  <script defer src="/miniapp/need/app_v44.js"></script>
+  <script defer src="/miniapp/need/app_v45.js"></script>
 </head>
 
 <body>
