@@ -165,8 +165,15 @@
       const sel = S.selectedTariff && S.selectedTariff.id === t.id;
       const el = document.createElement('div');
       el.className = 'tariff-card' + (sel ? ' selected' : '');
-      el.innerHTML =
-        (t.popular ? '<span class="badge">Хит</span>' : '') +
+
+      let badgeHtml = '';
+      if (t.isRenew) {
+        badgeHtml = '<span class="badge" style="background:var(--accent_text_color);color:#fff;">Скидка</span>';
+      } else if (t.popular) {
+        badgeHtml = '<span class="badge">Хит</span>';
+      }
+
+      el.innerHTML = badgeHtml +
         `<p class="months">${t.months} ${mw(t.months)}</p>` +
         `<p class="price">${fmtPrice(t.price)} ₽</p>` +
         (t.oldPrice ? `<p class="old-price">${fmtPrice(t.oldPrice)} ₽</p>` : '') +
@@ -418,7 +425,21 @@
       badge.textContent = 'Активна';
       badge.classList.remove('text-danger');
       badge.classList.add('text-accent');
-      until.textContent = fmtDate(sub.endDate);
+
+      let daysLeft = 0;
+      if (sub.endDate) {
+        const end = new Date(sub.endDate);
+        const now = new Date();
+        const diff = end.getTime() - now.getTime();
+        daysLeft = Math.ceil(diff / (1000 * 3600 * 24));
+      }
+
+      if (daysLeft > 0) {
+        until.textContent = 'Осталось ' + daysLeft + ' дн.';
+      } else {
+        until.textContent = fmtDate(sub.endDate);
+      }
+
       vpnStatus.textContent = 'Подписка активна';
       pStatus.textContent = 'Подписка активна';
       pStatus.classList.remove('text-muted');
@@ -440,8 +461,13 @@
 
   /* ═══════ Load Data ═══════ */
   async function loadData() {
+    let tariffUrl = '/miniapp/api/tariffs';
+    if (tg && tg.initData) {
+      tariffUrl += '?initData=' + encodeURIComponent(tg.initData);
+    }
+
     const [tariffs, pm, servers] = await Promise.all([
-      api('/miniapp/api/tariffs'),
+      api(tariffUrl),
       api('/miniapp/api/payment-methods'),
       api('/miniapp/api/servers'),
     ]);

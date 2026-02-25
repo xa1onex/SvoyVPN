@@ -595,10 +595,45 @@ class WebhookServer:
             return web.json_response({"error": str(e)}, status=500)
     
     async def api_get_tariffs(self, request: web_request.Request) -> web.Response:
-        """API: Получить список тарифов"""
+        """API: Получить список тарифов (обычные или со скидкой для продления)"""
         try:
-            from .plans import get_subscription_plans
-            subscription_plans = await get_subscription_plans()
+            # Check initData to determine if we should send renewal prices
+            init_data = request.query.get('initData', '')
+            is_renew = False
+
+            if init_data and self.bot:
+                try:
+                    if self.verify_telegram_webapp_data(init_data, self.bot.token):
+                        parsed_data = self.parse_telegram_init_data(init_data)
+                        user_str = parsed_data.get('user', '{}')
+                        user_data = json.loads(user_str) if user_str else {}
+                        user_id = int(user_data.get('id', 0))
+                        
+                        if user_id:
+                            async with get_connection() as conn:
+                                row = await conn.fetchrow(
+                                    "SELECT pay_subscribed, subscription_end FROM users WHERE user_id = $1", 
+                                    user_id
+                                )
+                                if row and row['pay_subscribed'] and row['subscription_end']:
+                                    end_date = row['subscription_end']
+                                    if isinstance(end_date, str):
+                                        end_date = datetime.strptime(end_date.split()[0], "%Y-%m-%d").date()
+                                    elif hasattr(end_date, 'date'):
+                                        end_date = end_date.date()
+                                    
+                                    if end_date >= datetime.now().date():
+                                        is_renew = True
+                except Exception:
+                    pass  # if something goes wrong, fallback to normal prices
+            
+            from .plans import get_subscription_plans, get_renewal_plans
+            
+            if is_renew:
+                subscription_plans = await get_renewal_plans()
+            else:
+                subscription_plans = await get_subscription_plans()
+                
             tariffs = []
             
             for plan_id, plan_data in subscription_plans.items():
@@ -612,13 +647,18 @@ class WebhookServer:
                     # Старая цена = цена за 1 месяц * количество месяцев
                     old_price = base_price_per_month * months * 1.2  # Примерная старая цена
                 
+                # На 1 месяц renewal тоже даем метку "скидка"
+                if is_renew and not old_price:
+                    old_price = getattr(self, '_base_1m_price', 199.0) # hardcode normal price fallback
+
                 tariffs.append({
                     "id": plan_id,
                     "months": months,
                     "price": price_rub,
                     "oldPrice": old_price,
                     "pricePerMonth": price_rub / months,
-                    "popular": months == 12  # Годовой тариф помечаем как популярный
+                    "popular": months == 12,  # Годовой тариф помечаем как популярный
+                    "isRenew": is_renew
                 })
             
             return web.json_response(tariffs)
