@@ -77,8 +77,8 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0;
-  padding: 0;
+  gap: 2px;
+  padding: 2px 0;
   border: none;
   background: none;
   cursor: pointer;
@@ -92,8 +92,9 @@ body {
 }
 
 .tab-bar .tab-icon {
-  width: 25px;
-  height: 25px;
+  width: 24px;
+  /* Standardized for all icons */
+  height: 24px;
 }
 
 .tab-bar .tab-label {
@@ -104,10 +105,27 @@ body {
 
 /* ── Tab Bar Advanced Animations ── */
 .tab-icon {
+  width: 26px;
+  height: 26px;
+  overflow: visible;
+  margin-top: 4px;
+}
+
+.tab-icon-vpn {
+  width: 32px;
+  height: 32px;
+  margin-bottom: -2px;
+  /* Offset the flex stretch of the larger box */
+}
+
+.tab-icon-gear {
   width: 25px;
   height: 25px;
-  margin-top: 5px;
-  overflow: visible;
+}
+
+.tab-icon-profile {
+  width: 26px;
+  height: 26px;
 }
 
 /* 1. VPN - Orbits Rotating */
@@ -859,11 +877,12 @@ body {
 
 .link-card:active {
   opacity: .7;
+  transform: scale(0.97);
 }
 
 .link-card .link-icon {
-  width: 32px;
-  height: 32px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: var(--accent_text_color, #3aa8fc);
   display: flex;
@@ -873,8 +892,8 @@ body {
 }
 
 .link-card .link-icon svg {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   fill: #fff;
 }
 
