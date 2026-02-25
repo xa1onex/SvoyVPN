@@ -61,30 +61,32 @@
   }
 
   /* ═══════ Theme ═══════ */
+  function forceHeaderColor() {
+    if (!tg) return;
+    const scheme = tg.colorScheme || 'dark';
+    const bgColor = scheme === 'dark' ? '#18222d' : '#ffffff';
+    const secBgColor = scheme === 'dark' ? '#21303f' : '#f7f9fb';
+    try { tg.setHeaderColor(bgColor); } catch (_) { }
+    try { tg.setBackgroundColor(bgColor); } catch (_) { }
+    try { tg.setBottomBarColor(secBgColor); } catch (_) { }
+  }
+
   function applyTheme() {
     const scheme = (tg && tg.colorScheme) ||
       (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', scheme);
     document.body.setAttribute('data-theme', scheme);
 
-    /* Hardcoded colors matching design system */
     const bgColor = scheme === 'dark' ? '#18222d' : '#ffffff';
-    const secBgColor = scheme === 'dark' ? '#21303f' : '#f7f9fb';
-
-    /* Update meta theme-color for WebView header */
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', bgColor);
 
-    /* Telegram WebApp API — force themeParams then use string keys */
-    if (tg) {
-      if (tg.themeParams) {
-        tg.themeParams.bg_color = bgColor;
-        tg.themeParams.secondary_bg_color = secBgColor;
-      }
-      try { tg.setHeaderColor('bg_color'); } catch (_) { }
-      try { tg.setBackgroundColor('bg_color'); } catch (_) { }
-      try { tg.setBottomBarColor('secondary_bg_color'); } catch (_) { }
-    }
+    /* Apply immediately */
+    forceHeaderColor();
+    /* Re-apply after Telegram's internal handler finishes (race condition fix) */
+    setTimeout(forceHeaderColor, 0);
+    setTimeout(forceHeaderColor, 50);
+    setTimeout(forceHeaderColor, 200);
   }
 
   /* ═══════ Sprite loader ═══════ */

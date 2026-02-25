@@ -18,29 +18,21 @@
 
   <script src="/miniapp/need/libs/telegram-web-app.js"></script>
   <script>
-    /* Early theme sync — force Telegram header to match our bg */
+    /* Early theme sync — force Telegram header color */
     (function () {
       var tg = window.Telegram && window.Telegram.WebApp;
       if (!tg) return;
 
       var scheme = tg.colorScheme || 'dark';
       var bg = scheme === 'dark' ? '#18222d' : '#ffffff';
-      var secBg = scheme === 'dark' ? '#21303f' : '#f7f9fb';
 
-      /* Force our bg color into themeParams so 'bg_color' key resolves to it */
-      if (tg.themeParams) {
-        tg.themeParams.bg_color = bg;
-        tg.themeParams.secondary_bg_color = secBg;
-      }
-
-      /* Now use string keys — these work on ALL Telegram client versions */
-      try { tg.setHeaderColor('bg_color'); } catch (_) { }
-      try { tg.setBackgroundColor('bg_color'); } catch (_) { }
-      try { tg.setBottomBarColor('secondary_bg_color'); } catch (_) { }
-
-      /* Also update HTML meta for WebView */
+      /* Meta tag for WebView */
       var meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute('content', bg);
+
+      /* Force header color with hex — works on Bot API >= 6.9 */
+      try { tg.setHeaderColor(bg); } catch (_) { }
+      try { tg.setBackgroundColor(bg); } catch (_) { }
     })();
   </script>
 
