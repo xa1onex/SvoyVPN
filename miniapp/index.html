@@ -18,10 +18,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v14.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v14.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v15.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v15.css" />
 
-  <script defer src="/miniapp/need/app_v14.js"></script>
+  <script defer src="/miniapp/need/app_v15.js"></script>
 </head>
 
 <body>
@@ -41,8 +41,24 @@
           <div class="ring" style="--ring-opacity:.25;"></div>
           <div class="ring" style="--ring-opacity:.35;"></div>
           <div class="logo-core">
-            <svg viewBox="0 0 24 24">
-              <use href="#vpn.tab-bar"></use>
+            <svg viewBox="0 0 100 100" fill="none" style="width:24px;height:24px;">
+              <defs>
+                <rect id="svoyPill" x="12" y="34" width="76" height="32" rx="16" fill="none" />
+                <clipPath id="svoyClip">
+                  <polygon points="0,0 100,0 50,50" />
+                  <polygon points="0,100 100,100 50,50" />
+                </clipPath>
+              </defs>
+              <use href="#svoyPill" transform="rotate(45 50 50)" stroke="var(--accent_text_color, #3aa8fc)"
+                stroke-width="14" />
+              <use href="#svoyPill" transform="rotate(45 50 50)" stroke="#fff" stroke-width="8" />
+              <use href="#svoyPill" transform="rotate(-45 50 50)" stroke="var(--accent_text_color, #3aa8fc)"
+                stroke-width="14" />
+              <use href="#svoyPill" transform="rotate(-45 50 50)" stroke="#fff" stroke-width="8" />
+              <use href="#svoyPill" transform="rotate(45 50 50)" stroke="var(--accent_text_color, #3aa8fc)"
+                stroke-width="14" clip-path="url(#svoyClip)" />
+              <use href="#svoyPill" transform="rotate(45 50 50)" stroke="#fff" stroke-width="8"
+                clip-path="url(#svoyClip)" />
             </svg>
           </div>
         </div>
@@ -240,8 +256,17 @@
     <!-- ═══ TAB BAR ═══ -->
     <nav id="tabBar" class="tab-bar">
       <button class="tab active" data-screen="screenVpn">
-        <svg class="tab-icon" viewBox="0 0 24 24">
-          <use href="#vpn.tab-bar"></use>
+        <svg class="tab-icon" viewBox="0 0 100 100" fill="none">
+          <use href="#svoyPill" transform="rotate(45 50 50)" stroke="var(--section_bg_color, #f7f9fb)"
+            stroke-width="14" />
+          <use href="#svoyPill" transform="rotate(45 50 50)" stroke="currentColor" stroke-width="8" />
+          <use href="#svoyPill" transform="rotate(-45 50 50)" stroke="var(--section_bg_color, #f7f9fb)"
+            stroke-width="14" />
+          <use href="#svoyPill" transform="rotate(-45 50 50)" stroke="currentColor" stroke-width="8" />
+          <use href="#svoyPill" transform="rotate(45 50 50)" stroke="var(--section_bg_color, #f7f9fb)" stroke-width="14"
+            clip-path="url(#svoyClip)" />
+          <use href="#svoyPill" transform="rotate(45 50 50)" stroke="currentColor" stroke-width="8"
+            clip-path="url(#svoyClip)" />
         </svg>
         <span class="tab-label">VPN</span>
       </button>

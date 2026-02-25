@@ -1,0 +1,22 @@
+<html><body style="background: white; padding: 50px;">
+<div style="background: #3aa8fc; width: 100px; height: 100px; border-radius: 50%; padding: 20px;">
+<svg viewBox="0 0 100 100" fill="none">
+  <defs>
+    <rect id="pill" x="18" y="32" width="64" height="36" rx="18" fill="none" />
+    <clipPath id="over-clip">
+      <polygon points="0,0 100,0 50,50" />
+      <polygon points="0,100 100,100 50,50" />
+    </clipPath>
+  </defs>
+  
+  <use href="#pill" transform="rotate(45 50 50)" stroke="#3aa8fc" stroke-width="16" />
+  <use href="#pill" transform="rotate(45 50 50)" stroke="#fff" stroke-width="10" />
+  
+  <use href="#pill" transform="rotate(-45 50 50)" stroke="#3aa8fc" stroke-width="16" />
+  <use href="#pill" transform="rotate(-45 50 50)" stroke="#fff" stroke-width="10" />
+  
+  <use href="#pill" transform="rotate(45 50 50)" stroke="#3aa8fc" stroke-width="16" clip-path="url(#over-clip)" />
+  <use href="#pill" transform="rotate(45 50 50)" stroke="#fff" stroke-width="10" clip-path="url(#over-clip)" />
+</svg>
+</div>
+</body></html>
