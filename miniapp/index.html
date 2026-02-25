@@ -18,10 +18,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v22.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v22.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v24.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v24.css" />
 
-  <script defer src="/miniapp/need/app_v22.js"></script>
+  <script defer src="/miniapp/need/app_v24.js"></script>
 </head>
 
 <body>
@@ -127,7 +127,12 @@
 
         <div class="copy-field">
           <input id="subUrlSetup" type="text" placeholder="Ссылка появится после покупки" readonly />
-          <button id="btnCopySetup" class="btn-copy">Копировать</button>
+          <button id="btnCopySetup" class="btn-copy" aria-label="Скопировать" style="padding: 10px 14px;">
+            <svg style="width:20px;height:20px;fill:currentColor;" viewBox="0 0 24 24">
+              <path
+                d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+            </svg>
+          </button>
         </div>
 
         <div class="steps">
@@ -135,7 +140,7 @@
             <div class="step-num">1</div>
             <div class="step-text">
               <p class="step-title">Скопируйте ссылку</p>
-              <p class="step-desc">Нажмите «Копировать» выше</p>
+              <p class="step-desc">Нажмите на иконку копирования выше</p>
             </div>
           </div>
           <div class="step">
@@ -170,7 +175,12 @@
         <p class="section-title">Ссылка подписки</p>
         <div class="copy-field">
           <input id="subUrlProfile" type="text" placeholder="—" readonly />
-          <button id="btnCopyProfile" class="btn-copy">Копировать</button>
+          <button id="btnCopyProfile" class="btn-copy" aria-label="Скопировать" style="padding: 10px 14px;">
+            <svg style="width:20px;height:20px;fill:currentColor;" viewBox="0 0 24 24">
+              <path
+                d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+            </svg>
+          </button>
         </div>
 
         <div class="link-list">
