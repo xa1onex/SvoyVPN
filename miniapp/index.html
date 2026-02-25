@@ -18,10 +18,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v36.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v36.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v37.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v37.css" />
 
-  <script defer src="/miniapp/need/app_v36.js"></script>
+  <script defer src="/miniapp/need/app_v37.js"></script>
 </head>
 
 <body>
@@ -300,20 +300,28 @@
     <!-- ═══ TAB BAR ═══ -->
     <nav id="tabBar" class="tab-bar">
       <button class="tab active" data-screen="screenVpn">
-        <svg class="tab-icon" viewBox="0 0 1024 1024" fill="currentColor" style="transform: scale(1.35);">
-          <use href="#svoy-logo-path" />
+        <svg class="tab-icon tab-icon-vpn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-1" />
+          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-2" />
         </svg>
         <span class="tab-label">VPN</span>
       </button>
       <button class="tab" data-screen="screenSetup">
-        <svg class="tab-icon" viewBox="0 0 24 24">
-          <use href="#gear"></use>
+        <svg class="tab-icon tab-icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path class="gear-teeth"
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
         <span class="tab-label">Настройка</span>
       </button>
       <button class="tab" data-screen="screenProfile">
-        <svg class="tab-icon" viewBox="0 0 24 24">
-          <use href="#profile"></use>
+        <svg class="tab-icon tab-icon-profile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="4" class="profile-head" />
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" class="profile-body" />
         </svg>
         <span class="tab-label">Профиль</span>
       </button>
