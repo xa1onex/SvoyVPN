@@ -14,16 +14,24 @@
   <link rel="shortcut icon" href="/miniapp/need/favicon.ico" />
   <link rel="apple-touch-icon" sizes="180x180" href="/miniapp/need/apple-touch-icon.png" />
 
+  <meta name="theme-color" content="#18222d" />
+
   <script src="/miniapp/need/libs/telegram-web-app.js"></script>
   <script>
     /* Early theme sync — runs before DOMContentLoaded */
     (function () {
       var tg = window.Telegram && window.Telegram.WebApp;
-      if (!tg) return;
-      var scheme = tg.colorScheme || 'light';
+      var scheme = (tg && tg.colorScheme) || 'dark';
       /* Exact colors from design system: dark = #18222d, light = #ffffff */
       var bg = scheme === 'dark' ? '#18222d' : '#ffffff';
       var secBg = scheme === 'dark' ? '#21303f' : '#f7f9fb';
+
+      /* HTML meta theme-color — controls header in many WebView contexts */
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', bg);
+
+      if (!tg) return;
+      /* Telegram WebApp API methods */
       try { tg.setHeaderColor && tg.setHeaderColor(bg); } catch (_) { }
       try { tg.setBackgroundColor && tg.setBackgroundColor(bg); } catch (_) { }
       try { tg.setBottomBarColor && tg.setBottomBarColor(secBg); } catch (_) { }
