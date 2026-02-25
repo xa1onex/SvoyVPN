@@ -540,6 +540,42 @@
     document.getElementById('btnChoosePlan').addEventListener('click', () => showScreen('screenPlan'));
     document.getElementById('btnBack').addEventListener('click', () => showScreen('screenVpn'));
 
+    // Referral
+    const btnReferral = document.getElementById('btnReferral');
+    if (btnReferral) {
+      btnReferral.addEventListener('click', () => {
+        showScreen('screenReferral');
+        loadReferral();
+      });
+    }
+    const btnReferralBack = document.getElementById('btnReferralBack');
+    if (btnReferralBack) {
+      btnReferralBack.addEventListener('click', () => showScreen('screenProfile'));
+    }
+
+    let refLink = '';
+    async function loadReferral() {
+      if (!tg || !tg.initData) return;
+      const d = await api('/miniapp/api/referral?initData=' + encodeURIComponent(tg.initData));
+      if (d && d.referralCode) {
+        refLink = d.refLink;
+        document.getElementById('refLinkText').textContent = d.refLink;
+        document.getElementById('refCount').textContent = d.referralCount + ' чел.';
+        document.getElementById('refBonus').textContent = d.inviterBonusDays + ' дн. за друга';
+        document.getElementById('refDesc').textContent =
+          `Дарим ${d.inviterBonusDays} дней Вам и ${d.invitedBonusDays} дня другу за каждое успешное приглашение.`;
+      }
+    }
+
+    document.getElementById('btnCopyRef').addEventListener('click', function () {
+      copyText(refLink, this);
+    });
+    document.getElementById('btnShareRef').addEventListener('click', function () {
+      if (!refLink) return;
+      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent('Попробуй этот отличный VPN! Дают бонусные дни при регистрации по ссылке 🎁')}`;
+      tg && tg.openTelegramLink ? tg.openTelegramLink(shareUrl) : window.open(shareUrl, '_blank');
+    });
+
     // Copy buttons
     document.getElementById('btnCopySetup').addEventListener('click', function () {
       copyText(document.getElementById('subUrlSetup').value, this);

@@ -793,6 +793,70 @@ body {
   height: 20px;
 }
 
+/* ── Referral Screen Elements ── */
+.referral-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  margin: 20px 0 10px;
+}
+
+.referral-hero__outer {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(58, 168, 252, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.referral-hero__inner {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--accent_text_color, #3aa8fc);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(58, 168, 252, 0.4);
+}
+
+.referral-hero__inner svg {
+  width: 36px;
+  height: 36px;
+  fill: #fff;
+}
+
+.referral-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-share {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: var(--section_bg_color, #f7f9fb);
+  color: var(--accent_text_color, #3aa8fc);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s, transform .1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-share:active {
+  opacity: .85;
+  transform: scale(.98);
+}
+
 /* ── Dark theme overrides ── */
 [data-theme="dark"] .tab-bar {
   border-top-color: rgba(255, 255, 255, .06);
