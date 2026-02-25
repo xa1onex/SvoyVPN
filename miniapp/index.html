@@ -18,16 +18,16 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v16.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v16.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v17.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v17.css" />
 
-  <script defer src="/miniapp/need/app_v16.js"></script>
+  <script defer src="/miniapp/need/app_v17.js"></script>
 </head>
 
 <body>
 
-  <!-- SVG sprite host — заполняется через JS из sprite.svg -->
-  <div id="spriteHost" aria-hidden="true" style="display:none;">
+  <!-- SVG Definitions: Protected from script overwrite -->
+  <div id="logoHost" aria-hidden="true" style="display:none;">
     <svg>
       <defs>
         <g id="svoy-logo-path" transform="translate(0,1024) scale(0.1,-0.1)">
@@ -37,6 +37,9 @@
       </defs>
     </svg>
   </div>
+
+  <!-- SVG sprite host — заполняется через JS из sprite.svg -->
+  <div id="spriteHost" aria-hidden="true" style="display:none;"></div>
 
   <div class="app">
 
@@ -50,7 +53,7 @@
           <div class="ring" style="--ring-opacity:.25;"></div>
           <div class="ring" style="--ring-opacity:.35;"></div>
           <div class="logo-core">
-            <svg viewBox="0 0 1024 1024" fill="currentColor" style="width:24px;height:24px;">
+            <svg viewBox="0 0 1024 1024" fill="currentColor" style="width:48px;height:48px;">
               <use href="#svoy-logo-path" />
             </svg>
           </div>
