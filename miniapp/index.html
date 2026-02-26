@@ -118,36 +118,6 @@
       </div>
     </div>
 
-    <!-- ═══ MODAL: PLAN ═══ -->
-    <div id="modalPlan" class="modal">
-      <div class="modal-backdrop" onclick="hideModal('modalPlan')"></div>
-      <div class="modal-content" style="display:flex;flex-direction:column;">
-
-        <button class="modal-close" onclick="hideModal('modalPlan')" aria-label="Закрыть">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-        <p class="title-s" style="margin-top: 8px;">Выберите тариф</p>
-        <div class="gap-12"></div>
-        <div id="tariffsWrap" class="tariff-grid"></div>
-
-        <p class="section-title">Способ оплаты</p>
-        <div id="pmWrap" class="pm-list"></div>
-
-        <div class="pay-row">
-          <div>
-            <p class="total-label">Итого</p>
-            <p id="totalPrice" class="total-price">—</p>
-          </div>
-          <button id="btnPay" class="btn-primary" disabled>Оплатить</button>
-        </div>
-
-      </div>
-    </div>
-
     <!-- ═══ SCREEN: SETUP ═══ -->
     <div id="screenSetup" class="screen">
       <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
@@ -275,6 +245,68 @@
       </div>
     </div>
 
+    <!-- ═══ TAB BAR ═══ -->
+    <nav id="tabBar" class="tab-bar">
+      <button class="tab active" data-screen="screenVpn">
+        <svg class="tab-icon tab-icon-vpn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-1" />
+          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-2" />
+        </svg>
+        <span class="tab-label">VPN</span>
+      </button>
+      <button class="tab" data-screen="screenSetup">
+        <svg class="tab-icon tab-icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path class="gear-teeth"
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        <span class="tab-label">Настройка</span>
+      </button>
+      <button class="tab" data-screen="screenProfile">
+        <svg class="tab-icon tab-icon-profile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="4" class="profile-head" />
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" class="profile-body" />
+        </svg>
+        <span class="tab-label">Профиль</span>
+      </button>
+    </nav>
+
+  </div>
+
+    <!-- ═══ MODAL: PLAN ═══ -->
+    <div id="modalPlan" class="modal">
+      <div class="modal-backdrop" onclick="hideModal('modalPlan')"></div>
+      <div class="modal-content" style="display:flex;flex-direction:column;">
+
+        <button class="modal-close" onclick="hideModal('modalPlan')" aria-label="Закрыть">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+        <p class="title-s" style="margin-top: 8px;">Выберите тариф</p>
+        <div class="gap-12"></div>
+        <div id="tariffsWrap" class="tariff-grid"></div>
+
+        <p class="section-title">Способ оплаты</p>
+        <div id="pmWrap" class="pm-list"></div>
+
+        <div class="pay-row">
+          <div>
+            <p class="total-label">Итого</p>
+            <p id="totalPrice" class="total-price">—</p>
+          </div>
+          <button id="btnPay" class="btn-primary" disabled>Оплатить</button>
+        </div>
+
+      </div>
+    </div>
+
     <!-- ═══ MODAL: REFERRAL ═══ -->
     <div id="modalReferral" class="modal">
       <div class="modal-backdrop" onclick="hideModal('modalReferral')"></div>
@@ -332,37 +364,6 @@
       </div>
     </div>
 
-    <!-- ═══ TAB BAR ═══ -->
-    <nav id="tabBar" class="tab-bar">
-      <button class="tab active" data-screen="screenVpn">
-        <svg class="tab-icon tab-icon-vpn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
-          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-1" />
-          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-2" />
-        </svg>
-        <span class="tab-label">VPN</span>
-      </button>
-      <button class="tab" data-screen="screenSetup">
-        <svg class="tab-icon tab-icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3" />
-          <path class="gear-teeth"
-            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
-        <span class="tab-label">Настройка</span>
-      </button>
-      <button class="tab" data-screen="screenProfile">
-        <svg class="tab-icon tab-icon-profile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="8" r="4" class="profile-head" />
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" class="profile-body" />
-        </svg>
-        <span class="tab-label">Профиль</span>
-      </button>
-    </nav>
-
-  </div>
 
   <!-- Toast -->
   <div id="toast" class="toast"></div>

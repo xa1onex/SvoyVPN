@@ -1095,3 +1095,15 @@ body {
 [data-theme="dark"] .toast {
   background: rgba(33, 48, 63, .95);
 }
+
+/* ── Blur effect for modals ── */
+.app {
+  transition: filter 0.3s cubic-bezier(0.25, 1, 0.5, 1), transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+  will-change: filter, transform;
+}
+
+body.has-modal .app {
+  filter: blur(8px);
+  transform: scale(0.96);
+  pointer-events: none;
+}
