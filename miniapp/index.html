@@ -38,10 +38,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v47.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v47.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v48.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v48.css" />
 
-  <script defer src="/miniapp/need/app_v47.js"></script>
+  <script defer src="/miniapp/need/app_v48.js"></script>
 </head>
 
 <body>
@@ -277,92 +277,92 @@
 
   </div>
 
-    <!-- ═══ MODAL: PLAN ═══ -->
-    <div id="modalPlan" class="modal">
-      <div class="modal-backdrop" onclick="hideModal('modalPlan')"></div>
-      <div class="modal-content" style="display:flex;flex-direction:column;">
+  <!-- ═══ MODAL: PLAN ═══ -->
+  <div id="modalPlan" class="modal">
+    <div class="modal-backdrop" onclick="hideModal('modalPlan')"></div>
+    <div class="modal-content" style="display:flex;flex-direction:column;">
 
-        <button class="modal-close" onclick="hideModal('modalPlan')" aria-label="Закрыть">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-        <p class="title-s" style="margin-top: 8px;">Выберите тариф</p>
-        <div class="gap-12"></div>
-        <div id="tariffsWrap" class="tariff-grid"></div>
+      <button class="modal-close" onclick="hideModal('modalPlan')" aria-label="Закрыть">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      <p class="title-s" style="margin-top: 8px;">Выберите тариф</p>
+      <div class="gap-12"></div>
+      <div id="tariffsWrap" class="tariff-grid"></div>
 
-        <p class="section-title">Способ оплаты</p>
-        <div id="pmWrap" class="pm-list"></div>
+      <p class="section-title">Способ оплаты</p>
+      <div id="pmWrap" class="pm-list"></div>
 
-        <div class="pay-row">
+      <div class="pay-row">
+        <div>
+          <p class="total-label">Итого</p>
+          <p id="totalPrice" class="total-price">—</p>
+        </div>
+        <button id="btnPay" class="btn-primary" disabled>Оплатить</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ MODAL: REFERRAL ═══ -->
+  <div id="modalReferral" class="modal">
+    <div class="modal-backdrop" onclick="hideModal('modalReferral')"></div>
+    <div class="modal-content" style="display:flex;flex-direction:column;align-items:center;">
+
+      <button class="modal-close" onclick="hideModal('modalReferral')" aria-label="Закрыть"
+        style="align-self: flex-end; position: absolute; top: 12px; right: 12px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+
+      <!-- Hero icon -->
+      <div class="referral-hero" style="margin-top: 0;">
+        <div class="referral-hero__outer">
+          <div class="referral-hero__inner">
+            <svg width="40" height="40" viewBox="0 0 73 73">
+              <use href="#referral"></use>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="gap-16"></div>
+      <p class="title-s text-center">Приглашайте друзей —<br>получайте бонусные дни</p>
+      <div class="gap-8"></div>
+      <p id="refDesc" class="body text-muted text-center" style="padding:0 8px;">Загрузка…</p>
+
+      <div class="gap-16"></div>
+
+      <!-- Ref link + stats block -->
+      <div class="card referral-card" style="width:100%;">
+        <p class="caption text-muted" style="margin-bottom:4px;">Ваша реферальная ссылка</p>
+        <p id="refLinkText" class="body" style="word-break:break-all;margin-bottom:8px;">—</p>
+        <div style="display:flex;gap:16px;">
           <div>
-            <p class="total-label">Итого</p>
-            <p id="totalPrice" class="total-price">—</p>
+            <p class="caption text-muted">Приглашено</p>
+            <p id="refCount" class="subtitle">—</p>
           </div>
-          <button id="btnPay" class="btn-primary" disabled>Оплатить</button>
+          <div>
+            <p class="caption text-muted">Бонусных дней</p>
+            <p id="refBonus" class="subtitle">—</p>
+          </div>
         </div>
-
       </div>
+
+      <div class="gap-16"></div>
+
+      <button id="btnCopyRef" class="btn-primary">Скопировать ссылку</button>
+      <div class="gap-8"></div>
+      <button id="btnShareRef" class="btn-share">Поделиться</button>
+
     </div>
-
-    <!-- ═══ MODAL: REFERRAL ═══ -->
-    <div id="modalReferral" class="modal">
-      <div class="modal-backdrop" onclick="hideModal('modalReferral')"></div>
-      <div class="modal-content" style="display:flex;flex-direction:column;align-items:center;">
-
-        <button class="modal-close" onclick="hideModal('modalReferral')" aria-label="Закрыть"
-          style="align-self: flex-end; position: absolute; top: 12px; right: 12px;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-
-        <!-- Hero icon -->
-        <div class="referral-hero" style="margin-top: 0;">
-          <div class="referral-hero__outer">
-            <div class="referral-hero__inner">
-              <svg width="40" height="40" viewBox="0 0 73 73">
-                <use href="#referral"></use>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div class="gap-16"></div>
-        <p class="title-s text-center">Приглашайте друзей —<br>получайте бонусные дни</p>
-        <div class="gap-8"></div>
-        <p id="refDesc" class="body text-muted text-center" style="padding:0 8px;">Загрузка…</p>
-
-        <div class="gap-16"></div>
-
-        <!-- Ref link + stats block -->
-        <div class="card referral-card" style="width:100%;">
-          <p class="caption text-muted" style="margin-bottom:4px;">Ваша реферальная ссылка</p>
-          <p id="refLinkText" class="body" style="word-break:break-all;margin-bottom:8px;">—</p>
-          <div style="display:flex;gap:16px;">
-            <div>
-              <p class="caption text-muted">Приглашено</p>
-              <p id="refCount" class="subtitle">—</p>
-            </div>
-            <div>
-              <p class="caption text-muted">Бонусных дней</p>
-              <p id="refBonus" class="subtitle">—</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="gap-16"></div>
-
-        <button id="btnCopyRef" class="btn-primary">Скопировать ссылку</button>
-        <div class="gap-8"></div>
-        <button id="btnShareRef" class="btn-share">Поделиться</button>
-
-      </div>
-    </div>
+  </div>
 
 
   <!-- Toast -->
