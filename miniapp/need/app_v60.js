@@ -551,7 +551,7 @@
 
     if (Array.isArray(tariffs) && tariffs.length) {
       S.tariffs = tariffs;
-      S.selectedTariff = tariffs[0];
+      S.selectedTariff = tariffs.reduce((prev, curr) => (curr.price > prev.price ? curr : prev));
       renderTariffs();
       updateTotal();
     }
