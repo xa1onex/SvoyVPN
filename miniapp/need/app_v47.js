@@ -122,7 +122,6 @@
     const modal = document.getElementById(id);
     if (modal) {
       modal.classList.add('active');
-      document.body.classList.add('has-modal');
       haptic('light');
     }
   };
@@ -131,7 +130,6 @@
     const modal = document.getElementById(id);
     if (modal) {
       modal.classList.remove('active');
-      document.body.classList.remove('has-modal');
       haptic('light');
     }
   };
