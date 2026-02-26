@@ -644,13 +644,13 @@ body {
   right: -32px;
   background: var(--accent_text_color, #3aa8fc);
   color: #fff;
-  padding: 4px 0;
+  padding: 5px 0 3px;
   width: 120px;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   transform: rotate(45deg);
-  line-height: normal;
+  line-height: 1.2;
   text-align: center;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   display: flex;
