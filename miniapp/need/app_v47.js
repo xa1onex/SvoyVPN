@@ -188,23 +188,51 @@
     const w = document.getElementById('tariffsWrap');
     if (!w) return;
     w.innerHTML = '';
+
+    const allHaveDiscount = S.tariffs.length > 0 && S.tariffs.every(t => t.oldPrice || t.isRenew);
+    let mostExpensiveId = null;
+    if (S.tariffs.length > 0) {
+      mostExpensiveId = S.tariffs.reduce((prev, curr) => (curr.price > prev.price ? curr : prev)).id;
+    }
+
+    const titleEl = document.querySelector('#modalPlan .title-s');
+    if (titleEl) {
+      if (allHaveDiscount) {
+        titleEl.innerHTML = 'Выберите тариф <span style="display:inline-block; font-size:11px; font-weight:700; color:#fff; background:var(--accent_text_color, #3aa8fc); padding:3px 10px; border-radius:12px; margin-left:8px; vertical-align:middle; text-transform:uppercase;">Скидки на все 🎉</span>';
+      } else {
+        titleEl.textContent = 'Выберите тариф';
+      }
+    }
+
     S.tariffs.forEach((t) => {
       const sel = S.selectedTariff && S.selectedTariff.id === t.id;
       const el = document.createElement('div');
       el.className = 'tariff-card' + (sel ? ' selected' : '');
 
       let badgeHtml = '';
-      if (t.isRenew) {
-        badgeHtml = '<span class="badge" style="background:var(--accent_text_color);color:#fff;">Скидка</span>';
+      const hasDiscount = t.oldPrice || t.isRenew;
+      if (hasDiscount) {
+        badgeHtml = '<div class="card-ribbon">Sale</div>';
+      } else if (t.id === mostExpensiveId) {
+        badgeHtml = '<div class="card-ribbon">Popular</div>';
       } else if (t.popular) {
-        badgeHtml = '<span class="badge">Хит</span>';
+        badgeHtml = '<div class="card-ribbon">Хит</div>';
+      }
+
+      let benefitHtml = '';
+      if (t.oldPrice && t.oldPrice > t.price) {
+        const benefitPct = Math.round((1 - t.price / t.oldPrice) * 100);
+        benefitHtml = `<p style="font-size:12px; font-weight:600; color:var(--accent_text_color, #3aa8fc); margin:2px 0;">Выгода ${benefitPct}%</p>`;
       }
 
       el.innerHTML = badgeHtml +
         `<p class="months">${t.months} ${mw(t.months)}</p>` +
-        `<p class="price">${fmtPrice(t.price)} ₽</p>` +
-        (t.oldPrice ? `<p class="old-price">${fmtPrice(t.oldPrice)} ₽</p>` : '') +
+        benefitHtml +
+        `<p class="price" style="margin-top:6px;">${fmtPrice(t.price)} ₽ ` +
+        (t.oldPrice ? `<span class="old-price">${fmtPrice(t.oldPrice)} ₽</span>` : '') +
+        `</p>` +
         `<p class="per-month">${fmtPrice(t.pricePerMonth)} ₽/мес</p>`;
+
       el.addEventListener('click', () => {
         S.selectedTariff = t;
         renderTariffs();

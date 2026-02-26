@@ -630,11 +630,28 @@ body {
   transition: outline .2s, box-shadow .2s;
   outline: 2px solid transparent;
   -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
 }
 
 .tariff-card.selected {
   outline-color: var(--accent_text_color, #3aa8fc);
   box-shadow: 0 0 16px rgba(58, 168, 252, .2);
+}
+
+.card-ribbon {
+  position: absolute;
+  top: 12px;
+  right: -28px;
+  background: var(--accent_text_color, #3aa8fc);
+  color: #fff;
+  padding: 4px 30px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  transform: rotate(45deg);
+  line-height: 1;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .tariff-card .badge {
