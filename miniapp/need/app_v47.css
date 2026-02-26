@@ -717,6 +717,165 @@ body {
 .pm-item .pm-icon {
   font-size: 22px;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.icon-card,
+.icon-star {
+  display: block;
+  width: 24px;
+  height: 24px;
+  overflow: visible;
+}
+
+.icon-card .card-outline {
+  stroke: currentColor;
+  stroke-width: 2;
+  transition: stroke 0.3s ease;
+}
+
+.icon-card .card-line {
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: stroke 0.3s ease;
+}
+
+.pm-item.selected .icon-card .card-outline,
+.pm-item.selected .icon-card .card-line {
+  stroke: var(--accent_text_color, #3aa8fc);
+}
+
+.pm-item.selected .icon-card {
+  animation: card-flip 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@keyframes card-flip {
+  0% {
+    transform: scale(1) rotateY(0deg);
+  }
+
+  50% {
+    transform: scale(1.1) rotateY(180deg);
+  }
+
+  100% {
+    transform: scale(1) rotateY(360deg);
+  }
+}
+
+.icon-star .star-shape {
+  fill: currentColor;
+  transition: fill 0.3s ease;
+}
+
+.icon-star .sparkle {
+  fill: var(--accent_text_color, #3aa8fc);
+  opacity: 0;
+  transform-origin: center;
+}
+
+.pm-item.selected .icon-star .star-shape {
+  fill: var(--accent_text_color, #3aa8fc);
+  animation: star-bounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes star-bounce {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.25);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.pm-item.selected .icon-star .sp-1 {
+  animation: sparkle-1 0.6s ease-out;
+}
+
+.pm-item.selected .icon-star .sp-2 {
+  animation: sparkle-2 0.6s ease-out;
+}
+
+.pm-item.selected .icon-star .sp-3 {
+  animation: sparkle-3 0.6s ease-out;
+}
+
+.pm-item.selected .icon-star .sp-4 {
+  animation: sparkle-4 0.6s ease-out;
+}
+
+.pm-item.selected .icon-star .sp-5 {
+  animation: sparkle-5 0.6s ease-out;
+}
+
+@keyframes sparkle-1 {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-8px, -12px) scale(0);
+  }
+}
+
+@keyframes sparkle-2 {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(8px, -12px) scale(0);
+  }
+}
+
+@keyframes sparkle-3 {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-14px, 2px) scale(0);
+  }
+}
+
+@keyframes sparkle-4 {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(14px, 2px) scale(0);
+  }
+}
+
+@keyframes sparkle-5 {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(0px, -16px) scale(0);
+  }
 }
 
 .pm-item .pm-name {

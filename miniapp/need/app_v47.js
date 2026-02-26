@@ -252,8 +252,17 @@
       const sel = S.selectedPM && S.selectedPM.id === m.id;
       const el = document.createElement('div');
       el.className = 'pm-item' + (sel ? ' selected' : '');
+
+      let svgIcon = m.icon || '💳';
+      const n = m.name.toLowerCase();
+      if (n.includes('юкасса') || n.includes('yookassa') || n.includes('card')) {
+        svgIcon = `<svg viewBox="0 0 24 24" class="icon-card"><rect x="2" y="5" width="20" height="14" rx="2" ry="2" fill="none" class="card-outline"></rect><line x1="2" y1="10" x2="22" y2="10" class="card-line"></line></svg>`;
+      } else if (n.includes('star')) {
+        svgIcon = `<svg viewBox="0 0 24 24" class="icon-star"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" class="star-shape"/><circle class="sparkle sp-1" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-2" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-3" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-4" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-5" cx="12" cy="12" r="1.5"/></svg>`;
+      }
+
       el.innerHTML =
-        `<span class="pm-icon">${m.icon || '💳'}</span>` +
+        `<span class="pm-icon flex-center">${svgIcon}</span>` +
         `<span class="pm-name">${m.name}</span>`;
       el.addEventListener('click', () => {
         S.selectedPM = m;
