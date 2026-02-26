@@ -162,8 +162,19 @@
     showToast('Скопировано ✓');
     if (btnEl) {
       const orig = btnEl.innerHTML;
+      const w = btnEl.offsetWidth;
+      const h = btnEl.offsetHeight;
+      btnEl.style.width = w + 'px';
+      btnEl.style.height = h + 'px';
+      btnEl.style.display = 'flex';
+      btnEl.style.alignItems = 'center';
+      btnEl.style.justifyContent = 'center';
       btnEl.innerHTML = '✓';
-      setTimeout(() => { btnEl.innerHTML = orig; }, 1500);
+      setTimeout(() => {
+        btnEl.innerHTML = orig;
+        btnEl.style.width = '';
+        btnEl.style.height = '';
+      }, 1500);
     }
   }
 
