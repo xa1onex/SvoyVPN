@@ -556,6 +556,12 @@
       updateTotal();
     }
     if (Array.isArray(pm) && pm.length) {
+      // Sort so 'yookassa' is first
+      pm.sort((a, b) => {
+        if (a.id === 'yookassa') return -1;
+        if (b.id === 'yookassa') return 1;
+        return 0;
+      });
       S.paymentMethods = pm;
       S.selectedPM = pm[0];
       renderPM();
