@@ -920,17 +920,178 @@ body {
   }
 }
 
-#btnReferral .link-icon svg {
-  animation: profileIconPulse 3s ease-in-out infinite;
+/* Referral Animations */
+@keyframes refUserWobble {
+
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  25% {
+    transform: translateY(-2px) rotate(-3deg);
+  }
+
+  75% {
+    transform: translateY(1px) rotate(3deg);
+  }
 }
 
-#btnChannel .link-icon svg {
-  animation: profileIconFloat 2.5s ease-in-out infinite;
+.ref-user-left,
+.ref-user-right {
+  transform-origin: center bottom;
+  animation: refUserWobble 2.5s ease-in-out infinite;
 }
 
-#btnSupport .link-icon svg {
-  animation: profileIconWobble 2.5s ease-in-out infinite;
+.ref-user-right {
+  animation-delay: 0.4s;
 }
+
+/* Channel Animations */
+@keyframes planeGlide {
+
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+
+  25% {
+    transform: translate(1px, -1px) rotate(2deg);
+  }
+
+  75% {
+    transform: translate(-1px, 1px) rotate(-2deg);
+  }
+}
+
+@keyframes starFly1 {
+  0% {
+    transform: translate(10px, -10px) scale(0);
+    opacity: 0;
+  }
+
+  10% {
+    transform: translate(5px, -5px) scale(0.8);
+    opacity: 1;
+  }
+
+  90% {
+    transform: translate(-5px, 5px) scale(1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(-10px, 10px) scale(0);
+    opacity: 0;
+  }
+}
+
+@keyframes starFly2 {
+  0% {
+    transform: translate(14px, -14px) scale(0);
+    opacity: 0;
+  }
+
+  10% {
+    transform: translate(7px, -7px) scale(0.6);
+    opacity: 0.8;
+  }
+
+  90% {
+    transform: translate(-7px, 7px) scale(0.8);
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: translate(-14px, 14px) scale(0);
+    opacity: 0;
+  }
+}
+
+.channel-plane {
+  animation: planeGlide 3s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.channel-stars circle:nth-child(odd) {
+  animation: starFly1 2s linear infinite;
+}
+
+.channel-stars circle:nth-child(even) {
+  animation: starFly2 2.5s linear infinite;
+  animation-delay: 0.5s;
+}
+
+/* Support Animations */
+@keyframes headsetVibrate {
+
+  0%,
+  80% {
+    transform: rotate(0deg);
+  }
+
+  82%,
+  86%,
+  90%,
+  94%,
+  98% {
+    transform: rotate(-5deg);
+  }
+
+  84%,
+  88%,
+  92%,
+  96%,
+  100% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes wavePulse {
+
+  0%,
+  80% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+
+  82% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+
+  92% {
+    opacity: 0;
+    transform: scale(1.2);
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.support-icon-wrap .headset-icon {
+  transform-origin: center;
+  animation: headsetVibrate 3s ease-in-out infinite;
+}
+
+.support-wave {
+  transform-origin: center;
+  opacity: 0;
+}
+
+.support-wave.wave-1,
+.support-wave.wave-1-r {
+  animation: wavePulse 3s ease-out infinite;
+  animation-delay: 0.1s;
+}
+
+.support-wave.wave-2,
+.support-wave.wave-2-r {
+  animation: wavePulse 3s ease-out infinite;
+  animation-delay: 0.3s;
+}
+
 
 .link-card:active .link-icon {
   transform: scale(0.9);
