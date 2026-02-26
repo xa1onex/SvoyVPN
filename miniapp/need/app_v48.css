@@ -640,18 +640,22 @@ body {
 
 .card-ribbon {
   position: absolute;
-  top: 12px;
-  right: -28px;
+  top: 10px;
+  right: -32px;
   background: var(--accent_text_color, #3aa8fc);
   color: #fff;
-  padding: 4px 30px;
+  padding: 4px 0;
+  width: 120px;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   transform: rotate(45deg);
-  line-height: 1;
+  line-height: normal;
   text-align: center;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .tariff-card .badge {

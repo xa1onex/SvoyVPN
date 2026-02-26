@@ -191,16 +191,23 @@
 
     const allHaveDiscount = S.tariffs.length > 0 && S.tariffs.every(t => t.oldPrice || t.isRenew);
     let mostExpensiveId = null;
+    let maxPct = 0;
     if (S.tariffs.length > 0) {
       mostExpensiveId = S.tariffs.reduce((prev, curr) => (curr.price > prev.price ? curr : prev)).id;
+      S.tariffs.forEach(t => {
+        if (t.oldPrice && t.oldPrice > t.price) {
+          const pct = Math.round((1 - t.price / t.oldPrice) * 100);
+          if (pct > maxPct) maxPct = pct;
+        }
+      });
     }
 
-    const titleEl = document.querySelector('#modalPlan .title-s');
+    const titleEl = document.querySelector('#planModalHeader');
     if (titleEl) {
-      if (allHaveDiscount) {
-        titleEl.innerHTML = 'Выберите тариф <span style="display:inline-block; font-size:11px; font-weight:700; color:#fff; background:var(--accent_text_color, #3aa8fc); padding:3px 10px; border-radius:12px; margin-left:8px; vertical-align:middle; text-transform:uppercase;">Скидки на все 🎉</span>';
+      if (allHaveDiscount && maxPct > 0) {
+        titleEl.innerHTML = `<p class="title-s" style="margin:0;">Выберите тариф</p><span style="display:inline-block; font-size:11px; font-weight:700; color:#fff; background:var(--accent_text_color, #3aa8fc); padding:3px 10px; border-radius:12px; text-transform:uppercase; width: fit-content;">Скидки на все до -${maxPct}%</span>`;
       } else {
-        titleEl.textContent = 'Выберите тариф';
+        titleEl.innerHTML = `<p class="title-s" style="margin:0;">Выберите тариф</p>`;
       }
     }
 
@@ -212,22 +219,19 @@
       let badgeHtml = '';
       const hasDiscount = t.oldPrice || t.isRenew;
       if (hasDiscount) {
-        badgeHtml = '<div class="card-ribbon">Sale</div>';
+        let pct = 0;
+        if (t.oldPrice && t.oldPrice > t.price) {
+          pct = Math.round((1 - t.price / t.oldPrice) * 100);
+        }
+        badgeHtml = `<div class="card-ribbon">${pct > 0 ? 'SALE -' + pct + '%' : 'SALE'}</div>`;
       } else if (t.id === mostExpensiveId) {
-        badgeHtml = '<div class="card-ribbon">Popular</div>';
+        badgeHtml = '<div class="card-ribbon" style="padding:4px 34px;">Popular</div>';
       } else if (t.popular) {
         badgeHtml = '<div class="card-ribbon">Хит</div>';
       }
 
-      let benefitHtml = '';
-      if (t.oldPrice && t.oldPrice > t.price) {
-        const benefitPct = Math.round((1 - t.price / t.oldPrice) * 100);
-        benefitHtml = `<p style="font-size:12px; font-weight:600; color:var(--accent_text_color, #3aa8fc); margin:2px 0;">Выгода ${benefitPct}%</p>`;
-      }
-
       el.innerHTML = badgeHtml +
         `<p class="months">${t.months} ${mw(t.months)}</p>` +
-        benefitHtml +
         `<p class="price" style="margin-top:6px;">${fmtPrice(t.price)} ₽ ` +
         (t.oldPrice ? `<span class="old-price">${fmtPrice(t.oldPrice)} ₽</span>` : '') +
         `</p>` +
@@ -255,10 +259,10 @@
 
       let svgIcon = m.icon || '💳';
       const n = m.name.toLowerCase();
-      if (n.includes('юкасса') || n.includes('yookassa') || n.includes('card')) {
+      if (n.includes('star')) {
+        svgIcon = `<svg viewBox="0 0 24 24" class="icon-star"><path d="M12 2.3l2.4 7.4 7.6.6-5.8 4.7 1.8 7.3-6-4.3-6 4.3 1.8-7.3-5.8-4.7 7.6-.6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" class="star-shape"/><circle class="sparkle sp-1" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-2" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-3" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-4" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-5" cx="12" cy="12" r="1.5"/></svg>`;
+      } else if (n.includes('юкасса') || n.includes('yoo') || n.includes('карт') || n.includes('card')) {
         svgIcon = `<svg viewBox="0 0 24 24" class="icon-card"><rect x="2" y="5" width="20" height="14" rx="2" ry="2" fill="none" class="card-outline"></rect><line x1="2" y1="10" x2="22" y2="10" class="card-line"></line></svg>`;
-      } else if (n.includes('star')) {
-        svgIcon = `<svg viewBox="0 0 24 24" class="icon-star"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" class="star-shape"/><circle class="sparkle sp-1" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-2" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-3" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-4" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-5" cx="12" cy="12" r="1.5"/></svg>`;
       }
 
       el.innerHTML =
