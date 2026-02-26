@@ -161,9 +161,9 @@
     haptic('light');
     showToast('Скопировано ✓');
     if (btnEl) {
-      const orig = btnEl.textContent;
-      btnEl.textContent = '✓';
-      setTimeout(() => { btnEl.textContent = orig; }, 1500);
+      const orig = btnEl.innerHTML;
+      btnEl.innerHTML = '✓';
+      setTimeout(() => { btnEl.innerHTML = orig; }, 1500);
     }
   }
 
