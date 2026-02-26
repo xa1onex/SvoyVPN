@@ -961,14 +961,19 @@ body {
 
 .copy-field .btn-copy {
     flex-shrink: 0;
-    padding: 10px 16px;
+    padding: 0;
+    width: 36px;
+    height: 36px;
+    margin: 0 6px;
     background: none;
     border: none;
     color: var(--accent_text_color, #3aa8fc);
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     -webkit-tap-highlight-color: transparent;
     transition: opacity .15s;
 }
