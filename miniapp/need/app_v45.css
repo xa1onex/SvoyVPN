@@ -870,7 +870,6 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .link-card .link-icon svg {
@@ -881,9 +880,6 @@ body {
 
 
 
-.link-card:active .link-icon {
-  transform: scale(0.9);
-}
 
 .link-card .link-name {
   font-size: 16px;
@@ -991,7 +987,6 @@ body {
   width: 36px;
   height: 36px;
   fill: #fff;
-  animation: profileIconPulse 3s ease-in-out infinite;
 }
 
 .referral-card {
