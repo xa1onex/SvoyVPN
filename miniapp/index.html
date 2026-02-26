@@ -118,12 +118,19 @@
       </div>
     </div>
 
-    <!-- ═══ SCREEN: PLAN ═══ -->
-    <div id="screenPlan" class="screen">
-      <div class="screen-content" style="display:flex;flex-direction:column;">
+    <!-- ═══ MODAL: PLAN ═══ -->
+    <div id="modalPlan" class="modal">
+      <div class="modal-backdrop" onclick="hideModal('modalPlan')"></div>
+      <div class="modal-content" style="display:flex;flex-direction:column;">
 
-        <button id="btnBack" class="btn-back">← Назад</button>
-        <p class="title-s">Выберите тариф</p>
+        <button class="modal-close" onclick="hideModal('modalPlan')" aria-label="Закрыть">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+        <p class="title-s" style="margin-top: 8px;">Выберите тариф</p>
         <div class="gap-12"></div>
         <div id="tariffsWrap" class="tariff-grid"></div>
 
@@ -268,14 +275,22 @@
       </div>
     </div>
 
-    <!-- ═══ SCREEN: REFERRAL ═══ -->
-    <div id="screenReferral" class="screen">
-      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
+    <!-- ═══ MODAL: REFERRAL ═══ -->
+    <div id="modalReferral" class="modal">
+      <div class="modal-backdrop" onclick="hideModal('modalReferral')"></div>
+      <div class="modal-content" style="display:flex;flex-direction:column;align-items:center;">
 
-        <button id="btnReferralBack" class="btn-back">← Назад</button>
+        <button class="modal-close" onclick="hideModal('modalReferral')" aria-label="Закрыть"
+          style="align-self: flex-end; position: absolute; top: 12px; right: 12px;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
 
         <!-- Hero icon -->
-        <div class="referral-hero">
+        <div class="referral-hero" style="margin-top: 0;">
           <div class="referral-hero__outer">
             <div class="referral-hero__inner">
               <svg width="40" height="40" viewBox="0 0 73 73">

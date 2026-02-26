@@ -110,23 +110,29 @@
     const screen = document.getElementById(id);
     if (screen) screen.classList.add('active');
 
-    // Tab highlight — plan screen maps to VPN tab
-    const tabId = id === 'screenPlan' ? 'screenVpn' : id;
-    const tab = document.querySelector(`.tab[data-screen="${tabId}"]`);
+    // Tab highlight
+    const tab = document.querySelector(`.tab[data-screen="${id}"]`);
     if (tab) tab.classList.add('active');
-
-    // Hide tab bar on sub-screens (plan, referral)
-    const bar = document.getElementById('tabBar');
-    if (bar) {
-      if (id === 'screenPlan' || id === 'screenReferral') {
-        bar.style.display = 'none';
-      } else {
-        bar.style.display = '';
-      }
-    }
 
     haptic('light');
   }
+
+  /* ═══════ Modals ═══════ */
+  window.showModal = function (id) {
+    const modal = document.getElementById(id);
+    if (modal) {
+      modal.classList.add('active');
+      haptic('light');
+    }
+  };
+
+  window.hideModal = function (id) {
+    const modal = document.getElementById(id);
+    if (modal) {
+      modal.classList.remove('active');
+      haptic('light');
+    }
+  };
 
   /* ═══════ Toast ═══════ */
   let toastTimer;
@@ -599,21 +605,16 @@
       });
     });
 
-    // Choose plan → plan screen
-    document.getElementById('btnChoosePlan').addEventListener('click', () => showScreen('screenPlan'));
-    document.getElementById('btnBack').addEventListener('click', () => showScreen('screenVpn'));
+    // Choose plan → plan modal
+    document.getElementById('btnChoosePlan').addEventListener('click', () => window.showModal('modalPlan'));
 
     // Referral
     const btnReferral = document.getElementById('btnReferral');
     if (btnReferral) {
       btnReferral.addEventListener('click', () => {
-        showScreen('screenReferral');
+        window.showModal('modalReferral');
         loadReferral();
       });
-    }
-    const btnReferralBack = document.getElementById('btnReferralBack');
-    if (btnReferralBack) {
-      btnReferralBack.addEventListener('click', () => showScreen('screenProfile'));
     }
 
     let refLink = '';
