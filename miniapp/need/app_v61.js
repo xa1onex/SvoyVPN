@@ -189,14 +189,24 @@
     if (!w) return;
     w.innerHTML = '';
 
+    const isStars = S.selectedPM && S.selectedPM.id === 'stars';
+    const starIcon = `<svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em;fill:var(--accent_text_color, #3aa8fc)"><path d="M12 2.3l2.4 7.4 7.6.6-5.8 4.7 1.8 7.3-6-4.3-6 4.3 1.8-7.3-5.8-4.7 7.6-.6z" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linejoin="round"/></svg>`;
+    const currency = isStars ? starIcon : '₽';
+
     const allHaveDiscount = S.tariffs.length > 0 && S.tariffs.every(t => t.oldPrice || t.isRenew);
     let mostExpensiveId = null;
     let maxPct = 0;
     if (S.tariffs.length > 0) {
-      mostExpensiveId = S.tariffs.reduce((prev, curr) => (curr.price > prev.price ? curr : prev)).id;
+      mostExpensiveId = S.tariffs.reduce((prev, curr) => {
+        const p1 = isStars && curr.priceStars ? curr.priceStars : curr.price;
+        const p2 = isStars && prev.priceStars ? prev.priceStars : prev.price;
+        return p1 > p2 ? curr : prev;
+      }).id;
       S.tariffs.forEach(t => {
-        if (t.oldPrice && t.oldPrice > t.price) {
-          const pct = Math.round((1 - t.price / t.oldPrice) * 100);
+        let price = isStars && t.priceStars ? t.priceStars : t.price;
+        let oldPrice = isStars && t.oldPriceStars ? t.oldPriceStars : t.oldPrice;
+        if (oldPrice && oldPrice > price) {
+          const pct = Math.round((1 - price / oldPrice) * 100);
           if (pct > maxPct) maxPct = pct;
         }
       });
@@ -216,12 +226,16 @@
       const el = document.createElement('div');
       el.className = 'tariff-card' + (sel ? ' selected' : '');
 
+      let price = isStars && t.priceStars ? t.priceStars : t.price;
+      let oldPrice = isStars && t.oldPriceStars ? t.oldPriceStars : t.oldPrice;
+      let pricePerMonth = isStars && t.pricePerMonthStars ? t.pricePerMonthStars : t.pricePerMonth;
+
       let badgeHtml = '';
       const hasDiscount = t.oldPrice || t.isRenew;
       if (hasDiscount) {
         let pct = 0;
-        if (t.oldPrice && t.oldPrice > t.price) {
-          pct = Math.round((1 - t.price / t.oldPrice) * 100);
+        if (oldPrice && oldPrice > price) {
+          pct = Math.round((1 - price / oldPrice) * 100);
         }
         badgeHtml = `<div class="card-ribbon">${pct > 0 ? 'SALE -' + pct + '%' : 'SALE'}</div>`;
       } else if (t.id === mostExpensiveId) {
@@ -232,10 +246,10 @@
 
       el.innerHTML = badgeHtml +
         `<p class="months">${t.months} ${mw(t.months)}</p>` +
-        `<p class="price" style="margin-top:6px;">${fmtPrice(t.price)} ₽ ` +
-        (t.oldPrice ? `<span class="old-price">${fmtPrice(t.oldPrice)} ₽</span>` : '') +
+        `<p class="price" style="margin-top:6px;">${fmtPrice(price)} ${currency} ` +
+        (oldPrice ? `<span class="old-price">${fmtPrice(oldPrice)} ${currency}</span>` : '') +
         `</p>` +
-        `<p class="per-month">${fmtPrice(t.pricePerMonth)} ₽/мес</p>`;
+        `<p class="per-month">${fmtPrice(pricePerMonth)} ${currency}/мес</p>`;
 
       el.addEventListener('click', () => {
         S.selectedTariff = t;
@@ -271,6 +285,7 @@
       el.addEventListener('click', () => {
         S.selectedPM = m;
         renderPM();
+        renderTariffs();
         updateTotal();
         haptic('light');
       });
@@ -456,7 +471,12 @@
     const el = document.getElementById('totalPrice');
     const btn = document.getElementById('btnPay');
     if (S.selectedTariff) {
-      el.textContent = fmtPrice(S.selectedTariff.price) + ' ₽';
+      const isStars = S.selectedPM && S.selectedPM.id === 'stars';
+      const starIcon = `<svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em;fill:var(--accent_text_color, #3aa8fc)"><path d="M12 2.3l2.4 7.4 7.6.6-5.8 4.7 1.8 7.3-6-4.3-6 4.3 1.8-7.3-5.8-4.7 7.6-.6z" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linejoin="round"/></svg>`;
+      const currency = isStars ? starIcon : '₽';
+      const price = isStars && S.selectedTariff.priceStars ? S.selectedTariff.priceStars : S.selectedTariff.price;
+
+      el.innerHTML = fmtPrice(price) + ' ' + currency;
       btn.disabled = !S.selectedPM;
     } else {
       el.textContent = '—';

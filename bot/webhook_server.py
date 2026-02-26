@@ -639,17 +639,24 @@ class WebhookServer:
             for plan_id, plan_data in subscription_plans.items():
                 months = plan_data.get('duration', 1)
                 price_rub = plan_data.get('price_rub', 0) / 100.0  # Конвертируем из копеек
+                price_stars = plan_data.get('price_stars', 0)
                 
                 # Вычисляем старую цену (для скидки)
                 base_price_per_month = price_rub / months
                 old_price = None
+                
+                base_price_stars_per_month = price_stars / months
+                old_price_stars = None
+                
                 if months > 1:
                     # Старая цена = цена за 1 месяц * количество месяцев
                     old_price = base_price_per_month * months * 1.2  # Примерная старая цена
+                    old_price_stars = int(base_price_stars_per_month * months * 1.2)
                 
                 # На 1 месяц renewal тоже даем метку "скидка"
                 if is_renew and not old_price:
                     old_price = getattr(self, '_base_1m_price', 199.0) # hardcode normal price fallback
+                    old_price_stars = 199
 
                 tariffs.append({
                     "id": plan_id,
@@ -657,6 +664,9 @@ class WebhookServer:
                     "price": price_rub,
                     "oldPrice": old_price,
                     "pricePerMonth": price_rub / months,
+                    "priceStars": price_stars,
+                    "oldPriceStars": old_price_stars,
+                    "pricePerMonthStars": round(price_stars / months),
                     "popular": months == 12,  # Годовой тариф помечаем как популярный
                     "isRenew": is_renew
                 })
