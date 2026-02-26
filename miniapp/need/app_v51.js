@@ -205,7 +205,7 @@
     const titleEl = document.querySelector('#planModalHeader');
     if (titleEl) {
       if (allHaveDiscount && maxPct > 0) {
-        titleEl.innerHTML = `<p class="title-s" style="margin:0;">Выберите тариф</p><span style="display:inline-block; font-size:11px; font-weight:700; color:#fff; background:var(--accent_text_color, #3aa8fc); padding:3px 10px; border-radius:12px; text-transform:uppercase; width: fit-content;">Скидки на все до -${maxPct}%</span>`;
+        titleEl.innerHTML = `<p class="title-s" style="margin:0; flex-shrink:0;">Выберите тариф</p><span style="display:inline-flex; align-items:center; justify-content:center; font-size:9.5px; font-weight:700; color:#fff; background:var(--accent_text_color, #3aa8fc); padding:1px 8px; border-radius:12px; text-transform:uppercase; white-space:nowrap;">Скидки до -${maxPct}%</span>`;
       } else {
         titleEl.innerHTML = `<p class="title-s" style="margin:0;">Выберите тариф</p>`;
       }

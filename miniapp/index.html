@@ -38,10 +38,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v50.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v50.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v51.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v51.css" />
 
-  <script defer src="/miniapp/need/app_v50.js"></script>
+  <script defer src="/miniapp/need/app_v51.js"></script>
 </head>
 
 <body>
@@ -280,10 +280,10 @@
   <!-- ═══ MODAL: PLAN ═══ -->
   <div id="modalPlan" class="modal">
     <div class="modal-backdrop" onclick="hideModal('modalPlan')"></div>
-    <div class="modal-content" style="display:flex;flex-direction:column;">
+    <div class="modal-content" style="display:flex;flex-direction:column; padding-top: 14px;">
 
-      <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom: 2px;">
-        <div id="planModalHeader" style="display:flex; flex-direction:column; gap:4px; margin-top: 4px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
+        <div id="planModalHeader" style="display:flex; flex-direction:row; align-items:center; gap:8px;">
           <p class="title-s" style="margin:0;">Выберите тариф</p>
         </div>
         <button onclick="hideModal('modalPlan')" aria-label="Закрыть"
