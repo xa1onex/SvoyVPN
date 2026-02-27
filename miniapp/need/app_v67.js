@@ -859,23 +859,32 @@
         if (!linkCopied) {
           btnNext.textContent = 'Скопировать ссылку';
           btnNext.disabled = false;
+          if (obActionRow) obActionRow.classList.remove('split');
         } else {
           btnNext.textContent = 'Далее →';
           btnNext.disabled = false;
+          if (obActionRow) obActionRow.classList.add('split');
+          if (obBtnCopied) {
+            obBtnCopied.textContent = '✓ Скопировано';
+            obBtnCopied.className = 'ob-btn-copied';
+          }
         }
-      } else if (isLast) {
-        btnNext.textContent = 'Готово ✓';
-        btnNext.disabled = false;
       } else {
-        btnNext.textContent = 'Далее →';
+        // On other slides, obBtnCopied acts as Back
+        btnNext.textContent = isLast ? 'Готово ✓' : 'Далее →';
+        if (obActionRow) obActionRow.classList.add('split');
+        if (obBtnCopied) {
+          obBtnCopied.textContent = '← Назад';
+          obBtnCopied.className = 'ob-btn-copied is-back';
+        }
         switch (currentSlide) {
           case 1: btnNext.disabled = !selectedDevice; break;
           default: btnNext.disabled = false;
         }
       }
 
-      // Back button
-      btnBack.style.display = currentSlide > 0 ? 'block' : 'none';
+      // Hide the legacy back button
+      if (btnBack) btnBack.style.display = 'none';
     }
 
     /* ── Slide 3 content (app list or PC steps) ── */
@@ -966,11 +975,25 @@
     function doSlideCopy() {
       const url = document.getElementById('subUrlSetup').value;
       copyText(url, null);
-      linkCopied = true;
-      // Trigger split: green button slides in from the left
-      if (obActionRow) obActionRow.classList.add('split');
-      // Update main button label
-      updateButtons();
+      if (!linkCopied) {
+        linkCopied = true;
+        if (obActionRow) obActionRow.classList.add('split');
+        updateButtons();
+      } else {
+        haptic('light'); // manual tactile feedback on repeat copy
+      }
+    }
+
+    if (obBtnCopied) {
+      obBtnCopied.addEventListener('click', () => {
+        if (currentSlide === 0) {
+          // Re-copy
+          doSlideCopy();
+        } else {
+          // Act as back button
+          goToSlide(currentSlide - 1, 'back');
+        }
+      });
     }
 
     /* ── Slide 2: Device picker ── */

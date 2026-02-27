@@ -1451,7 +1451,6 @@ body {
     overflow: hidden;
 }
 
-/* "✓ Скопировано" — hidden until .split is added */
 .ob-btn-copied {
     flex: 0 0 0;
     min-width: 0;
@@ -1470,13 +1469,21 @@ body {
     transition:
         flex 0.38s cubic-bezier(0.4, 0, 0.2, 1),
         opacity 0.28s ease,
-        padding 0.38s cubic-bezier(0.4, 0, 0.2, 1);
+        padding 0.38s cubic-bezier(0.4, 0, 0.2, 1),
+        background-color 0.3s ease,
+        color 0.3s ease;
 }
 
 .ob-action-row.split .ob-btn-copied {
     flex: 1 1 0;
     opacity: 1;
     padding: 14px 6px;
+}
+
+.ob-btn-copied.is-back {
+    background: rgba(120, 120, 128, 0.16);
+    color: var(--text_color, inherit);
+    cursor: pointer;
 }
 
 .ob-btn-next {
