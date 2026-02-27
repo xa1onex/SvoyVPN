@@ -1304,7 +1304,7 @@ body {
 
 /* ── Setup screen layout override ── */
 #screenSetup .screen-content {
-    padding: 0 !important;
+    padding: 24px 0 0 !important;
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
