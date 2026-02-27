@@ -95,6 +95,9 @@ class WebhookServer:
         self.app.router.add_get('/miniapp/api/servers', self.api_get_servers)
         self.app.router.add_get('/miniapp/api/ping', self.api_ping_server)
         self.app.router.add_get('/miniapp/api/referral', self.api_get_referral)
+        self.app.router.add_post('/miniapp/api/trial/activate', self.api_activate_trial)
+        self.app.router.add_post('/api/trial/activate', self.api_activate_trial)
+        
         
         # Static files catch-all
         self.app.router.add_get('/miniapp/{path:.*}', self.serve_miniapp_static)
@@ -526,7 +529,7 @@ class WebhookServer:
             # Получаем данные пользователя из БД
             async with get_connection() as conn:
                 user = await conn.fetchrow(
-                    "SELECT user_id, pay_subscribed, subscription_end, subscription_token FROM users WHERE user_id = $1",
+                    "SELECT user_id, pay_subscribed, subscription_end, subscription_token, trial_used FROM users WHERE user_id = $1",
                     user_id
                 )
                 
@@ -575,13 +578,20 @@ class WebhookServer:
                     except Exception as ex:
                         logger.warning(f"Could not fetch profile photo for user {user_id}: {ex}", exc_info=True)
 
+                # Trial logic
+                trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
+                trial_days = trial_settings['days'] if trial_settings and trial_settings['days'] else 0
+                trial_available = (user['trial_used'] is False) and (trial_days > 0)
+
                 return web.json_response({
                     "user": {
                         "id": user_id,
                         "firstName": user_data.get('first_name', ''),
                         "lastName": user_data.get('last_name', ''),
                         "username": user_data.get('username', ''),
-                        "photoUrl": photo_url_fetched
+                        "photoUrl": photo_url_fetched,
+                        "trialAvailable": trial_available,
+                        "trialDays": trial_days
                     },
                     "subscription": {
                         "isActive": is_active,
@@ -593,6 +603,60 @@ class WebhookServer:
         except Exception as e:
             logger.error(f"Error in api_get_user: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
+
+    async def api_activate_trial(self, request: web_request.Request) -> web.Response:
+        """API: Активировать пробный период"""
+        try:
+            data = await request.json()
+            init_data = data.get('initData', '')
+            
+            if not init_data:
+                return web.json_response({"error": "initData required"}, status=400)
+            
+            if not self.bot:
+                return web.json_response({"error": "Bot not initialized"}, status=500)
+            
+            bot_token = self.bot.token
+            if not self.verify_telegram_webapp_data(init_data, bot_token):
+                return web.json_response({"error": "Invalid initData"}, status=403)
+            
+            parsed_data = self.parse_telegram_init_data(init_data)
+            user_str = parsed_data.get('user', '{}')
+            user_data = json.loads(user_str) if user_str else {}
+            user_id = int(user_data.get('id', 0))
+            
+            if not user_id:
+                return web.json_response({"error": "User ID not found"}, status=400)
+                
+            async with get_connection() as conn:
+                user_trial_used = await conn.fetchval("SELECT trial_used FROM users WHERE user_id = $1", user_id)
+                if user_trial_used:
+                    return web.json_response({"error": "Trial already used"}, status=400)
+                
+                trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
+                trial_days = trial_settings['days'] if trial_settings else 0
+                
+                if trial_days <= 0:
+                    return web.json_response({"error": "Trial not available"}, status=400)
+                
+                await conn.execute('''
+                    UPDATE users SET 
+                        trial_used = TRUE,
+                        pay_subscribed = TRUE,
+                        subscription_end = CASE 
+                            WHEN subscription_end IS NULL OR subscription_end < CURRENT_DATE 
+                            THEN CURRENT_DATE + ($1 || ' days')::INTERVAL
+                            ELSE subscription_end + ($1 || ' days')::INTERVAL
+                        END
+                    WHERE user_id = $2
+                ''', str(trial_days), user_id)
+            
+            return web.json_response({"status": "ok", "days": trial_days})
+            
+        except Exception as e:
+            logger.error(f"Error in api_activate_trial: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+            
     
     async def api_get_tariffs(self, request: web_request.Request) -> web.Response:
         """API: Получить список тарифов (обычные или со скидкой для продления)"""

@@ -38,10 +38,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v76.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v76.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v77.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v77.css" />
 
-  <script defer src="/miniapp/need/app_v76.js"></script>
+  <script defer src="/miniapp/need/app_v77.js"></script>
 </head>
 
 <body>
@@ -84,20 +84,10 @@
         <p class="body text-muted text-center" style="margin-top:4px;">Быстрый и надёжный, потому что Свой</p>
         <p id="vpnStatus" style="display:none;"></p>
 
-        <!-- Status card -->
-        <div class="card status-card" style="margin-top:16px;">
-          <div class="status-row">
-            <span class="subtitle">Подписка</span>
-            <span id="subBadge" class="caption text-danger">Неактивна</span>
-          </div>
-          <div class="status-row">
-            <span class="body text-muted">Действует до</span>
-            <span id="subUntil" class="body">—</span>
-          </div>
+        <!-- Dynamic Subscription Block -->
+        <div id="subBlockBox" style="width:100%; margin-top:16px;">
+          <!-- Loaded by JS -->
         </div>
-
-        <div class="gap-12"></div>
-        <button id="btnChoosePlan" class="btn-primary">Выбрать тариф</button>
 
         <!-- Servers -->
         <div
