@@ -241,6 +241,23 @@ async def get_main_keyboard(user_id: int, config):
             )
         )
     
+    # Проверка на Пробный период
+    show_trial = False
+    try:
+        from ..database import get_connection
+        async with get_connection() as conn:
+            user_trial_used = await conn.fetchval("SELECT trial_used FROM users WHERE user_id = $1", user_id)
+            if user_trial_used is False:
+                trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
+                if trial_settings and trial_settings['days'] and trial_settings['days'] > 0:
+                    show_trial = True
+    except Exception as e:
+        logger.error(f"Error checking trial logic: {e}")
+        
+    if show_trial:
+        builder.row(InlineKeyboardButton(text="🆓 Пробный период", callback_data="activate_trial"))
+
+    
     builder.row(
         InlineKeyboardButton(text="💳 Подписка", callback_data="open_premium"),
         InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite")

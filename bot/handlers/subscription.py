@@ -650,3 +650,38 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             else:
                 raise
         await callback.answer()
+
+    @dp.callback_query(F.data == "activate_trial")
+    async def handle_activate_trial(callback: CallbackQuery, state: FSMContext):
+        """Активация пробного периода пользователем"""
+        user_id = callback.from_user.id
+        
+        async with get_connection() as conn:
+            user_trial_used = await conn.fetchval("SELECT trial_used FROM users WHERE user_id = $1", user_id)
+            if user_trial_used:
+                await callback.answer("❌ Вы уже использовали пробный период!", show_alert=True)
+                return
+            
+            trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
+            trial_days = trial_settings['days'] if trial_settings else 0
+            
+            if trial_days <= 0:
+                await callback.answer("❌ Пробный период сейчас недоступен.", show_alert=True)
+                return
+            
+            # Обновляем пользователя
+            await conn.execute('''
+                UPDATE users SET 
+                    trial_used = TRUE,
+                    pay_subscribed = TRUE,
+                    subscription_end = CASE 
+                        WHEN subscription_end IS NULL OR subscription_end < CURRENT_DATE 
+                        THEN CURRENT_DATE + ($1 || ' days')::INTERVAL
+                        ELSE subscription_end + ($1 || ' days')::INTERVAL
+                    END
+                WHERE user_id = $2
+            ''', str(trial_days), user_id)
+            
+        await callback.answer(f"✅ Пробный период на {trial_days} дней успешно активирован!", show_alert=True)
+        # Перерисовываем главное меню
+        await handle_go_back_subscription(callback, state)
