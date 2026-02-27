@@ -941,7 +941,7 @@
           });
           // Build icon: img tag with fallback to letter avatar
           const iconHtml = '<div class="ob-app-icon ob-app-icon--img">' +
-            '<img src="' + app.iconImg + '" alt="' + app.name + '" ' +
+            '<img src="' + app.iconImg + '?v=70" alt="' + app.name + '" ' +
             'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" />' +
             '<span class="ob-app-icon-fallback" style="display:none;">' + app.name.charAt(0) + '</span>' +
             '</div>';
