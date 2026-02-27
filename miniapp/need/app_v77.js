@@ -753,7 +753,8 @@
     });
 
     // Choose plan → plan modal
-    document.getElementById('btnChoosePlan').addEventListener('click', () => window.showModal('modalPlan'));
+    const btnPlan = document.getElementById('btnChoosePlan');
+    if (btnPlan) btnPlan.addEventListener('click', () => window.showModal('modalPlan'));
 
     // Referral
     const btnReferral = document.getElementById('btnReferral');
