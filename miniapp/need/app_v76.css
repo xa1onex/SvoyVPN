@@ -478,6 +478,10 @@ body {
     padding: 20px;
 }
 
+.server-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+}
+
 .server-card__header {
     display: flex;
     align-items: center;
