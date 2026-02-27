@@ -939,48 +939,60 @@ body {
     display: flex;
     align-items: center;
     width: 100%;
-    background: var(--section_bg_color, var(--tg-theme-section-bg-color, #f7f9fb));
-    border-radius: 12px;
-    overflow: hidden;
+    background: rgba(58, 168, 252, 0.08);
+    border-radius: 16px;
+    padding: 6px 6px 6px 16px;
+    box-sizing: border-box;
+    border: 1px dashed rgba(58, 168, 252, 0.3);
 }
 
 .copy-field input {
     flex: 1;
-    padding: 12px 0 12px 14px;
+    padding: 8px 0;
     background: none;
     border: none;
-    color: var(--text_color, #1a2632);
-    font-size: 13px;
+    color: var(--accent_text_color, #3aa8fc);
+    font-size: 14px;
+    font-weight: 500;
     font-family: inherit;
     outline: none;
     min-width: 0;
+    text-overflow: ellipsis;
 }
 
 .copy-field input::placeholder {
-    color: var(--subtitle_text_color, #8e8e93);
+    color: var(--accent_text_color, #3aa8fc);
+    opacity: 0.6;
+    font-weight: 400;
 }
 
 .copy-field .btn-copy {
     flex-shrink: 0;
-    padding: 0;
-    width: 36px;
-    height: 36px;
-    margin: 0 6px;
-    background: none;
+    width: 44px;
+    height: 44px;
+    margin-left: 8px;
+    border-radius: 12px;
+    background: var(--accent_text_color, #3aa8fc);
+    color: #fff;
     border: none;
-    color: var(--accent_text_color, #3aa8fc);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
     -webkit-tap-highlight-color: transparent;
-    transition: opacity .15s;
+}
+
+.copy-field .btn-copy svg {
+    width: 20px !important;
+    height: 20px !important;
+    fill: currentColor;
+    display: block;
 }
 
 .copy-field .btn-copy:active {
-    opacity: .7;
+    opacity: .85;
+    transform: scale(.95);
 }
 
 /* ── Steps ── */
@@ -1297,6 +1309,11 @@ body {
 
 [data-theme="dark"] .toast {
     background: rgba(33, 48, 63, .95);
+}
+
+[data-theme="dark"] .copy-field {
+    background: rgba(58, 168, 252, 0.12);
+    border-color: rgba(58, 168, 252, 0.4);
 }
 
 /* ═══════════════════════════════════════════════
