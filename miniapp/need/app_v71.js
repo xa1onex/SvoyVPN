@@ -796,19 +796,26 @@
         },
       ],
       windows: null,
-      mac: null,
+      mac: [
+        {
+          name: 'V2RayTun',
+          store: 'App Store',
+          iconImg: '/miniapp/images/v2raytun.png',
+          url: 'https://apps.apple.com/kz/app/v2raytun/id6476628951',
+        },
+        {
+          name: 'Hiddify',
+          store: 'App Store',
+          iconImg: '/miniapp/images/hiddify.png',
+          url: 'https://apps.apple.com/kz/app/hiddify-proxy-vpn/id6596777532',
+        },
+      ],
     };
 
     const PC_STEPS = {
       windows: [
         'Скачайте <strong>Hiddify</strong> с <a href="https://github.com/hiddify/hiddify-app/releases" target="_blank" style="color:var(--accent_text_color,#3aa8fc)">GitHub</a> или <strong>Nekoray</strong> с официального сайта.',
         'Установите приложение и запустите его.',
-        'Нажмите «+» или «Добавить подписку» → вставьте скопированную ссылку.',
-        'Нажмите «Обновить» — серверы появятся автоматически.',
-      ],
-      mac: [
-        'Скачайте <strong>Hiddify</strong> с <a href="https://github.com/hiddify/hiddify-app/releases" target="_blank" style="color:var(--accent_text_color,#3aa8fc)">GitHub</a>.',
-        'Перетащите Hiddify в папку Программы и запустите.',
         'Нажмите «+» или «Добавить подписку» → вставьте скопированную ссылку.',
         'Нажмите «Обновить» — серверы появятся автоматически.',
       ],
@@ -892,7 +899,7 @@
       if (!obAppContent || !selectedDevice) return;
       obAppContent.innerHTML = '';
 
-      const isPC = selectedDevice === 'windows' || selectedDevice === 'mac';
+      const isPC = selectedDevice === 'windows';
       const platformLabel = { ios: 'iPhone', android: 'Android', windows: 'Windows', mac: 'Mac' }[selectedDevice];
 
       // Title + desc
