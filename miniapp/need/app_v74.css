@@ -1406,10 +1406,10 @@ body {
 
 .ob-desc {
     font-size: 14px;
-    line-height: 1.45;
+    line-height: 1.4;
     text-align: center;
     color: var(--subtitle_text_color, #8e8e93);
-    margin-bottom: 20px;
+    margin-bottom: 12px;
     flex-shrink: 0;
 }
 
@@ -1628,7 +1628,7 @@ body {
 .ob-app-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
     flex-shrink: 0;
 }
@@ -1637,7 +1637,7 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 12px 14px;
+    padding: 10px 14px;
     border-radius: 14px;
     background: var(--section_bg_color, #f7f9fb);
     cursor: pointer;
@@ -1651,8 +1651,8 @@ body {
 }
 
 .ob-app-icon {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
     border-radius: 12px;
     background: var(--accent_text_color, #3aa8fc);
     display: flex;
@@ -1681,14 +1681,14 @@ body {
 }
 
 .ob-app-name {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text_color, #1a2632);
     line-height: 1.2;
 }
 
 .ob-app-store {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--subtitle_text_color, #8e8e93);
     margin-top: 2px;
 }
