@@ -895,19 +895,6 @@
       const isPC = selectedDevice === 'windows' || selectedDevice === 'mac';
       const platformLabel = { ios: 'iPhone', android: 'Android', windows: 'Windows', mac: 'Mac' }[selectedDevice];
 
-      // Icon
-      const iconWrap = document.createElement('div');
-      iconWrap.className = 'ob-icon-wrap';
-      const iconCircle = document.createElement('div');
-      iconCircle.className = 'ob-icon-circle';
-      if (isPC) {
-        iconCircle.innerHTML = '<svg viewBox="0 0 24 24" style="fill:var(--accent_text_color,#3aa8fc);width:40px;height:40px;"><path d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>';
-      } else {
-        iconCircle.innerHTML = '<svg viewBox="0 0 24 24" style="fill:var(--accent_text_color,#3aa8fc);width:40px;height:40px;"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>';
-      }
-      iconWrap.appendChild(iconCircle);
-      obAppContent.appendChild(iconWrap);
-
       // Title + desc
       const title = document.createElement('p');
       title.className = 'ob-title';

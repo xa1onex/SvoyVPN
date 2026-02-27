@@ -120,10 +120,27 @@
 
     <!-- ═══ SCREEN: SETUP ═══ -->
     <div id="screenSetup" class="screen">
-      <div class="screen-content">
+      <div class="screen-content"
+        style="display:flex;flex-direction:column;align-items:center;padding-top:10px!important;">
+
+        <!-- Animated logo (Setup / Gear) -->
+        <div class="logo-anim ob-logo-anim" style="transform: scale(0.7); margin-top: -16px; margin-bottom: -16px;">
+          <div class="ring" style="--ring-opacity:.15;"></div>
+          <div class="ring" style="--ring-opacity:.25;"></div>
+          <div class="ring" style="--ring-opacity:.35;"></div>
+          <div class="logo-core"
+            style="background:var(--section_bg_color, #f7f9fb); color:var(--accent_text_color, #3aa8fc);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" style="width:44px;height:44px;">
+              <circle cx="12" cy="12" r="3" />
+              <path class="gear-teeth"
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </div>
+        </div>
 
         <!-- ── Onboarding Carousel ── -->
-        <div class="ob-carousel" id="obCarousel">
+        <div class="ob-carousel" id="obCarousel" style="width:100%;">
 
           <!-- Progress dots -->
           <div class="ob-dots" id="obDots">
@@ -139,15 +156,7 @@
             <!-- ── SLIDE 1: Copy link ── -->
             <div class="ob-slide" id="obSlide0">
               <div class="ob-slide-inner">
-                <div class="ob-icon-wrap">
-                  <div class="ob-icon-circle">
-                    <svg viewBox="0 0 24 24">
-                      <path
-                        d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
-                    </svg>
-                  </div>
-                </div>
-                <p class="ob-title">Помочь с настройкой VPN?</p>
+                <p class="ob-title" style="margin-top:20px;">Помочь с настройкой VPN?</p>
                 <p class="ob-desc">Для начала скопируйте вашу ссылку конфигурации — она понадобится в следующем шаге.
                 </p>
                 <div class="ob-copy-wrap">
@@ -168,15 +177,7 @@
             <!-- ── SLIDE 2: Choose device ── -->
             <div class="ob-slide" id="obSlide1">
               <div class="ob-slide-inner">
-                <div class="ob-icon-wrap">
-                  <div class="ob-icon-circle">
-                    <svg viewBox="0 0 24 24">
-                      <path
-                        d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z" />
-                    </svg>
-                  </div>
-                </div>
-                <p class="ob-title">Выберите устройство</p>
+                <p class="ob-title" style="margin-top:20px;">Выберите устройство</p>
                 <p class="ob-desc">Укажите тип вашего устройства — мы подберём подходящее приложение.</p>
                 <div class="ob-device-grid">
                   <!-- iPhone -->
@@ -237,12 +238,7 @@
             <!-- ── SLIDE 4: Add subscription ── -->
             <div class="ob-slide" id="obSlide3">
               <div class="ob-slide-inner">
-                <div class="ob-done-icon">
-                  <svg viewBox="0 0 24 24">
-                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                  </svg>
-                </div>
-                <p class="ob-title">Добавьте подписку</p>
+                <p class="ob-title" style="margin-top:20px;">Добавьте подписку</p>
                 <p class="ob-desc">Откройте приложение → раздел «Подписки» (или +) → вставьте скопированную ссылку.
                   Серверы добавятся автоматически.</p>
                 <div class="ob-app-list">
