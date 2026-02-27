@@ -6,6 +6,14 @@
 
   const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
+  window.onerror = function (msg, url, line, col, error) {
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:red;color:white;z-index:9999;padding:10px;font-size:12px;line-height:1.2;';
+    errDiv.innerHTML = `<b>JS Error:</b> ${msg}<br>Line: ${line}:${col}`;
+    document.body.appendChild(errDiv);
+    return false;
+  };
+
   /* ── State ── */
   const S = {
     user: null,
@@ -500,7 +508,8 @@
     const avatar = document.getElementById('avatar');
     if (S.user) {
       const name = [S.user.firstName, S.user.lastName].filter(Boolean).join(' ') || 'U';
-      document.getElementById('profileName').textContent = name;
+      const pName = document.getElementById('profileName');
+      if (pName) pName.textContent = name;
 
       // Avatar: try photo from API, then from tg.initDataUnsafe, then letter fallback
       const photoUrl = S.user.photoUrl || S.user.photo_url ||
@@ -631,8 +640,10 @@
 
     // Subscription URL
     if (sub && sub.subscriptionUrl) {
-      document.getElementById('subUrlSetup').value = sub.subscriptionUrl;
-      document.getElementById('subUrlProfile').value = sub.subscriptionUrl;
+      const elSetup = document.getElementById('subUrlSetup');
+      const elProfile = document.getElementById('subUrlProfile');
+      if (elSetup) elSetup.value = sub.subscriptionUrl;
+      if (elProfile) elProfile.value = sub.subscriptionUrl;
     }
   }
 
@@ -774,11 +785,14 @@
       const d = await api('/miniapp/api/referral?initData=' + encodeURIComponent(tg.initData));
       if (d && d.referralCode) {
         refLink = d.refLink;
-        document.getElementById('refLinkText').textContent = d.refLink;
-        document.getElementById('refCount').textContent = d.referralCount + ' чел.';
-        document.getElementById('refBonus').textContent = d.inviterBonusDays + ' дн. за друга';
-        document.getElementById('refDesc').textContent =
-          `Дарим ${d.inviterBonusDays} дней Вам и ${d.invitedBonusDays} дня другу за каждое успешное приглашение.`;
+        const refL = document.getElementById('refLinkText');
+        if (refL) refL.textContent = d.refLink;
+        const refC = document.getElementById('refCount');
+        if (refC) refC.textContent = d.referralCount + ' чел.';
+        const refB = document.getElementById('refBonus');
+        if (refB) refB.textContent = d.inviterBonusDays + ' дн. за друга';
+        const refD = document.getElementById('refDesc');
+        if (refD) refD.textContent = `Дарим ${d.inviterBonusDays} дней Вам и ${d.invitedBonusDays} дня другу за каждое успешное приглашение.`;
       }
     }
 
