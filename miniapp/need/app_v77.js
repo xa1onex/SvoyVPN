@@ -752,11 +752,14 @@
       });
     });
 
-    // Choose plan → plan modal
-    const btnPlan = document.getElementById('btnChoosePlan');
-    if (btnPlan) btnPlan.addEventListener('click', () => window.showModal('modalPlan'));
+    function addClick(id, handler) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', handler);
+      else console.warn('Missing element for click:', id);
+    }
 
-    // Referral
+    addClick('btnChoosePlan', () => window.showModal('modalPlan'));
+
     const btnReferral = document.getElementById('btnReferral');
     if (btnReferral) {
       btnReferral.addEventListener('click', () => {
@@ -779,36 +782,34 @@
       }
     }
 
-    document.getElementById('btnCopyRef').addEventListener('click', function () {
-      copyText(refLink, this);
-    });
-    document.getElementById('btnShareRef').addEventListener('click', function () {
+    addClick('btnCopyRef', function () { copyText(refLink, this); });
+    addClick('btnShareRef', function () {
       if (!refLink) return;
       const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent('Попробуй этот отличный VPN! Дают бонусные дни при регистрации по ссылке 🎁')}`;
       tg && tg.openTelegramLink ? tg.openTelegramLink(shareUrl) : window.open(shareUrl, '_blank');
     });
 
     // Copy buttons
-    const _btnCopySetup = document.getElementById('btnCopySetup');
-    if (_btnCopySetup) {
-      _btnCopySetup.addEventListener('click', function () {
-        copyText(document.getElementById('subUrlSetup').value, this);
-      });
-    }
-    document.getElementById('btnCopyProfile').addEventListener('click', function () {
-      copyText(document.getElementById('subUrlProfile').value, this);
+    addClick('btnCopySetup', function () {
+      const el = document.getElementById('subUrlSetup');
+      if (el) copyText(el.value, this);
+    });
+
+    addClick('btnCopyProfile', function () {
+      const el = document.getElementById('subUrlProfile');
+      if (el) copyText(el.value, this);
     });
 
     // Pay
-    document.getElementById('btnPay').addEventListener('click', handlePay);
+    addClick('btnPay', handlePay);
 
     // Links
-    document.getElementById('btnChannel').addEventListener('click', () => {
+    addClick('btnChannel', () => {
       tg && tg.openTelegramLink
         ? tg.openTelegramLink('https://t.me/SvoyVPN')
         : window.open('https://t.me/SvoyVPN', '_blank');
     });
-    document.getElementById('btnSupport').addEventListener('click', () => {
+    addClick('btnSupport', () => {
       tg && tg.openTelegramLink
         ? tg.openTelegramLink('https://t.me/SvoyVPN_support')
         : window.open('https://t.me/SvoyVPN_support', '_blank');
