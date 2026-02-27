@@ -719,9 +719,12 @@
     });
 
     // Copy buttons
-    document.getElementById('btnCopySetup').addEventListener('click', function () {
-      copyText(document.getElementById('subUrlSetup').value, this);
-    });
+    const _btnCopySetup = document.getElementById('btnCopySetup');
+    if (_btnCopySetup) {
+      _btnCopySetup.addEventListener('click', function () {
+        copyText(document.getElementById('subUrlSetup').value, this);
+      });
+    }
     document.getElementById('btnCopyProfile').addEventListener('click', function () {
       copyText(document.getElementById('subUrlProfile').value, this);
     });
@@ -816,8 +819,8 @@
     const btnNext = document.getElementById('obBtnNext');
     const btnBack = document.getElementById('obBtnBack');
     const dots = [0, 1, 2, 3].map(i => document.getElementById('obDot' + i));
-    const obBtnCopy = document.getElementById('obBtnCopy');
-    const obCopyStatus = document.getElementById('obCopyStatus');
+    const obActionRow = document.getElementById('obActionRow');
+    const obBtnCopied = document.getElementById('obBtnCopied');
     const obAppContent = document.getElementById('obAppContent');
 
     if (!track || !btnNext || !btnBack) return;
@@ -850,22 +853,29 @@
 
     function updateButtons() {
       const isLast = currentSlide === TOTAL_SLIDES - 1;
-      btnNext.textContent = isLast ? 'Готово ✓' : 'Далее →';
 
-      // Enable logic per slide
-      switch (currentSlide) {
-        case 0: btnNext.disabled = !linkCopied; break;
-        case 1: btnNext.disabled = !selectedDevice; break;
-        case 2: btnNext.disabled = false; break;
-        case 3: btnNext.disabled = false; break;
+      if (currentSlide === 0) {
+        // Slide 0: button acts as copy first, then as next
+        if (!linkCopied) {
+          btnNext.textContent = 'Скопировать';
+          btnNext.disabled = false;
+        } else {
+          btnNext.textContent = 'Далее →';
+          btnNext.disabled = false;
+        }
+      } else if (isLast) {
+        btnNext.textContent = 'Готово ✓';
+        btnNext.disabled = false;
+      } else {
+        btnNext.textContent = 'Далее →';
+        switch (currentSlide) {
+          case 1: btnNext.disabled = !selectedDevice; break;
+          default: btnNext.disabled = false;
+        }
       }
 
       // Back button
-      if (currentSlide > 0) {
-        btnBack.style.display = 'block';
-      } else {
-        btnBack.style.display = 'none';
-      }
+      btnBack.style.display = currentSlide > 0 ? 'block' : 'none';
     }
 
     /* ── Slide 3 content (app list or PC steps) ── */
@@ -952,17 +962,15 @@
       }
     }
 
-    /* ── Slide 1: Copy button ── */
-    if (obBtnCopy) {
-      obBtnCopy.addEventListener('click', function () {
-        const url = document.getElementById('subUrlSetup').value;
-        copyText(url, null);
-        linkCopied = true;
-        obBtnCopy.textContent = '✓ Скопировано';
-        obBtnCopy.style.background = '#34c759';
-        if (obCopyStatus) { obCopyStatus.style.display = 'block'; }
-        updateButtons();
-      });
+    /* ── Perform copy + trigger split animation ── */
+    function doSlideCopy() {
+      const url = document.getElementById('subUrlSetup').value;
+      copyText(url, null);
+      linkCopied = true;
+      // Trigger split: green button slides in from the left
+      if (obActionRow) obActionRow.classList.add('split');
+      // Update main button label
+      updateButtons();
     }
 
     /* ── Slide 2: Device picker ── */
@@ -976,18 +984,21 @@
       });
     });
 
-    /* ── Next button ── */
+    /* ── Next/Copy button ── */
     btnNext.addEventListener('click', () => {
+      // Slide 0, first press = copy action
+      if (currentSlide === 0 && !linkCopied) {
+        doSlideCopy();
+        return;
+      }
+      // Last slide = done
       if (currentSlide === TOTAL_SLIDES - 1) {
-        // Done — navigate to VPN screen and reset carousel
         showScreen('screenVpn');
         resetCarousel();
         return;
       }
-      if (currentSlide === 1) {
-        // Render app slide before moving to it
-        renderSlide3();
-      }
+      // Render app slide just-in-time
+      if (currentSlide === 1) renderSlide3();
       goToSlide(currentSlide + 1, 'forward');
     });
 
@@ -1036,7 +1047,7 @@
       }, { passive: true });
     }
 
-    /* ── Reset carousel when leaving screen ── */
+    /* ── Reset carousel ── */
     function resetCarousel() {
       currentSlide = 0;
       selectedDevice = null;
@@ -1044,11 +1055,8 @@
       track.style.transform = 'translateX(0)';
       dots.forEach((d, i) => d.classList.toggle('active', i === 0));
       document.querySelectorAll('.ob-device-card').forEach(c => c.classList.remove('selected'));
-      if (obBtnCopy) {
-        obBtnCopy.textContent = 'Скопировать ссылку';
-        obBtnCopy.style.background = '';
-      }
-      if (obCopyStatus) obCopyStatus.style.display = 'none';
+      // Collapse the split animation
+      if (obActionRow) obActionRow.classList.remove('split');
       updateButtons();
     }
 
@@ -1062,18 +1070,12 @@
       });
     });
 
-    /* ── The small copy-icon btn (btnCopySetup) also unlocks slide 1 ── */
+    /* ── Icon copy button in copy-field also triggers the split ── */
     const btnCopySetupIcon = document.getElementById('btnCopySetup');
     if (btnCopySetupIcon) {
       btnCopySetupIcon.addEventListener('click', function () {
-        if (document.getElementById('subUrlSetup').value) {
-          linkCopied = true;
-          if (obBtnCopy) {
-            obBtnCopy.textContent = '✓ Скопировано';
-            obBtnCopy.style.background = '#34c759';
-          }
-          if (obCopyStatus) obCopyStatus.style.display = 'block';
-          updateButtons();
+        if (document.getElementById('subUrlSetup').value && !linkCopied) {
+          doSlideCopy();
         }
       });
     }

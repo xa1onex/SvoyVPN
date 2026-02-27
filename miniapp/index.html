@@ -151,7 +151,7 @@
                 <p class="ob-desc">Для начала скопируйте вашу ссылку конфигурации — она понадобится в следующем шаге.
                 </p>
                 <div class="ob-copy-wrap">
-                  <div class="copy-field" style="margin-bottom:12px;">
+                  <div class="copy-field">
                     <input id="subUrlSetup" type="text" placeholder="Ссылка появится после покупки" readonly />
                     <button id="btnCopySetup" class="btn-copy" aria-label="Скопировать"
                       style="padding:10px;flex-shrink:0;">
@@ -161,10 +161,7 @@
                       </svg>
                     </button>
                   </div>
-                  <button id="obBtnCopy" class="btn-primary">Скопировать ссылку</button>
                 </div>
-                <p id="obCopyStatus" class="body text-center"
-                  style="display:none;color:#34c759;font-weight:600;margin-top:10px;">✓ Скопировано!</p>
               </div>
             </div>
 
@@ -281,8 +278,11 @@
 
           <!-- Action buttons -->
           <div class="ob-actions">
-            <button class="ob-btn-next" id="obBtnNext" disabled>Далее →</button>
-            <button class="ob-btn-back visible" id="obBtnBack" style="display:none;">← Назад</button>
+            <div class="ob-action-row" id="obActionRow">
+              <button class="ob-btn-copied" id="obBtnCopied">✓ Скопировано</button>
+              <button class="ob-btn-next" id="obBtnNext">Скопировать</button>
+            </div>
+            <button class="ob-btn-back" id="obBtnBack" style="display:none;">← Назад</button>
           </div>
 
         </div><!-- /ob-carousel -->
