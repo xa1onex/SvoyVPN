@@ -857,7 +857,7 @@
       if (currentSlide === 0) {
         // Slide 0: button acts as copy first, then as next
         if (!linkCopied) {
-          btnNext.textContent = 'Скопировать';
+          btnNext.textContent = 'Скопировать ссылку';
           btnNext.disabled = false;
         } else {
           btnNext.textContent = 'Далее →';
