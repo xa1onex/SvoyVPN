@@ -762,41 +762,37 @@
     let selectedDevice = null; // 'ios' | 'android' | 'windows' | 'mac'
     let linkCopied = false;
 
-    // App data per platform
+    // App data per platform — icons loaded from /miniapp/images/ (add files there)
     const APPS = {
       ios: [
         {
           name: 'V2RayTun',
           store: 'App Store',
-          color: '#007AFF',
+          iconImg: '/miniapp/images/v2raytun.png',
           url: 'https://apps.apple.com/app/v2raytun/id6476628951',
-          iconSvg: '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>'
         },
         {
           name: 'Hiddify',
           store: 'App Store',
-          color: '#5856D6',
+          iconImg: '/miniapp/images/hiddify.png',
           url: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532',
-          iconSvg: '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 4l6 2.67V11c0 3.73-2.59 7.22-6 8.29C8.59 18.22 6 14.73 6 11V7.67L12 5z"/></svg>'
         },
       ],
       android: [
         {
           name: 'V2RayTun',
           store: 'Google Play',
-          color: '#007AFF',
+          iconImg: '/miniapp/images/v2raytun.png',
           url: 'https://play.google.com/store/apps/details?id=com.v2raytun.android',
-          iconSvg: '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>'
         },
         {
           name: 'Hiddify',
           store: 'Google Play',
-          color: '#5856D6',
+          iconImg: '/miniapp/images/hiddify.png',
           url: 'https://play.google.com/store/apps/details?id=app.hiddify.com',
-          iconSvg: '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 4l6 2.67V11c0 3.73-2.59 7.22-6 8.29C8.59 18.22 6 14.73 6 11V7.67L12 5z"/></svg>'
         },
       ],
-      windows: null, // PC instructions shown inline
+      windows: null,
       mac: null,
     };
 
@@ -937,8 +933,14 @@
             const tg = window.Telegram && window.Telegram.WebApp;
             tg && tg.openLink ? tg.openLink(app.url) : window.open(app.url, '_blank');
           });
+          // Build icon: img tag with fallback to letter avatar
+          const iconHtml = '<div class="ob-app-icon ob-app-icon--img">' +
+            '<img src="' + app.iconImg + '" alt="' + app.name + '" ' +
+            'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" />' +
+            '<span class="ob-app-icon-fallback" style="display:none;">' + app.name.charAt(0) + '</span>' +
+            '</div>';
           item.innerHTML =
-            '<div class="ob-app-icon" style="background:' + app.color + ';">' + app.iconSvg + '</div>' +
+            iconHtml +
             '<div class="ob-app-info">' +
             '<p class="ob-app-name">' + app.name + '</p>' +
             '<p class="ob-app-store">Открыть в ' + app.store + '</p>' +
@@ -1053,20 +1055,17 @@
     // Listen for tab switch away from setup screen — reset on re-entry
     document.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', () => {
-        if (btn.dataset.screen === 'screenSetup') {
-          // entering → reset only slide position, keep device chosen
-          // (we allow user to pick up where they left off if they accidentally navigate away)
-        } else {
+        if (btn.dataset.screen !== 'screenSetup') {
           // leaving setup: full reset so next visit starts fresh
           setTimeout(resetCarousel, 400);
         }
       });
     });
 
-    /* ── Wire the copy button in header to also unlock slide 1 ── */
-    const btnCopySetupHdr = document.getElementById('btnCopySetup');
-    if (btnCopySetupHdr) {
-      btnCopySetupHdr.addEventListener('click', function () {
+    /* ── The small copy-icon btn (btnCopySetup) also unlocks slide 1 ── */
+    const btnCopySetupIcon = document.getElementById('btnCopySetup');
+    if (btnCopySetupIcon) {
+      btnCopySetupIcon.addEventListener('click', function () {
         if (document.getElementById('subUrlSetup').value) {
           linkCopied = true;
           if (obBtnCopy) {

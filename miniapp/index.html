@@ -122,21 +122,6 @@
     <div id="screenSetup" class="screen">
       <div class="screen-content">
 
-        <!-- Fixed header: copy field always visible -->
-        <div class="setup-header">
-          <p class="title text-center" style="margin-bottom:4px;">Настройка VPN</p>
-          <p class="body text-muted text-center" style="margin-bottom:12px;">Проще чем кажется</p>
-          <div class="copy-field">
-            <input id="subUrlSetup" type="text" placeholder="Ссылка появится после покупки" readonly />
-            <button id="btnCopySetup" class="btn-copy" aria-label="Скопировать" style="padding:10px;flex-shrink:0;">
-              <svg style="width:16px;height:16px;fill:currentColor;display:block;" viewBox="0 0 24 24">
-                <path
-                  d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
         <!-- ── Onboarding Carousel ── -->
         <div class="ob-carousel" id="obCarousel">
 
@@ -162,13 +147,24 @@
                     </svg>
                   </div>
                 </div>
-                <p class="ob-title">Скопируйте ссылку</p>
-                <p class="ob-desc">Нажмите кнопку «Скопировать» выше — ссылка подписки сохранится в буфер обмена.</p>
+                <p class="ob-title">Помочь с настройкой VPN?</p>
+                <p class="ob-desc">Для начала скопируйте вашу ссылку конфигурации — она понадобится в следующем шаге.
+                </p>
                 <div class="ob-copy-wrap">
+                  <div class="copy-field" style="margin-bottom:12px;">
+                    <input id="subUrlSetup" type="text" placeholder="Ссылка появится после покупки" readonly />
+                    <button id="btnCopySetup" class="btn-copy" aria-label="Скопировать"
+                      style="padding:10px;flex-shrink:0;">
+                      <svg style="width:16px;height:16px;fill:currentColor;display:block;" viewBox="0 0 24 24">
+                        <path
+                          d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                      </svg>
+                    </button>
+                  </div>
                   <button id="obBtnCopy" class="btn-primary">Скопировать ссылку</button>
                 </div>
-                <p id="obCopyStatus" class="body text-center" style="display:none;color:#34c759;font-weight:600;">✓
-                  Скопировано!</p>
+                <p id="obCopyStatus" class="body text-center"
+                  style="display:none;color:#34c759;font-weight:600;margin-top:10px;">✓ Скопировано!</p>
               </div>
             </div>
 
