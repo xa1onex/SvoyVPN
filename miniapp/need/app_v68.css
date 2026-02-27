@@ -266,6 +266,7 @@ body {
     align-items: center;
     justify-content: center;
     margin: 0;
+    flex-shrink: 0;
 }
 
 .logo-anim .ring {
