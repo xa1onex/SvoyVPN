@@ -1303,12 +1303,6 @@ body {
    ═══════════════════════════════════════════════ */
 
 /* ── Setup screen layout override ── */
-#screenSetup .screen-content {
-    padding: 24px 0 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-}
 
 /* ── Carousel wrapper ── */
 .ob-carousel {
