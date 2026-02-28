@@ -111,7 +111,7 @@
   }
 
   /* ═══════ Navigation ═══════ */
-  function showScreen(id) {
+  window.showScreen = function (id) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
 
@@ -571,7 +571,7 @@
         if (daysLeft <= 5) {
           statusHtml += `<button class="btn-primary" onclick="window.showModal('modalPlan')">Продлить подписку</button>`;
         } else {
-          statusHtml += `<button class="btn-primary" onclick="showScreen('setup')">Подключить устройства</button>`;
+          statusHtml += `<button class="btn-primary" onclick="window.showScreen('screenSetup')">Подключить устройства</button>`;
         }
         subBlockBox.innerHTML = statusHtml;
 
