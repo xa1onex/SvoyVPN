@@ -111,7 +111,7 @@
   }
 
   /* ═══════ Navigation ═══════ */
-  window.showScreen = function (id) {
+  function showScreen(id) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
 
@@ -124,6 +124,7 @@
 
     haptic('light');
   }
+  window.showScreen = showScreen;
 
   /* ═══════ Modals ═══════ */
   window.showModal = function (id) {
