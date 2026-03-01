@@ -701,6 +701,11 @@
         checkHtml += `</div>`;
         subCheckBlock.innerHTML = checkHtml;
       }
+
+      // Update onboarding visibility based on sub
+      if (typeof window.updateOnboardingSubState === 'function') {
+        window.updateOnboardingSubState();
+      }
     }
 
     // Subscription URL
@@ -998,7 +1003,9 @@
       }
 
       currentSlide = idx;
-      track.style.transform = `translateX(-${idx * 100}%)`;
+      const subActive = S.subscription && S.subscription.isActive;
+      const shift = subActive ? 1 : 0;
+      track.style.transform = `translateX(-${(idx - shift) * 100}%)`;
 
       // Update dots
       dots.forEach((d, i) => d.classList.toggle('active', i === idx));
@@ -1224,23 +1231,48 @@
 
     /* ── Reset carousel ── */
     function resetCarousel() {
-      currentSlide = 0;
+      const subActive = S.subscription && S.subscription.isActive;
+      currentSlide = subActive ? 1 : 0;
       selectedDevice = null;
       linkCopied = false;
-      track.style.transform = 'translateX(0)';
-      dots.forEach((d, i) => d.classList.toggle('active', i === 0));
+      const shift = subActive ? 1 : 0;
+      track.style.transform = `translateX(-${(currentSlide - shift) * 100}%)`;
+      dots.forEach((d, i) => d && d.classList.toggle('active', i === currentSlide));
       document.querySelectorAll('.ob-device-card').forEach(c => c.classList.remove('selected'));
-      // Collapse the split animation
       if (obActionRow) obActionRow.classList.remove('split');
       updateButtons();
     }
+
+    function updateOnboardingSubState() {
+      const subActive = S.subscription && S.subscription.isActive;
+      const s0 = document.getElementById('obSlide0');
+      const d0 = document.getElementById('obDot0');
+      if (s0) s0.style.display = subActive ? 'none' : 'block';
+      if (d0) d0.style.display = subActive ? 'none' : 'block';
+
+      // Force UI update to show Link slide if starting fresh with sub
+      if (subActive && currentSlide === 0) {
+        currentSlide = 1;
+        updateButtons();
+        track.style.transform = 'translateX(0)';
+        dots.forEach((d, i) => d && d.classList.toggle('active', i === 1));
+      } else if (!subActive && currentSlide === 1 && !linkCopied) {
+        // user was on link but sub expired? unlikely but...
+        currentSlide = 0;
+        updateButtons();
+        track.style.transform = 'translateX(0)';
+        dots.forEach((d, i) => d && d.classList.toggle('active', i === 0));
+      }
+    }
+    window.updateOnboardingSubState = updateOnboardingSubState;
 
     // Listen for tab switch away from setup screen — reset on re-entry
     document.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.dataset.screen !== 'screenSetup') {
-          // leaving setup: full reset so next visit starts fresh
           setTimeout(resetCarousel, 400);
+        } else {
+          updateOnboardingSubState();
         }
       });
     });
