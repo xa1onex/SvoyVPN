@@ -691,8 +691,26 @@
                 </svg>
               </div>
               <p class="body text-muted" style="margin-bottom:16px; font-size:13px;">Или попробуйте бесплатно — заберите пробный период в подарок!</p>
-              <button class="btn-primary" style="min-height:40px; font-size:14px; width:100%;" onclick="window.showScreen('screenVpn')">Забрать ${S.user.trialDays} дней</button>
+              <button class="btn-primary" id="obBtnTrial" style="min-height:40px; font-size:14px; width:100%;">Забрать ${S.user.trialDays} дней</button>
             `;
+          setTimeout(() => {
+            const b = document.getElementById('obBtnTrial');
+            if (b) b.onclick = async function () {
+              this.disabled = true; this.textContent = '...';
+              const d = await api('/miniapp/api/trial/activate', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ initData: tg.initData })
+              });
+              if (d && d.status === 'ok') {
+                showToast('Подарок получен! 🎁');
+                await loadUser();
+                if (typeof window.onboardingNext === 'function') window.onboardingNext();
+              } else {
+                showToast('Ошибка: ' + (d ? d.error : '?'));
+                this.disabled = false; this.textContent = `Забрать ${S.user.trialDays} дней`;
+              }
+            };
+          }, 0);
         } else {
           checkHtml += `
               <button class="btn-primary" style="min-height:40px; font-size:14px; width:100%;" onclick="window.showModal('modalPlan')">Выбрать тариф</button>
@@ -1021,8 +1039,13 @@
 
       if (currentSlide === 0) {
         // Slide 0: Activation Check
-        btnNext.textContent = 'Далее →';
-        btnNext.disabled = !subActive;
+        if (!subActive) {
+          btnNext.textContent = 'Выбрать тариф';
+          btnNext.disabled = false;
+        } else {
+          btnNext.textContent = 'Далее →';
+          btnNext.disabled = false;
+        }
         if (obActionRow) obActionRow.classList.remove('split');
       } else if (currentSlide === 1) {
         // Slide 1: Copy Link
@@ -1166,7 +1189,7 @@
         if (S.subscription && S.subscription.isActive) {
           goToSlide(1, 'forward');
         } else {
-          showToast('Активируйте подписку, чтобы продолжить');
+          window.showModal('modalPlan');
         }
       } else if (currentSlide === 1) {
         if (!linkCopied) {
@@ -1265,6 +1288,12 @@
       }
     }
     window.updateOnboardingSubState = updateOnboardingSubState;
+    window.onboardingNext = () => {
+      if (currentSlide < TOTAL_SLIDES - 1) {
+        if (currentSlide === 2) renderSlide3();
+        goToSlide(currentSlide + 1, 'forward');
+      }
+    };
 
     // Listen for tab switch away from setup screen — reset on re-entry
     document.querySelectorAll('.tab').forEach(btn => {
