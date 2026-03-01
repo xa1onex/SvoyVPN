@@ -363,7 +363,6 @@
     }
   }
 
-  const SERVERS_PER_PAGE = 2;
   let serverPage = 0;
 
   function createServerCard(s) {
@@ -402,12 +401,13 @@
       return;
     }
 
-    var totalPages = Math.ceil(S.servers.length / SERVERS_PER_PAGE);
+    const pageSize = (S.user && S.user.trialAvailable && !(S.subscription && S.subscription.isActive)) ? 2 : 4;
+    var totalPages = Math.ceil(S.servers.length / pageSize);
     if (serverPage >= totalPages) serverPage = totalPages - 1;
     if (serverPage < 0) serverPage = 0;
 
-    var start = serverPage * SERVERS_PER_PAGE;
-    var pageServers = S.servers.slice(start, start + SERVERS_PER_PAGE);
+    var start = serverPage * pageSize;
+    var pageServers = S.servers.slice(start, start + pageSize);
 
     w.innerHTML = '';
     pageServers.forEach(function (s) {
@@ -474,8 +474,9 @@
     if (pingInterval) clearInterval(pingInterval);
     pingInterval = setInterval(function () {
       if (!S.servers.length) return;
-      var start = serverPage * SERVERS_PER_PAGE;
-      var pageServers = S.servers.slice(start, start + SERVERS_PER_PAGE);
+      const pageSize = (S.user && S.user.trialAvailable && !(S.subscription && S.subscription.isActive)) ? 2 : 4;
+      var start = serverPage * pageSize;
+      var pageServers = S.servers.slice(start, start + pageSize);
       document.querySelectorAll('.server-card[data-server-id]').forEach(function (card, i) {
         if (i >= pageServers.length) return;
         var pingWrap = card.querySelector('.server-card__ping-wrap');
