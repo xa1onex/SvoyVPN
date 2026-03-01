@@ -1919,6 +1919,10 @@ body {
 .news-card {
     flex: 0 0 85%;
     width: 85%;
+    min-width: 80%;
+    /* Ensure it doesn't shrink */
+    max-width: 320px;
+    /* Optional safety */
     height: 110px;
     border-radius: 18px;
     position: relative;
