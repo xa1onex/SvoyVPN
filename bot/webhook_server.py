@@ -61,14 +61,18 @@ class WebhookServer:
         yookassa_config: Optional[YooKassaConfig] = None,
         bot_instance=None,
         yookassa_client=None,
-        payment_processor=None
+        payment_processor=None,
+        admin_ids: list[int] = None
     ):
         self.flyer_config = flyer_config
         self.yookassa_config = yookassa_config
         self.bot = bot_instance
         self.yookassa_client = yookassa_client
         self.payment_processor = payment_processor
+        self.admin_ids = admin_ids or []
         self.app = web.Application()
+        
+        # Core routes
         self.app.router.add_get('/', self.root_handler)
         self.app.router.add_get('/sub/{token}', self.handle_subscription)
         self.app.router.add_post('/webhook/flyer', self.handle_flyer_webhook)
@@ -80,27 +84,34 @@ class WebhookServer:
         self.app.router.add_get('/miniapp', self.serve_miniapp)
         self.app.router.add_get('/miniapp/', self.serve_miniapp)
         
-        # API routes — registered at BOTH paths for cache compatibility
-        self.app.router.add_post('/api/user', self.api_get_user)
-        self.app.router.add_get('/api/tariffs', self.api_get_tariffs)
-        self.app.router.add_get('/api/payment-methods', self.api_get_payment_methods)
-        self.app.router.add_post('/api/payment/create', self.api_create_payment)
-        self.app.router.add_get('/api/servers', self.api_get_servers)
-        self.app.router.add_get('/api/ping', self.api_ping_server)
-        self.app.router.add_get('/api/referral', self.api_get_referral)
-        self.app.router.add_post('/miniapp/api/user', self.api_get_user)
-        self.app.router.add_get('/miniapp/api/tariffs', self.api_get_tariffs)
-        self.app.router.add_get('/miniapp/api/payment-methods', self.api_get_payment_methods)
-        self.app.router.add_post('/miniapp/api/payment/create', self.api_create_payment)
-        self.app.router.add_get('/miniapp/api/servers', self.api_get_servers)
-        self.app.router.add_get('/miniapp/api/ping', self.api_ping_server)
-        self.app.router.add_get('/miniapp/api/referral', self.api_get_referral)
-        self.app.router.add_post('/miniapp/api/trial/activate', self.api_activate_trial)
-        self.app.router.add_post('/api/trial/activate', self.api_activate_trial)
+        # API routes
+        api_routes = [
+            ('/api/user', self.api_get_user, 'POST'),
+            ('/api/tariffs', self.api_get_tariffs, 'GET'),
+            ('/api/payment-methods', self.api_get_payment_methods, 'GET'),
+            ('/api/payment/create', self.api_create_payment, 'POST'),
+            ('/api/servers', self.api_get_servers, 'GET'),
+            ('/api/ping', self.api_ping_server, 'GET'),
+            ('/api/referral', self.api_get_referral, 'GET'),
+            ('/api/trial/activate', self.api_activate_trial, 'POST'),
+            ('/api/news', self.api_get_news, 'GET'),
+            ('/api/news/add', self.api_add_news, 'POST'),
+        ]
         
+        for path, handler, method in api_routes:
+            if method == 'GET':
+                self.app.router.add_get(path, handler)
+                self.app.router.add_get('/miniapp' + path, handler)
+            else:
+                self.app.router.add_post(path, handler)
+                self.app.router.add_post('/miniapp' + path, handler)
         
-        # Static files catch-all
+        self.app.router.add_get('/miniapp/news_images/{path:.*}', self.serve_news_image)
         self.app.router.add_get('/miniapp/{path:.*}', self.serve_miniapp_static)
+        
+        self.app.middlewares.append(self.handle_bad_requests_middleware)
+        self.runner = None
+        logger.info(f"WebhookServer initialized")
         
         self.app.middlewares.append(self.handle_bad_requests_middleware)
         self.runner = None
@@ -583,6 +594,9 @@ class WebhookServer:
                 trial_days = trial_settings['days'] if trial_settings and trial_settings['days'] else 0
                 trial_available = (user['trial_used'] is False) and (trial_days > 0)
 
+                # Admin check
+                is_admin = user_id in self.admin_ids
+
                 return web.json_response({
                     "user": {
                         "id": user_id,
@@ -591,7 +605,8 @@ class WebhookServer:
                         "username": user_data.get('username', ''),
                         "photoUrl": photo_url_fetched,
                         "trialAvailable": trial_available,
-                        "trialDays": trial_days
+                        "trialDays": trial_days,
+                        "isAdmin": is_admin
                     },
                     "subscription": {
                         "isActive": is_active,
@@ -1032,5 +1047,105 @@ class WebhookServer:
         except Exception as e:
             logger.error(f"Error in api_get_referral: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
+
+    async def serve_news_image(self, request: web_request.Request) -> web.Response:
+        path = request.match_info.get('path', '')
+        if not path:
+            return web.Response(text="Not found", status=404)
+        
+        path = path.lstrip('/')
+        news_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'miniapp', 'news_images')
+        file_path = os.path.normpath(os.path.join(news_dir, path))
+        
+        if not os.path.abspath(file_path).startswith(os.path.abspath(news_dir)):
+            return web.Response(text="Forbidden", status=403)
+            
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            guessed_type, _ = mimetypes.guess_type(file_path)
+            content_type = guessed_type or "image/jpeg"
+            return web.Response(body=content, content_type=content_type)
+        except FileNotFoundError:
+            return web.Response(text="Not found", status=404)
+
+    async def api_get_news(self, request: web_request.Request) -> web.Response:
+        try:
+            async with get_connection() as conn:
+                news = await conn.fetch("SELECT id, title, description, image_url FROM news ORDER BY created_at DESC")
+                return web.json_response([dict(n) for n in news])
+        except Exception as e:
+            logger.error(f"Error getting news: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_add_news(self, request: web_request.Request) -> web.Response:
+        try:
+            reader = await request.multipart()
+            
+            init_data = None
+            title = None
+            description = None
+            image_data = None
+            image_filename = None
+            
+            while True:
+                part = await reader.next()
+                if part is None:
+                    break
+                if part.name == 'initData':
+                    init_data = (await part.read(decode=True)).decode('utf-8')
+                elif part.name == 'title':
+                    title = (await part.read(decode=True)).decode('utf-8')
+                elif part.name == 'description':
+                    description = (await part.read(decode=True)).decode('utf-8')
+                elif part.name == 'image':
+                    image_filename = part.filename
+                    image_data = await part.read(decode=True)
+
+            if not init_data or not self.verify_telegram_webapp_data(init_data, self.bot.token):
+                return web.json_response({"error": "Auth failed"}, status=403)
+                
+            parsed = self.parse_telegram_init_data(init_data)
+            user_json = parsed.get('user', '{}')
+            user_data = json.loads(user_json)
+            user_id = int(user_data.get('id', 0))
+            
+            if user_id not in self.admin_ids:
+                return web.json_response({"error": "Forbidden"}, status=403)
+                
+            image_url = None
+            if image_data and image_filename:
+                import uuid
+                ext = os.path.splitext(image_filename)[1]
+                if not ext: ext = '.jpg'
+                new_filename = f"{uuid.uuid4()}{ext}"
+                news_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'miniapp', 'news_images')
+                os.makedirs(news_dir, exist_ok=True)
+                with open(os.path.join(news_dir, new_filename), 'wb') as f:
+                    f.write(image_data)
+                image_url = f"/miniapp/news_images/{new_filename}"
+            
+            async with get_connection() as conn:
+                await conn.execute(
+                    "INSERT INTO news (title, description, image_url) VALUES ($1, $2, $3)",
+                    title, description, image_url
+                )
+                
+            return web.json_response({"status": "ok"})
+        except Exception as e:
+            logger.error(f"Error adding news: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def run(self, host: str, port: int):
+        """Запуск сервера"""
+        self.runner = web.AppRunner(self.app)
+        await self.runner.setup()
+        site = web.TCPSite(self.runner, host, port)
+        await site.start()
+        
+    async def stop(self):
+        """Остановка сервера"""
+        if self.runner:
+            await self.runner.cleanup()
 
 

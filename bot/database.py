@@ -386,6 +386,21 @@ async def init_db() -> None:
             logging.warning(f"Could not create device_instruction_photos table: {e}")
 
 
+        # news
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS news (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    image_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        except Exception as e:
+            logging.warning(f"Could not create news table: {e}")
+
+
 async def check_expired_subscriptions() -> None:
     """Сбрасывает статус подписки для истёкших пользователей (мягко)."""
     current_time = datetime.now(pytz.timezone("Europe/Moscow")).strftime(

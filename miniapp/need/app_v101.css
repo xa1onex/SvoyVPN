@@ -1894,3 +1894,189 @@ body {
 [data-theme="dark"] .ob-pc-step {
     background: var(--section_bg_color, #21303f);
 }
+
+/* ── News Carousel (v101) ── */
+.news-carousel {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    gap: 12px;
+    padding: 4px 0 12px;
+    -ms-overflow-style: none;
+    /* IE/Edge */
+    scrollbar-width: none;
+    /* Firefox */
+    width: 100%;
+}
+
+.news-carousel::-webkit-scrollbar {
+    display: none;
+    /* Chrome/Safari */
+}
+
+.news-card {
+    flex: 0 0 140px;
+    width: 140px;
+    height: 180px;
+    border-radius: 20px;
+    position: relative;
+    overflow: hidden;
+    scroll-snap-align: start;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 14px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.news-card:active {
+    transform: scale(0.96);
+}
+
+.news-card__bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    z-index: 1;
+}
+
+.news-card__overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, 0.85) 100%);
+    z-index: 2;
+}
+
+.news-card__content {
+    position: relative;
+    z-index: 3;
+    color: #fff;
+    pointer-events: none;
+    text-align: left;
+}
+
+.news-card__title {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 2px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.news-card__desc {
+    font-size: 10.5px;
+    opacity: 0.85;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* Admin Card */
+.admin-card {
+    background: var(--section_bg_color, #f7f9fb);
+    border: 1px dashed var(--accent_text_color, #3aa8fc);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--accent_text_color, #3aa8fc);
+    padding: 16px;
+    box-sizing: border-box;
+}
+
+.admin-card__icon {
+    font-size: 28px;
+    margin-bottom: 6px;
+    opacity: 0.8;
+}
+
+.admin-card__label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ── Upload Zone ── */
+.upload-zone {
+    width: 100%;
+    height: 140px;
+    border: 2px dashed rgba(58, 168, 252, 0.25);
+    border-radius: 18px;
+    background: rgba(58, 168, 252, 0.05);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    overflow: hidden;
+    position: relative;
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.upload-zone.dragover {
+    border-color: var(--accent_text_color, #3aa8fc);
+    background: rgba(58, 168, 252, 0.12);
+    transform: scale(1.02);
+}
+
+.upload-icon {
+    font-size: 36px;
+    margin-bottom: 8px;
+    filter: grayscale(1);
+    opacity: 0.7;
+}
+
+.upload-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 5;
+}
+
+/* Gradients for generic news */
+.news-grad-1 {
+    background: linear-gradient(135deg, #3aa8fc, #6c5ce7);
+}
+
+.news-grad-2 {
+    background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%);
+}
+
+.news-grad-3 {
+    background: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%);
+}
+
+.news-grad-4 {
+    background: linear-gradient(120deg, #f6d365 0%, #fda085 100%);
+}
+
+.news-grad-5 {
+    background: linear-gradient(to top, #30cfd0 0%, #330867 100%);
+}

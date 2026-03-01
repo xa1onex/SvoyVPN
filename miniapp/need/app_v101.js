@@ -21,6 +21,7 @@
     tariffs: [],
     paymentMethods: [],
     servers: [],
+    news: [],
     selectedTariff: null,
     selectedPM: null,
   };
@@ -796,6 +797,10 @@
       renderPM();
       updateTotal();
     }
+
+    // Load News separately
+    loadNews();
+
     if (Array.isArray(servers)) {
       S.servers = servers;
       renderServers();
@@ -816,6 +821,176 @@
       S.user = d.user;
       S.subscription = d.subscription;
       renderUser();
+      renderNews(); // Re-render news if admin status changed
+    }
+  }
+
+  /* ═══════ News Carousel (v101) ═══════ */
+  function renderNews() {
+    const newsSection = document.getElementById('newsSection');
+    const newsCarousel = document.getElementById('newsCarousel');
+    if (!newsCarousel || !newsSection) return;
+
+    newsCarousel.innerHTML = '';
+
+    // If admin is logged in, show "Add News" card AT THE END (as requested)
+    // Wait, user said "at the very end", so we add news cards first
+
+    let hasContent = false;
+
+    if (S.news && S.news.length > 0) {
+      hasContent = true;
+      S.news.forEach((item, idx) => {
+        const card = document.createElement('div');
+        const gradIdx = (idx % 5) + 1;
+        card.className = `news-card news-grad-${gradIdx}`;
+
+        let bgStyle = '';
+        if (item.image_url) {
+          bgStyle = `background-image: url(${item.image_url})`;
+        }
+
+        card.innerHTML = `
+          ${item.image_url ? `<div class="news-card__bg" style="${bgStyle}"></div>` : ''}
+          <div class="news-card__overlay"></div>
+          <div class="news-card__content">
+            <p class="news-card__title">${item.title}</p>
+            <p class="news-card__desc">${item.description || ''}</p>
+          </div>
+        `;
+
+        card.onclick = () => {
+          haptic('light');
+        };
+        newsCarousel.appendChild(card);
+      });
+    }
+
+    if (S.user && S.user.isAdmin) {
+      hasContent = true;
+      const adminCard = document.createElement('div');
+      adminCard.className = 'news-card admin-card';
+      adminCard.innerHTML = `
+        <div class="admin-card__icon">➕</div>
+        <div class="admin-card__label">Добавить</div>
+      `;
+      adminCard.onclick = () => {
+        haptic('medium');
+        window.showModal('modalAddNews');
+      };
+      newsCarousel.appendChild(adminCard);
+    }
+
+    newsSection.style.display = hasContent ? 'block' : 'none';
+  }
+
+  async function loadNews() {
+    const d = await api('/miniapp/api/news');
+    if (Array.isArray(d)) {
+      S.news = d;
+      renderNews();
+    }
+  }
+
+  function initAdminNews() {
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const uploadPreview = document.getElementById('uploadPreview');
+    const btnSave = document.getElementById('btnSaveNews');
+
+    if (!dropZone || !fileInput) return;
+
+    dropZone.onclick = () => fileInput.click();
+
+    dropZone.ondragover = (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    };
+    dropZone.ondragleave = () => dropZone.classList.remove('dragover');
+    dropZone.ondrop = (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        handleFile(e.dataTransfer.files[0]);
+      }
+    };
+
+    fileInput.onchange = () => {
+      if (fileInput.files.length) handleFile(fileInput.files[0]);
+    };
+
+    function handleFile(file) {
+      if (!file.type.startsWith('image/')) {
+        showToast('Только изображения!');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        uploadPreview.src = e.target.result;
+        uploadPreview.style.display = 'block';
+        const icon = dropZone.querySelector('.upload-icon');
+        const text = dropZone.querySelector('p');
+        if (icon) icon.style.display = 'none';
+        if (text) text.style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    if (btnSave) {
+      btnSave.onclick = async () => {
+        const titleEl = document.getElementById('newsTitle');
+        const descEl = document.getElementById('newsDesc');
+        const title = titleEl ? titleEl.value : '';
+        const desc = descEl ? descEl.value : '';
+        const file = fileInput.files[0];
+
+        if (!title) {
+          showToast('Укажите заголовок');
+          return;
+        }
+
+        btnSave.disabled = true;
+        btnSave.textContent = 'Публикация...';
+
+        const formData = new FormData();
+        formData.append('initData', tg.initData);
+        formData.append('title', title);
+        formData.append('description', desc);
+        if (file) formData.append('image', file);
+
+        try {
+          // Use direct fetch for FormData
+          const resp = await fetch('/miniapp/api/news/add', {
+            method: 'POST',
+            body: formData
+          });
+          const d = await resp.json();
+          if (d.status === 'ok') {
+            showToast('Новость добавлена!');
+            haptic('success');
+            window.hideModal('modalAddNews');
+            // Reset fields
+            if (titleEl) titleEl.value = '';
+            if (descEl) descEl.value = '';
+            fileInput.value = '';
+            uploadPreview.style.display = 'none';
+            const icon = dropZone.querySelector('.upload-icon');
+            const text = dropZone.querySelector('p');
+            if (icon) icon.style.display = 'block';
+            if (text) text.style.display = 'block';
+
+            await loadNews();
+          } else {
+            showToast('Ошибка: ' + (d.error || 'Неизвестно'));
+          }
+        } catch (e) {
+          showToast('Ошибка сети');
+        } finally {
+          btnSave.disabled = false;
+          btnSave.textContent = 'Опубликовать';
+        }
+      };
     }
   }
 
@@ -950,6 +1125,9 @@
     // Load data
     loadData();
     loadUser();
+
+    // Init Admin News Logic
+    initAdminNews();
 
     // ═══════════════════════════════════════
     //  ONBOARDING CAROUSEL — Setup Screen

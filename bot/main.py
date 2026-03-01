@@ -173,7 +173,8 @@ async def main():
         yookassa_config=config.yookassa if config.yookassa.enabled else None,
         bot_instance=bot,
         yookassa_client=yookassa_client,
-        payment_processor=payment_processor
+        payment_processor=payment_processor,
+        admin_ids=config.bot.admin_ids
     )
     
     webhook_task = None
