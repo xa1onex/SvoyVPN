@@ -663,24 +663,24 @@
       }
     }
 
-    // Setup Screen Warning if Not Subscribed
-    const setupWarningBlock = document.getElementById('setupWarningBlock');
-    const setupCopyWrap = document.getElementById('setupCopyWrap');
-    if (setupWarningBlock && setupCopyWrap) {
+    // Onboarding Slide 0 (Activation Check)
+    const subCheckBlock = document.getElementById('obSubCheckBlock');
+    if (subCheckBlock) {
       if (sub && sub.isActive) {
-        setupWarningBlock.style.display = 'none';
-        setupCopyWrap.style.display = 'block';
-      } else {
-        setupCopyWrap.style.display = 'none';
-        setupWarningBlock.style.display = 'block';
-
-        let warnHtml = `
-          <div class="card" style="padding:16px; text-align:center; background: rgba(58,168,252,0.1); border: 1px dashed var(--accent_text_color, #3aa8fc); border-radius: 12px;">
-            <p class="body" style="font-size:14px; margin:0 0 12px; line-height:1.4;">Для подключения устройств нужно выбрать тариф.</p>
+        subCheckBlock.innerHTML = `
+          <div class="card" style="padding:16px; text-align:center; background: rgba(52,199,89,0.1); border: 1px solid rgba(52,199,89,0.3); border-radius: 12px;">
+            <div style="font-size:24px; margin-bottom:8px;">✅</div>
+            <p class="subtitle" style="color:var(--tg-theme-success-color, #34c759); font-weight:700; margin-bottom:4px;">Подписка активна</p>
+            <p class="body text-muted" style="font-size:13px;">Теперь вы можете перейти к настройке устройства.</p>
+          </div>
         `;
-
+      } else {
+        let checkHtml = `
+          <div class="card" style="padding:16px; text-align:center; background: rgba(58,168,252,0.1); border: 1px dashed var(--accent_text_color, #3aa8fc); border-radius: 12px;">
+            <p class="body" style="font-size:14px; margin:0 0 12px; line-height:1.4;">Для подключения устройств необходимо сначала приобрести подписку.</p>
+        `;
         if (S.user && S.user.trialAvailable) {
-          warnHtml += `
+          checkHtml += `
               <div style="margin-bottom: 8px;">
                 <svg class="gift-anim" viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="20 12 20 22 4 22 4 12"></polyline>
@@ -690,16 +690,16 @@
                   <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
                 </svg>
               </div>
-              <p class="body text-muted" style="margin-bottom:16px; font-size:13px;">Но сначала вы можете попробовать VPN совершенно бесплатно!</p>
+              <p class="body text-muted" style="margin-bottom:16px; font-size:13px;">Или попробуйте бесплатно — заберите пробный период в подарок!</p>
               <button class="btn-primary" style="min-height:40px; font-size:14px; width:100%;" onclick="window.showScreen('screenVpn')">Забрать ${S.user.trialDays} дней</button>
             `;
         } else {
-          warnHtml += `
+          checkHtml += `
               <button class="btn-primary" style="min-height:40px; font-size:14px; width:100%;" onclick="window.showModal('modalPlan')">Выбрать тариф</button>
             `;
         }
-        warnHtml += `</div>`;
-        setupWarningBlock.innerHTML = warnHtml;
+        checkHtml += `</div>`;
+        subCheckBlock.innerHTML = checkHtml;
       }
     }
 
@@ -908,7 +908,7 @@
      Onboarding carousel controller
   ───────────────────────────────────────── */
   function initOnboarding() {
-    const TOTAL_SLIDES = 4;
+    const TOTAL_SLIDES = 5;
 
     // State
     let currentSlide = 0;
@@ -975,7 +975,7 @@
     const track = document.getElementById('obTrack');
     const btnNext = document.getElementById('obBtnNext');
     const btnBack = document.getElementById('obBtnBack');
-    const dots = [0, 1, 2, 3].map(i => document.getElementById('obDot' + i));
+    const dots = [0, 1, 2, 3, 4].map(i => document.getElementById('obDot' + i));
     const obActionRow = document.getElementById('obActionRow');
     const obBtnCopied = document.getElementById('obBtnCopied');
     const obAppContent = document.getElementById('obAppContent');
@@ -998,7 +998,7 @@
       }
 
       currentSlide = idx;
-      track.style.transform = 'translateX(-' + (idx * 100) + '%)';
+      track.style.transform = `translateX(-${idx * 100}%)`;
 
       // Update dots
       dots.forEach((d, i) => d.classList.toggle('active', i === idx));
@@ -1010,12 +1010,18 @@
 
     function updateButtons() {
       const isLast = currentSlide === TOTAL_SLIDES - 1;
+      const subActive = S.subscription && S.subscription.isActive;
 
       if (currentSlide === 0) {
-        // Slide 0: button acts as copy first, then as next
+        // Slide 0: Activation Check
+        btnNext.textContent = 'Далее →';
+        btnNext.disabled = !subActive;
+        if (obActionRow) obActionRow.classList.remove('split');
+      } else if (currentSlide === 1) {
+        // Slide 1: Copy Link
         if (!linkCopied) {
           btnNext.textContent = 'Скопировать ссылку';
-          btnNext.disabled = false;
+          btnNext.disabled = !subActive;
           if (obActionRow) obActionRow.classList.remove('split');
         } else {
           btnNext.textContent = 'Далее →';
@@ -1027,7 +1033,7 @@
           }
         }
       } else {
-        // On other slides, obBtnCopied acts as Back
+        // Other slides
         btnNext.textContent = isLast ? 'Готово ✓' : 'Далее →';
         if (obActionRow) obActionRow.classList.add('split');
         if (obBtnCopied) {
@@ -1035,12 +1041,10 @@
           obBtnCopied.className = 'ob-btn-copied is-back';
         }
         switch (currentSlide) {
-          case 1: btnNext.disabled = !selectedDevice; break;
+          case 2: btnNext.disabled = !selectedDevice; break;
           default: btnNext.disabled = false;
         }
       }
-
-      // Hide the legacy back button
       if (btnBack) btnBack.style.display = 'none';
     }
 
@@ -1130,11 +1134,9 @@
 
     if (obBtnCopied) {
       obBtnCopied.addEventListener('click', () => {
-        if (currentSlide === 0) {
-          // Re-copy
+        if (currentSlide === 1) {
           doSlideCopy();
         } else {
-          // Act as back button
           goToSlide(currentSlide - 1, 'back');
         }
       });
@@ -1153,20 +1155,26 @@
 
     /* ── Next/Copy button ── */
     btnNext.addEventListener('click', () => {
-      // Slide 0, first press = copy action
-      if (currentSlide === 0 && !linkCopied) {
-        doSlideCopy();
-        return;
-      }
-      // Last slide = done
-      if (currentSlide === TOTAL_SLIDES - 1) {
+      if (currentSlide === 0) {
+        if (S.subscription && S.subscription.isActive) {
+          goToSlide(1, 'forward');
+        } else {
+          showToast('Активируйте подписку, чтобы продолжить');
+        }
+      } else if (currentSlide === 1) {
+        if (!linkCopied) {
+          doSlideCopy();
+        } else {
+          goToSlide(2, 'forward');
+        }
+      } else if (currentSlide === 2) {
+        renderSlide3();
+        goToSlide(3, 'forward');
+      } else if (currentSlide === 3) {
+        goToSlide(4, 'forward');
+      } else {
         showScreen('screenVpn');
-        resetCarousel();
-        return;
       }
-      // Render app slide just-in-time
-      if (currentSlide === 1) renderSlide3();
-      goToSlide(currentSlide + 1, 'forward');
     });
 
     /* ── Back button ── */

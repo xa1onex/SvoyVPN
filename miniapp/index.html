@@ -38,10 +38,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v83.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v83.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v84.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v84.css" />
 
-  <script defer src="/miniapp/need/app_v83.js"></script>
+  <script defer src="/miniapp/need/app_v84.js"></script>
 </head>
 
 <body>
@@ -138,19 +138,30 @@
             <div class="ob-dot" id="obDot1"></div>
             <div class="ob-dot" id="obDot2"></div>
             <div class="ob-dot" id="obDot3"></div>
+            <div class="ob-dot" id="obDot4"></div>
           </div>
 
           <!-- Slides track -->
           <div class="ob-track" id="obTrack">
 
-            <!-- ── SLIDE 1: Copy link ── -->
+            <!-- ── SLIDE 0: Subscription Check ── -->
             <div class="ob-slide" id="obSlide0">
               <div class="ob-slide-inner">
-                <p class="ob-title" style="margin-top:20px;">Помочь с настройкой VPN?</p>
-                <p class="ob-desc">Для начала скопируйте вашу ссылку конфигурации — она понадобится в следующем шаге.
-                </p>
+                <p class="ob-title" style="margin-top:20px;">Шаг 1: Активация</p>
+                <p class="ob-desc">Выполните этот обязательный шаг, чтобы продолжить настройку.</p>
 
-                <div id="setupWarningBlock" style="display:none; margin-bottom:16px;"></div>
+                <div id="obSubCheckBlock" style="margin-bottom:16px;">
+                  <!-- Dynamically populated in JS -->
+                </div>
+              </div>
+            </div>
+
+            <!-- ── SLIDE 1: Copy link ── -->
+            <div class="ob-slide" id="obSlide1">
+              <div class="ob-slide-inner">
+                <p class="ob-title" style="margin-top:20px;">Шаг 2: Ваша ссылка</p>
+                <p class="ob-desc">Скопируйте вашу уникальную ссылку конфигурации — она понадобится в следующем шаге.
+                </p>
 
                 <div class="ob-copy-wrap" id="setupCopyWrap">
                   <div class="copy-field">
@@ -167,7 +178,7 @@
             </div>
 
             <!-- ── SLIDE 2: Choose device ── -->
-            <div class="ob-slide" id="obSlide1">
+            <div class="ob-slide" id="obSlide2">
               <div class="ob-slide-inner">
                 <p class="ob-title" style="margin-top:20px;">Выберите устройство</p>
                 <p class="ob-desc">Укажите тип вашего устройства — мы подберём подходящее приложение.</p>
@@ -221,14 +232,14 @@
             </div>
 
             <!-- ── SLIDE 3: Open app (content injected by JS) ── -->
-            <div class="ob-slide" id="obSlide2">
+            <div class="ob-slide" id="obSlide3">
               <div class="ob-slide-inner" id="obAppContent">
                 <!-- populated dynamically -->
               </div>
             </div>
 
             <!-- ── SLIDE 4: Add subscription ── -->
-            <div class="ob-slide" id="obSlide3">
+            <div class="ob-slide" id="obSlide4">
               <div class="ob-slide-inner">
                 <p class="ob-title" style="margin-top:20px;">Добавьте подписку</p>
                 <p class="ob-desc">Откройте приложение → раздел «Подписки» (или +) → вставьте скопированную ссылку.
