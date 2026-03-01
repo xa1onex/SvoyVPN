@@ -363,7 +363,7 @@
     }
   }
 
-  const SERVERS_PER_PAGE = 4;
+  const SERVERS_PER_PAGE = 2;
   let serverPage = 0;
 
   function createServerCard(s) {
@@ -587,9 +587,9 @@
 
         if (S.user && S.user.trialAvailable) {
           subBlockBox.innerHTML = `
-            <div class="card" style="padding:16px; text-align:center; background: linear-gradient(135deg, rgba(58,168,252,0.1) 0%, rgba(58,168,252,0) 100%); border: 1px dashed var(--accent_text_color, #3aa8fc); border-radius: 12px;">
-               <div style="margin-bottom: 8px;">
-                 <svg class="gift-anim" viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <div class="card" style="padding:10px 16px; text-align:center; background: linear-gradient(135deg, rgba(58,168,252,0.1) 0%, rgba(58,168,252,0) 100%); border: 1px dashed var(--accent_text_color, #3aa8fc); border-radius: 12px;">
+               <div style="margin-bottom: 4px;">
+                 <svg class="gift-anim" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                    <polyline points="20 12 20 22 4 22 4 12"></polyline>
                    <rect x="2" y="7" width="20" height="5"></rect>
                    <line x1="12" y1="22" x2="12" y2="7"></line>
@@ -612,12 +612,12 @@
                    }
                  </style>
                </div>
-               <p class="subtitle" style="color:var(--accent_text_color, #3aa8fc); margin-bottom:8px; font-weight: 700;">Попробуй бесплатно!</p>
-               <p class="body text-muted" style="margin-bottom:16px; font-size:13px; line-height: 1.4;">Тебе доступно <b>${S.user.trialDays} дней</b> бесплатного тест-драйва без привязки карты.</p>
-               <button class="btn-primary" id="btnActivateTrial" style="min-height: 48px;">Забрать ${S.user.trialDays} дней</button>
+               <p class="subtitle" style="color:var(--accent_text_color, #3aa8fc); margin-bottom:4px; font-weight: 700;">Попробуй бесплатно!</p>
+               <p class="body text-muted" style="margin-bottom:10px; font-size:12px; line-height: 1.3;">Доступно <b>${S.user.trialDays} дней</b> теста без привязки карты.</p>
+               <button class="btn-primary" id="btnActivateTrial" style="min-height: 40px; font-size: 14px; padding: 8px;">Забрать ${S.user.trialDays} дней</button>
             </div>
             <div class="gap-12"></div>
-            <button class="btn-secondary" style="width:100%;" onclick="window.showModal('modalPlan')">Выбрать тариф</button>
+            <button class="btn-secondary" style="width:100%; min-height: 48px;" onclick="window.showModal('modalPlan')">Выбрать тариф</button>
           `;
 
           document.getElementById('btnActivateTrial').addEventListener('click', async function () {
@@ -681,8 +681,8 @@
         `;
         if (S.user && S.user.trialAvailable) {
           checkHtml += `
-              <div style="margin-bottom: 8px;">
-                <svg class="gift-anim" viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <div style="margin-bottom: 6px;">
+                <svg class="gift-anim" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="20 12 20 22 4 22 4 12"></polyline>
                   <rect x="2" y="7" width="20" height="5"></rect>
                   <line x1="12" y1="22" x2="12" y2="7"></line>
@@ -690,7 +690,7 @@
                   <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
                 </svg>
               </div>
-              <p class="body text-muted" style="margin-bottom:16px; font-size:13px;">Или попробуйте бесплатно — заберите пробный период в подарок!</p>
+              <p class="body text-muted" style="margin-bottom:12px; font-size:13px;">Или попробуйте бесплатно — заберите пробный период в подарок!</p>
               <button class="btn-primary" id="obBtnTrial" style="min-height:40px; font-size:14px; width:100%;">Забрать ${S.user.trialDays} дней</button>
             `;
           setTimeout(() => {
