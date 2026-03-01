@@ -833,6 +833,11 @@
 
     newsCarousel.innerHTML = '';
 
+    const isAdmin = S.user && S.user.isAdmin;
+
+    // Debug: log to help user see if they are admin (they can see console in some web inspectors)
+    console.log('[News] renderNews, isAdmin:', isAdmin, 'news count:', S.news.length);
+
     // If admin is logged in, show "Add News" card AT THE END (as requested)
     // Wait, user said "at the very end", so we add news cards first
 
@@ -849,8 +854,6 @@
         if (item.image_url) {
           bgStyle = `background-image: url(${item.image_url})`;
         }
-
-        const isAdmin = S.user && S.user.isAdmin;
 
         card.innerHTML = `
           ${item.image_url ? `<div class="news-card__bg" style="${bgStyle}"></div>` : ''}
@@ -893,6 +896,17 @@
     }
 
     newsSection.style.display = hasContent ? 'block' : 'none';
+
+    // Add a tiny version badge to verify the code is updated
+    let vBadge = document.getElementById('codeVersionBadge');
+    if (!vBadge) {
+      vBadge = document.createElement('div');
+      vBadge.id = 'codeVersionBadge';
+      vBadge.style.cssText = 'font-size: 8px; opacity: 0.3; text-align: center; margin-top: 10px;';
+      const container = document.querySelector('.screen-profile .container');
+      if (container) container.appendChild(vBadge);
+    }
+    vBadge.textContent = 'v102-final';
   }
 
   async function deleteNews(newsId) {
