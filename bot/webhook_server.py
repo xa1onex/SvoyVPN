@@ -96,6 +96,7 @@ class WebhookServer:
             ('/api/trial/activate', self.api_activate_trial, 'POST'),
             ('/api/news', self.api_get_news, 'GET'),
             ('/api/news/add', self.api_add_news, 'POST'),
+            ('/api/news/delete', self.api_delete_news, 'POST'),
         ]
         
         for path, handler, method in api_routes:
@@ -1134,6 +1135,43 @@ class WebhookServer:
             return web.json_response({"status": "ok"})
         except Exception as e:
             logger.error(f"Error adding news: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_delete_news(self, request: web_request.Request) -> web.Response:
+        try:
+            data = await request.json()
+            init_data = data.get('initData')
+            news_id = data.get('newsId')
+            
+            if not init_data or not self.verify_telegram_webapp_data(init_data, self.bot.token):
+                return web.json_response({"error": "Auth failed"}, status=403)
+                
+            parsed = self.parse_telegram_init_data(init_data)
+            user_json = parsed.get('user', '{}')
+            user_data = json.loads(user_json)
+            user_id = int(user_data.get('id', 0))
+            
+            if user_id not in self.admin_ids:
+                return web.json_response({"error": "Forbidden"}, status=403)
+            
+            async with get_connection() as conn:
+                # Optionally delete image file from disk
+                row = await conn.fetchrow("SELECT image_url FROM news WHERE id = $1", news_id)
+                if row and row['image_url']:
+                    try:
+                        image_path = row['image_url'].replace('/miniapp/news_images/', '')
+                        news_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'miniapp', 'news_images')
+                        full_path = os.path.join(news_dir, image_path)
+                        if os.path.exists(full_path):
+                            os.remove(full_path)
+                    except Exception as img_err:
+                        logger.error(f"Error deleting news image file: {img_err}")
+
+                await conn.execute("DELETE FROM news WHERE id = $1", news_id)
+                
+            return web.json_response({"status": "ok"})
+        except Exception as e:
+            logger.error(f"Error deleting news: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def run(self, host: str, port: int):

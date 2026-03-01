@@ -1901,14 +1901,16 @@ body {
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     gap: 12px;
-    padding: 4px 16px 12px;
+    padding: 10px 40px 16px;
+    /* Increased side padding to show peeking cards */
     -ms-overflow-style: none;
     /* IE/Edge */
     scrollbar-width: none;
     /* Firefox */
     width: 100%;
     box-sizing: border-box;
-    scroll-padding: 0 16px;
+    scroll-padding: 0 40px;
+    /* Match padding for snap */
 }
 
 .news-carousel::-webkit-scrollbar {
@@ -1917,9 +1919,9 @@ body {
 }
 
 .news-card {
-    flex: 0 0 85%;
-    width: 85%;
-    min-width: 80%;
+    flex: 0 0 80%;
+    width: 80%;
+    min-width: 260px;
     /* Ensure it doesn't shrink */
     max-width: 320px;
     /* Optional safety */
@@ -1927,7 +1929,8 @@ body {
     border-radius: 18px;
     position: relative;
     overflow: hidden;
-    scroll-snap-align: start;
+    scroll-snap-align: center;
+    /* Snap to center for peeking effect */
     cursor: pointer;
     display: flex;
     flex-direction: column;
@@ -1994,6 +1997,24 @@ body {
     -webkit-box-orient: vertical;
     overflow: hidden;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.news-card__delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 59, 48, 0.9);
+    color: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    z-index: 10;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    border: 1.5px solid rgba(255, 255, 255, 0.2);
 }
 
 /* Admin Card */

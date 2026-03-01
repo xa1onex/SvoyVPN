@@ -850,16 +850,27 @@
           bgStyle = `background-image: url(${item.image_url})`;
         }
 
+        const isAdmin = S.user && S.user.isAdmin;
+
         card.innerHTML = `
           ${item.image_url ? `<div class="news-card__bg" style="${bgStyle}"></div>` : ''}
           <div class="news-card__overlay"></div>
+          ${isAdmin ? `<div class="news-card__delete" data-id="${item.id}">✕</div>` : ''}
           <div class="news-card__content">
             <p class="news-card__title">${item.title}</p>
             <p class="news-card__desc">${item.description || ''}</p>
           </div>
         `;
 
-        card.onclick = () => {
+        card.onclick = (e) => {
+          if (e.target.classList.contains('news-card__delete')) {
+            e.stopPropagation();
+            haptic('medium');
+            if (confirm('Удалить эту новость?')) {
+              deleteNews(item.id);
+            }
+            return;
+          }
           haptic('light');
         };
         newsCarousel.appendChild(card);
@@ -882,6 +893,23 @@
     }
 
     newsSection.style.display = hasContent ? 'block' : 'none';
+  }
+
+  async function deleteNews(newsId) {
+    const d = await api('/miniapp/api/news/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        initData: tg.initData,
+        newsId: newsId
+      })
+    });
+    if (d && d.status === 'ok') {
+      showToast('Новость удалена');
+      await loadNews();
+    } else {
+      showToast('Ошибка удаления');
+    }
   }
 
   async function loadNews() {
