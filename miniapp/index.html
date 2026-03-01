@@ -38,10 +38,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v97.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v97.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v98.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v98.css" />
 
-  <script defer src="/miniapp/need/app_v97.js"></script>
+  <script defer src="/miniapp/need/app_v98.js"></script>
 </head>
 
 <body>
@@ -318,14 +318,14 @@
 
         <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top: 8px;">
           <p id="profileName" class="title text-center">Пользователь</p>
-          <div id="profileBadge" class="status-cloud" style="display:none;">
-            <div class="status-cloud__icon">
-              <!-- Animated/Stylish Checkmark -->
-              <svg viewBox="0 0 24 24">
-                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-              </svg>
-            </div>
-            <span id="profileBadgeText" class="status-cloud__text"></span>
+          <div id="profileBadge" class="status-seal" style="display:none;">
+            <svg viewBox="0 0 24 24" class="seal-svg">
+              <path class="seal-bg"
+                d="M12 1L14.39 3.06L17.51 3.2L18.79 6.04L21.7 7.07L21.75 10.19L23.8 12.55L21.75 14.91L21.7 18.03L18.79 19.06L17.51 21.9L14.39 22.04L12 24.1L9.61 22.04L6.49 21.9L5.21 19.06L2.3 18.03L2.25 14.91L0.2 12.55L2.25 10.19L2.3 7.07L5.21 6.04L6.49 3.2L9.61 3.06L12 1Z"
+                fill="var(--accent_text_color, #3aa8fc)" />
+              <path class="seal-check" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z" fill="white" />
+            </svg>
+            <span id="profileBadgeText" class="seal-text"></span>
           </div>
         </div>
         <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px; display:none;">—</p>

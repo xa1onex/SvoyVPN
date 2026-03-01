@@ -561,9 +561,9 @@
         pBadge.style.display = 'inline-flex';
         if (pBadgeText) {
           if (daysLeft > 0) {
-            pBadgeText.textContent = `Подписка на ${daysLeft} ${dw(daysLeft)}`;
+            pBadgeText.textContent = `Активна на ${daysLeft} ${dw(daysLeft)}`;
           } else {
-            pBadgeText.textContent = `Подписка до ${fmtDate(sub.endDate)}`;
+            pBadgeText.textContent = `Активна до ${fmtDate(sub.endDate)}`;
           }
         }
         pBadge.onclick = (e) => {

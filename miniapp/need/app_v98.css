@@ -1137,108 +1137,48 @@ body {
     color: var(--subtitle_text_color);
 }
 
-/* ── Status Cloud (Glossy Bubble v97) ── */
-.status-cloud {
+/* ── Status Seal (Verified v98) ── */
+.status-seal {
     position: relative;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    background: linear-gradient(165deg, #5ecaff, #3aa8fc);
-    color: #fff;
-
-    /* Organic, soft asymmetric cloud shape */
-    border-radius: 15px 15px 15px 5px;
-    width: 32px;
-    height: 32px;
-
+    gap: 8px;
     cursor: pointer;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    white-space: nowrap;
-    overflow: hidden;
-    /* clip the inner shine */
-    box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
     flex-shrink: 0;
     margin-top: 2px;
-
-    /* 3D Glossy effect */
-    box-shadow:
-        inset 0 1px 1px rgba(255, 255, 255, 0.5),
-        inset 0 -2px 4px rgba(0, 0, 0, 0.1),
-        0 4px 12px rgba(58, 168, 252, 0.35);
 }
 
-/* Internal "shine" for a cool glass look */
-.status-cloud::before {
-    content: "";
-    position: absolute;
-    top: 2px;
-    left: 4px;
-    right: 4px;
-    height: 40%;
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.4), transparent);
-    border-radius: 12px 12px 100% 100%;
-    pointer-events: none;
-    transition: opacity 0.3s;
-}
-
-.status-cloud.expanded {
-    width: auto;
-    max-width: 280px;
-    height: 40px;
-    padding: 0 16px;
-    border-radius: 20px;
-}
-
-.status-cloud.expanded::before {
-    opacity: 0.3;
-    /* dim shine when expanded */
-}
-
-/* No floating animation as requested */
-
-.status-cloud__icon {
+.seal-svg {
     width: 20px;
     height: 20px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    z-index: 2;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
-}
-
-.status-cloud__icon svg {
-    width: 17px;
-    height: 17px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 3.5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
     display: block;
+    flex-shrink: 0;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-.status-cloud__text {
+.status-seal:active .seal-svg {
+    transform: scale(0.9);
+}
+
+.seal-text {
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
+    color: var(--accent_text_color, #3aa8fc);
+    white-space: nowrap;
     opacity: 0;
-    transform: translateX(-15px);
-    transition: all 0.3s ease-out;
     width: 0;
-    visibility: hidden;
-    color: #fff;
-    z-index: 2;
-    margin-top: -1px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    pointer-events: none;
 }
 
-.status-cloud.expanded .status-cloud__text {
-    margin-left: 8px;
+.status-seal.expanded .seal-text {
     opacity: 1;
-    transform: translateX(0);
     width: auto;
-    visibility: visible;
+    max-width: 200px;
+    margin-right: 4px;
 }
 
 /* ── Section title ── */
