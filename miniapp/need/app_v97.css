@@ -1137,91 +1137,65 @@ body {
     color: var(--subtitle_text_color);
 }
 
-/* ── Status Cloud (Classic Cloud v96) ── */
+/* ── Status Cloud (Glossy Bubble v97) ── */
 .status-cloud {
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #4da4ff, #5691ff);
+    background: linear-gradient(165deg, #5ecaff, #3aa8fc);
     color: #fff;
-    /* The base of the cloud */
+
+    /* Organic, soft asymmetric cloud shape */
+    border-radius: 15px 15px 15px 5px;
     width: 32px;
-    height: 18px;
-    border-radius: 12px;
-    margin-top: 12px;
-    /* make room for humps */
+    height: 32px;
 
     cursor: pointer;
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     white-space: nowrap;
-    overflow: visible;
+    overflow: hidden;
+    /* clip the inner shine */
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
     flex-shrink: 0;
+    margin-top: 2px;
 
-    /* Shadow that follows the complex cloud shape */
-    filter: drop-shadow(0 4px 6px rgba(58, 168, 252, 0.4));
-    animation: cloud-float 3s ease-in-out infinite;
+    /* 3D Glossy effect */
+    box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.5),
+        inset 0 -2px 4px rgba(0, 0, 0, 0.1),
+        0 4px 12px rgba(58, 168, 252, 0.35);
 }
 
-/* The two fluffy humps on top */
-.status-cloud::before,
-.status-cloud::after {
+/* Internal "shine" for a cool glass look */
+.status-cloud::before {
     content: "";
     position: absolute;
-    background: inherit;
-    border-radius: 50%;
-    z-index: 1;
-    /* Match background blending */
-    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-/* Left top hump */
-.status-cloud::before {
-    width: 16px;
-    height: 16px;
-    top: -8px;
+    top: 2px;
     left: 4px;
-}
-
-/* Right top hump (larger) */
-.status-cloud::after {
-    width: 18px;
-    height: 18px;
-    top: -10px;
     right: 4px;
+    height: 40%;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.4), transparent);
+    border-radius: 12px 12px 100% 100%;
+    pointer-events: none;
+    transition: opacity 0.3s;
 }
 
 .status-cloud.expanded {
     width: auto;
     max-width: 280px;
-    height: 42px;
-    margin-top: 2px;
-    /* move back up */
-    padding: 10px 18px;
-    border-radius: 21px;
-    /* Transforms into a pill bubble */
-    filter: drop-shadow(0 6px 12px rgba(58, 168, 252, 0.5));
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 20px;
 }
 
-.status-cloud.expanded::before,
-.status-cloud.expanded::after {
-    opacity: 0;
-    transform: scale(0);
+.status-cloud.expanded::before {
+    opacity: 0.3;
+    /* dim shine when expanded */
 }
 
-@keyframes cloud-float {
-
-    0%,
-    100% {
-        transform: translateY(0);
-    }
-
-    50% {
-        transform: translateY(-4px);
-    }
-}
+/* No floating animation as requested */
 
 .status-cloud__icon {
     width: 20px;
@@ -1232,24 +1206,23 @@ body {
     justify-content: center;
     position: relative;
     z-index: 2;
-    /* always on top */
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
 }
 
 .status-cloud__icon svg {
-    width: 18px;
-    height: 18px;
+    width: 17px;
+    height: 17px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 4;
-    /* More bold */
+    stroke-width: 3.5;
     stroke-linecap: round;
     stroke-linejoin: round;
     display: block;
 }
 
 .status-cloud__text {
-    font-size: 14px;
-    font-weight: 800;
+    font-size: 13px;
+    font-weight: 700;
     opacity: 0;
     transform: translateX(-15px);
     transition: all 0.3s ease-out;
@@ -1257,10 +1230,11 @@ body {
     visibility: hidden;
     color: #fff;
     z-index: 2;
+    margin-top: -1px;
 }
 
 .status-cloud.expanded .status-cloud__text {
-    margin-left: 10px;
+    margin-left: 8px;
     opacity: 1;
     transform: translateX(0);
     width: auto;
