@@ -704,7 +704,6 @@
               if (d && d.status === 'ok') {
                 showToast('Подарок получен! 🎁');
                 await loadUser();
-                if (typeof window.onboardingNext === 'function') window.onboardingNext();
               } else {
                 showToast('Ошибка: ' + (d ? d.error : '?'));
                 this.disabled = false; this.textContent = `Забрать ${S.user.trialDays} дней`;
