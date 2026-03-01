@@ -1137,33 +1137,32 @@ body {
     color: var(--subtitle_text_color);
 }
 
-/* ── Status Cloud (Updated v94) ── */
+/* ── Status Cloud (Refined v95) ── */
 .status-cloud {
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--accent_text_color, #3aa8fc), #5691ff);
+    background: linear-gradient(135deg, #4da4ff, #5691ff);
     color: #fff;
-    /* Organic cloud-like blob shape */
-    border-radius: 14px 14px 14px 4px;
+    /* Balanced organic cloud-like blob shape */
+    border-radius: 50% 50% 50% 25%;
     padding: 6px;
     cursor: pointer;
-    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     white-space: nowrap;
     overflow: visible;
-    /* changed from hidden to allow pseudo elements */
     width: 32px;
     height: 32px;
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
     flex-shrink: 0;
     margin-top: 2px;
-    box-shadow: 0 4px 10px rgba(58, 168, 252, 0.3);
+    box-shadow: 0 4px 12px rgba(58, 168, 252, 0.35);
     animation: cloud-float 3s ease-in-out infinite;
 }
 
-/* Extra cloud "bumps" */
+/* More symmetrical "fluff" */
 .status-cloud::before,
 .status-cloud::after {
     content: "";
@@ -1171,47 +1170,54 @@ body {
     background: inherit;
     border-radius: 50%;
     z-index: -1;
-    transition: all 0.3s ease;
-    opacity: 0.8;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    opacity: 0.9;
 }
 
 .status-cloud::before {
-    width: 16px;
-    height: 16px;
-    top: -6px;
-    left: 6px;
+    width: 14px;
+    height: 14px;
+    top: -5px;
+    left: 4px;
 }
 
 .status-cloud::after {
-    width: 12px;
-    height: 12px;
-    top: -4px;
-    right: 4px;
+    width: 18px;
+    height: 18px;
+    top: -7px;
+    right: 3px;
 }
 
 .status-cloud.expanded {
     width: auto;
-    max-width: 260px;
-    padding: 6px 14px;
-    border-radius: 16px;
+    max-width: 280px;
+    height: 42px;
+    /* Increased height as requested */
+    padding: 10px 18px;
+    border-radius: 21px;
+    /* Transforms into a pill shape */
+    box-shadow: 0 6px 18px rgba(58, 168, 252, 0.45);
 }
 
-.status-cloud.expanded::before,
-.status-cloud.expanded::after {
+.status-cloud.expanded::before {
+    transform: translate(-5px, 5px) scale(0);
     opacity: 0;
-    /* Hide fluff when expanded for cleaner text look */
-    transform: scale(0);
+}
+
+.status-cloud.expanded::after {
+    transform: translate(5px, 5px) scale(0);
+    opacity: 0;
 }
 
 @keyframes cloud-float {
 
     0%,
     100% {
-        transform: translateY(0);
+        transform: translateY(0) rotate(0deg);
     }
 
     50% {
-        transform: translateY(-3px);
+        transform: translateY(-4px) rotate(1deg);
     }
 }
 
@@ -1222,7 +1228,11 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+    transition: transform 0.3s ease;
+}
+
+.status-cloud.expanded .status-cloud__icon {
+    transform: scale(1.1);
 }
 
 .status-cloud__icon svg {
@@ -1230,18 +1240,20 @@ body {
     height: 18px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 3;
+    stroke-width: 3.5;
+    /* Slightly thicker for better visibility */
     stroke-linecap: round;
     stroke-linejoin: round;
     display: block;
 }
 
 .status-cloud__text {
-    font-size: 13px;
+    font-size: 14px;
+    /* Sightly larger text */
     font-weight: 700;
     opacity: 0;
-    transform: translateX(-10px);
-    transition: all 0.3s ease;
+    transform: translateX(-15px);
+    transition: all 0.35s ease-out;
     width: 0;
     visibility: hidden;
     color: #fff;
@@ -1249,7 +1261,7 @@ body {
 }
 
 .status-cloud.expanded .status-cloud__text {
-    margin-left: 8px;
+    margin-left: 10px;
     opacity: 1;
     transform: translateX(0);
     width: auto;
