@@ -38,10 +38,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v92.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v92.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v93.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v93.css" />
 
-  <script defer src="/miniapp/need/app_v92.js"></script>
+  <script defer src="/miniapp/need/app_v93.js"></script>
 </head>
 
 <body>
@@ -318,12 +318,14 @@
 
         <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top: 8px;">
           <p id="profileName" class="title text-center">Пользователь</p>
-          <div id="profileBadge" style="display:none; cursor:pointer; flex-shrink:0; margin-top:2px;"
-            title="Статус подписки">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="var(--accent_text_color, #3aa8fc)">
-              <path
-                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-            </svg>
+          <div id="profileBadge" class="status-cloud" style="display:none;">
+            <div class="status-cloud__icon">
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M17.5 19h-11c-3 0-5.5-2.5-5.5-5.5 0-2.6 1.9-4.8 4.4-5.4.6-2.9 3.1-5.1 6.1-5.1 2.3 0 4.4 1.3 5.4 3.2 2.6.2 4.6 2.4 4.6 5 0 2.8-2 5.1-4.6 5.5v.3z" />
+              </svg>
+            </div>
+            <span id="profileBadgeText" class="status-cloud__text"></span>
           </div>
         </div>
         <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px; display:none;">—</p>

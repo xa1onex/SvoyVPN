@@ -1137,6 +1137,67 @@ body {
     color: var(--subtitle_text_color);
 }
 
+/* ── Status Cloud ── */
+.status-cloud {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent_text_color, #3aa8fc);
+    color: #fff;
+    border-radius: 20px;
+    padding: 6px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    white-space: nowrap;
+    overflow: hidden;
+    max-width: 32px;
+    height: 32px;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.status-cloud.expanded {
+    max-width: 240px;
+    padding: 6px 14px;
+}
+
+.status-cloud__icon {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.status-cloud__icon svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+    display: block;
+}
+
+.status-cloud__text {
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0;
+    transform: translateX(-10px);
+    transition: all 0.25s ease;
+    width: 0;
+    visibility: hidden;
+}
+
+.status-cloud.expanded .status-cloud__text {
+    margin-left: 8px;
+    opacity: 1;
+    transform: translateX(0);
+    width: auto;
+    visibility: visible;
+}
+
 /* ── Section title ── */
 .section-title {
     width: 100%;

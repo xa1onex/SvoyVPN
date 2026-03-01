@@ -556,16 +556,23 @@
     }
 
     if (pBadge) {
+      const pBadgeText = document.getElementById('profileBadgeText');
       if (sub && sub.isActive) {
-        pBadge.style.display = 'block';
-        pBadge.onclick = () => {
-          haptic('light');
+        pBadge.style.display = 'inline-flex';
+        if (pBadgeText) {
           if (daysLeft > 0) {
-            showToast(`У вас активна подписка на ${daysLeft} ${dw(daysLeft)}`);
+            pBadgeText.textContent = `Подписка на ${daysLeft} ${dw(daysLeft)}`;
           } else {
-            showToast(`У вас активна подписка до ${fmtDate(sub.endDate)}`);
+            pBadgeText.textContent = `Подписка до ${fmtDate(sub.endDate)}`;
           }
+        }
+        pBadge.onclick = (e) => {
+          e.stopPropagation();
+          haptic('light');
+          pBadge.classList.toggle('expanded');
         };
+        // Reset if click anywhere else
+        document.addEventListener('click', () => pBadge.classList.remove('expanded'), { once: false });
       } else {
         pBadge.style.display = 'none';
       }
