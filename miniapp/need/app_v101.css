@@ -1901,12 +1901,14 @@ body {
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     gap: 12px;
-    padding: 4px 0 12px;
+    padding: 4px 16px 12px;
     -ms-overflow-style: none;
     /* IE/Edge */
     scrollbar-width: none;
     /* Firefox */
     width: 100%;
+    box-sizing: border-box;
+    scroll-padding: 0 16px;
 }
 
 .news-carousel::-webkit-scrollbar {
@@ -1915,10 +1917,10 @@ body {
 }
 
 .news-card {
-    flex: 0 0 140px;
-    width: 140px;
-    height: 180px;
-    border-radius: 20px;
+    flex: 0 0 85%;
+    width: 85%;
+    height: 110px;
+    border-radius: 18px;
     position: relative;
     overflow: hidden;
     scroll-snap-align: start;
@@ -2005,8 +2007,8 @@ body {
 }
 
 .admin-card__icon {
-    font-size: 28px;
-    margin-bottom: 6px;
+    font-size: 24px;
+    margin-bottom: 2px;
     opacity: 0.8;
 }
 
