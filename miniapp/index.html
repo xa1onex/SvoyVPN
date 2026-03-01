@@ -38,10 +38,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v98.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v98.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v99.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v99.css" />
 
-  <script defer src="/miniapp/need/app_v98.js"></script>
+  <script defer src="/miniapp/need/app_v99.js"></script>
 </head>
 
 <body>
@@ -320,10 +320,12 @@
           <p id="profileName" class="title text-center">Пользователь</p>
           <div id="profileBadge" class="status-seal" style="display:none;">
             <svg viewBox="0 0 24 24" class="seal-svg">
+              <!-- 12-point smooth scalloped seal -->
               <path class="seal-bg"
-                d="M12 1L14.39 3.06L17.51 3.2L18.79 6.04L21.7 7.07L21.75 10.19L23.8 12.55L21.75 14.91L21.7 18.03L18.79 19.06L17.51 21.9L14.39 22.04L12 24.1L9.61 22.04L6.49 21.9L5.21 19.06L2.3 18.03L2.25 14.91L0.2 12.55L2.25 10.19L2.3 7.07L5.21 6.04L6.49 3.2L9.61 3.06L12 1Z"
+                d="M12 1L14.3 2.7L17.1 2.8L18.6 5.3L21.3 6.1L21.5 8.9L23.4 11L21.5 13.1L21.3 15.9L18.6 16.7L17.1 19.2L14.3 19.3L12 21L9.7 19.3L6.9 19.2L5.4 16.7L2.7 15.9L2.5 13.1L0.6 11L2.5 8.9L2.7 6.1L5.4 5.3L6.9 2.8L9.7 2.7L12 1Z"
                 fill="var(--accent_text_color, #3aa8fc)" />
-              <path class="seal-check" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z" fill="white" />
+              <!-- Smaller centered checkmark -->
+              <path class="seal-check" d="M10 14.5L7.5 12L6.5 13L10 16.5L17.5 9L16.5 8L10 14.5Z" fill="white" />
             </svg>
             <span id="profileBadgeText" class="seal-text"></span>
           </div>

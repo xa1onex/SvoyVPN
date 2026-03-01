@@ -225,7 +225,7 @@ async def get_main_keyboard(user_id: int, config):
     # Получаем URL для miniapp из APP_URL
     miniapp_url = None
     if config.app_url:
-        miniapp_url = f"{config.app_url}/miniapp?v=98"
+        miniapp_url = f"{config.app_url}/miniapp?v=99"
     else:
         # Fallback на localhost для разработки
         import os
