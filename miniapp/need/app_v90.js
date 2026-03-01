@@ -733,6 +733,9 @@
       if (elSetup) elSetup.value = sub.subscriptionUrl;
       if (elProfile) elProfile.value = sub.subscriptionUrl;
     }
+
+    // Refresh servers layout (pageSize may change if trial block appeared)
+    renderServers();
   }
 
   /* ═══════ Load Data ═══════ */
