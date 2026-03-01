@@ -38,10 +38,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v91.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v91.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v92.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v92.css" />
 
-  <script defer src="/miniapp/need/app_v91.js"></script>
+  <script defer src="/miniapp/need/app_v92.js"></script>
 </head>
 
 <body>
@@ -316,9 +316,17 @@
             style="width:88px;height:88px;margin:0;font-size:44px;padding:0;overflow:hidden;">?</div>
         </div>
 
-        <div class="gap-8"></div>
-        <p id="profileName" class="title text-center">Пользователь</p>
-        <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px;">—</p>
+        <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top: 8px;">
+          <p id="profileName" class="title text-center">Пользователь</p>
+          <div id="profileBadge" style="display:none; cursor:pointer; flex-shrink:0; margin-top:2px;"
+            title="Статус подписки">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="var(--accent_text_color, #3aa8fc)">
+              <path
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+            </svg>
+          </div>
+        </div>
+        <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px; display:none;">—</p>
 
         <p class="section-title">Ссылка подписки</p>
         <div class="copy-field">

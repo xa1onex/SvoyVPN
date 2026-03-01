@@ -33,6 +33,13 @@
     return MW[2];
   }
 
+  const DW = ['день', 'дня', 'дней'];
+  function dw(n) {
+    if (n % 10 === 1 && n % 100 !== 11) return DW[0];
+    if ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100)) return DW[1];
+    return DW[2];
+  }
+
   const fmtPrice = (p) =>
     Number(p).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
@@ -537,6 +544,7 @@
     const sub = S.subscription;
     const vpnStatus = document.getElementById('vpnStatus');
     const pStatus = document.getElementById('profileStatus');
+    const pBadge = document.getElementById('profileBadge');
     const subBlockBox = document.getElementById('subBlockBox');
 
     let daysLeft = 0;
@@ -547,13 +555,27 @@
       daysLeft = Math.ceil(diff / (1000 * 3600 * 24));
     }
 
+    if (pBadge) {
+      if (sub && sub.isActive) {
+        pBadge.style.display = 'block';
+        pBadge.onclick = () => {
+          haptic('light');
+          if (daysLeft > 0) {
+            showToast(`У вас активна подписка на ${daysLeft} ${dw(daysLeft)}`);
+          } else {
+            showToast(`У вас активна подписка до ${fmtDate(sub.endDate)}`);
+          }
+        };
+      } else {
+        pBadge.style.display = 'none';
+      }
+    }
+
     if (subBlockBox) {
       if (sub && sub.isActive) {
         if (vpnStatus) vpnStatus.textContent = 'Подписка активна';
         if (pStatus) {
-          pStatus.textContent = 'Подписка активна';
-          pStatus.classList.remove('text-muted');
-          pStatus.classList.add('text-accent');
+          pStatus.textContent = '';
         }
 
         let statusHtml = `
@@ -581,9 +603,7 @@
       } else {
         if (vpnStatus) vpnStatus.textContent = 'Быстрый и приватный VPN';
         if (pStatus) {
-          pStatus.textContent = 'Подписка неактивна';
-          pStatus.classList.remove('text-accent');
-          pStatus.classList.add('text-muted');
+          pStatus.textContent = '';
         }
 
         if (S.user && S.user.trialAvailable) {
