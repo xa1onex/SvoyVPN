@@ -1087,14 +1087,14 @@ body {
     flex-direction: column;
     gap: 6px;
     width: 100%;
-    margin-top: 16px;
+    margin-top: 12px;
 }
 
 .link-card {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
+    gap: 10px;
+    padding: 10px 14px;
     border-radius: 14px;
     background: var(--section_bg_color, var(--tg-theme-section-bg-color, #f7f9fb));
     cursor: pointer;
@@ -1107,8 +1107,8 @@ body {
 }
 
 .link-card .link-icon {
-    width: 48px;
-    height: 48px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     background: var(--accent_text_color, #3aa8fc);
     display: flex;
@@ -1118,8 +1118,8 @@ body {
 }
 
 .link-card .link-icon svg {
-    width: 24px;
-    height: 24px;
+    width: 18px;
+    height: 18px;
     fill: #fff;
 }
 
@@ -1127,7 +1127,7 @@ body {
 
 
 .link-card .link-name {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     flex: 1;
 }
