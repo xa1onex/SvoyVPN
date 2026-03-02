@@ -286,326 +286,327 @@
                   </a>
                 </div>
               </div>
-              <!-- ── SLIDE 5: Update subscription ── -->
-              <div class="ob-slide" id="obSlide5">
-                <div class="ob-slide-inner">
-                  <p class="ob-title" style="margin-top:20px;">Обновление серверов</p>
-                  <p class="ob-desc">Если мы добавили новые серверы или что-то изменилось, подписку нужно обновить.</p>
-                  <div class="ob-app-list">
-                    <div class="ob-app-item" style="cursor:default;">
-                      <div class="ob-app-icon" style="background:rgba(58,168,252,.12);">
-                        <svg viewBox="0 0 24 24" style="fill:var(--accent_text_color,#3aa8fc);width:24px;height:24px;">
-                          <path
-                            d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
-                        </svg>
-                      </div>
-                      <div class="ob-app-info">
-                        <p class="ob-app-name">Обновите конфигурацию</p>
-                        <p class="ob-app-store">Свайпните вниз или нажмите «Update»</p>
-                      </div>
+            </div>
+            <!-- ── SLIDE 5: Update subscription ── -->
+            <div class="ob-slide" id="obSlide5">
+              <div class="ob-slide-inner">
+                <p class="ob-title" style="margin-top:20px;">Обновление серверов</p>
+                <p class="ob-desc">Если мы добавили новые серверы или что-то изменилось, подписку нужно обновить.</p>
+                <div class="ob-app-list">
+                  <div class="ob-app-item" style="cursor:default;">
+                    <div class="ob-app-icon" style="background:rgba(58,168,252,.12);">
+                      <svg viewBox="0 0 24 24" style="fill:var(--accent_text_color,#3aa8fc);width:24px;height:24px;">
+                        <path
+                          d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+                      </svg>
                     </div>
-                    <div class="ob-app-item" style="cursor:default;">
-                      <div class="ob-app-icon" style="background:rgba(52,199,89,.12);">
-                        <svg viewBox="0 0 24 24" style="fill:#34c759;width:24px;height:24px;">
-                          <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-                        </svg>
-                      </div>
-                      <div class="ob-app-info">
-                        <p class="ob-app-name">Новые серверы</p>
-                        <p class="ob-app-store">Они мгновенно появятся в списке</p>
-                      </div>
+                    <div class="ob-app-info">
+                      <p class="ob-app-name">Обновите конфигурацию</p>
+                      <p class="ob-app-store">Свайпните вниз или нажмите «Update»</p>
+                    </div>
+                  </div>
+                  <div class="ob-app-item" style="cursor:default;">
+                    <div class="ob-app-icon" style="background:rgba(52,199,89,.12);">
+                      <svg viewBox="0 0 24 24" style="fill:#34c759;width:24px;height:24px;">
+                        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                      </svg>
+                    </div>
+                    <div class="ob-app-info">
+                      <p class="ob-app-name">Новые серверы</p>
+                      <p class="ob-app-store">Они мгновенно появятся в списке</p>
                     </div>
                   </div>
                 </div>
               </div>
-
-            </div><!-- /ob-track -->
-
-            <!-- Action buttons -->
-            <div class="ob-actions">
-              <div class="ob-action-row" id="obActionRow">
-                <button class="ob-btn-copied" id="obBtnCopied">✓ Скопировано</button>
-                <button class="ob-btn-next" id="obBtnNext">Скопировать ссылку</button>
-              </div>
-              <button class="ob-btn-back" id="obBtnBack" style="display:none;">← Назад</button>
             </div>
 
-          </div><!-- /ob-carousel -->
+          </div><!-- /ob-track -->
 
-        </div>
+          <!-- Action buttons -->
+          <div class="ob-actions">
+            <div class="ob-action-row" id="obActionRow">
+              <button class="ob-btn-copied" id="obBtnCopied">✓ Скопировано</button>
+              <button class="ob-btn-next" id="obBtnNext">Скопировать ссылку</button>
+            </div>
+            <button class="ob-btn-back" id="obBtnBack" style="display:none;">← Назад</button>
+          </div>
+
+        </div><!-- /ob-carousel -->
+
       </div>
-
-      <!-- ═══ SCREEN: PROFILE ═══ -->
-      <div id="screenProfile" class="screen">
-        <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
-
-          <!-- Animated logo with Avatar acting as the core -->
-          <div class="logo-anim">
-            <div class="ring" style="--ring-opacity:.15;"></div>
-            <div class="ring" style="--ring-opacity:.25;"></div>
-            <div class="ring" style="--ring-opacity:.35;"></div>
-            <div id="avatar" class="logo-core avatar"
-              style="width:88px;height:88px;margin:0;font-size:44px;padding:0;overflow:hidden;">?</div>
-          </div>
-
-          <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top: 8px;">
-            <p id="profileName" class="title text-center">Пользователь</p>
-            <div id="profileBadge" class="status-seal" style="display:none;">
-              <svg viewBox="0 0 24 24" class="seal-svg">
-                <!-- Rounded, soft 10-point scalloped seal -->
-                <path class="seal-bg"
-                  d="M10.8,3.3C11.5,2.4,12.5,2.4,13.2,3.3L14.7,5C15,5.4,15.6,5.6,16.1,5.5L18.1,5C19.2,4.8,20.1,5.6,19.9,6.7L19.4,8.7C19.3,9.2,19.5,9.8,20,10.1L21.7,11.3C22.6,12,22.6,13,21.7,13.7L20,14.9C19.5,15.2,19.3,15.8,19.4,16.3L19.9,18.3C20.1,19.4,19.2,20.2,18.1,20L16.1,19.5C15.6,19.4,15,19.6,14.7,20L13.2,21.7C12.5,22.6,11.5,22.6,10.8,21.7L9.3,20C9,19.6,8.4,19.4,7.9,19.5L5.9,20C4.8,20.2,3.9,19.4,4.1,18.3L4.6,16.3C4.7,15.8,4.5,15.2,4,14.9L2.3,13.7C1.4,13,1.4,12,2.3,11.3L4,10.1C4.5,9.8,4.7,9.2,4.6,8.7L4.1,6.7C3.9,5.6,4.8,4.8,5.9,5L7.9,5.5C8.4,5.6,9,5.4,9.3,5L10.8,3.3Z"
-                  fill="var(--accent_text_color, #3aa8fc)" />
-                <!-- Even smaller focused checkmark -->
-                <path class="seal-check" d="M10.5 14L8 11.5L7.2 12.3L10.5 15.6L16.8 9.3L16 8.5L10.5 14Z" fill="white" />
-              </svg>
-              <span id="profileBadgeText" class="seal-text"></span>
-            </div>
-          </div>
-          <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px; display:none;">—</p>
-
-          <div class="copy-field">
-            <input id="subUrlProfile" type="text" placeholder="—" readonly />
-            <button id="btnCopyProfile" class="btn-copy" aria-label="Скопировать">
-              <svg viewBox="0 0 24 24">
-                <path
-                  d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
-              </svg>
-            </button>
-          </div>
-
-          <div id="newsSection" style="width: 100%; margin-top: 12px; margin-bottom: 0; display: none;">
-            <div class="news-carousel" id="newsCarousel">
-              <!-- News cards and Admin card injected by JS -->
-            </div>
-          </div>
-
-          <div class="link-list">
-            <div class="link-card" id="btnReferral">
-              <div class="link-icon">
-                <!-- Outline team/referral icon -->
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
-                </svg>
-              </div>
-              <div class="link-content">
-                <span class="link-name">Реферальная программа</span>
-                <span class="link-subtext">Получайте подарки за друзей</span>
-              </div>
-              <span class="link-arrow">›</span>
-            </div>
-            <div class="link-card" id="btnChannel">
-              <div class="link-icon">
-                <!-- Telegram Logo -->
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.888-.666 3.463-1.509 5.773-2.506 6.93-2.99 3.332-1.396 4.024-1.636 4.475-1.643z" />
-                </svg>
-              </div>
-              <div class="link-content">
-                <span class="link-name">Канал</span>
-                <span class="link-subtext">Все новости и обновления</span>
-              </div>
-              <span class="link-arrow">›</span>
-            </div>
-            <div class="link-card" id="btnSupport">
-              <div class="link-icon">
-                <!-- Support headset icon -->
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M12 2c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z" />
-                </svg>
-              </div>
-              <div class="link-content">
-                <span class="link-name">Поддержка</span>
-                <span class="link-subtext">Что то не так? Напиши мы поможем</span>
-              </div>
-              <span class="link-arrow">›</span>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      <!-- ═══ TAB BAR ═══ -->
-      <nav id="tabBar" class="tab-bar">
-        <button class="tab active" data-screen="screenVpn">
-          <svg class="tab-icon tab-icon-vpn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
-            <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-1" />
-            <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-2" />
-          </svg>
-          <span class="tab-label">VPN</span>
-        </button>
-        <button class="tab" data-screen="screenSetup">
-          <svg class="tab-icon tab-icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path class="gear-teeth"
-              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-          <span class="tab-label">Настройка</span>
-        </button>
-        <button class="tab" data-screen="screenProfile">
-          <svg class="tab-icon tab-icon-profile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="8" r="4" class="profile-head" />
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" class="profile-body" />
-          </svg>
-          <span class="tab-label">Профиль</span>
-        </button>
-      </nav>
-
     </div>
 
-    <!-- ═══ MODAL: PLAN ═══ -->
-    <div id="modalPlan" class="modal">
-      <div class="modal-backdrop" onclick="hideModal('modalPlan')"></div>
-      <div class="modal-content" style="display:flex;flex-direction:column; padding-top: 14px;">
+    <!-- ═══ SCREEN: PROFILE ═══ -->
+    <div id="screenProfile" class="screen">
+      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
 
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
-          <div id="planModalHeader" style="display:flex; flex-direction:row; align-items:center; gap:8px;">
-            <p class="title-s" style="margin:0;">Выберите тариф</p>
+        <!-- Animated logo with Avatar acting as the core -->
+        <div class="logo-anim">
+          <div class="ring" style="--ring-opacity:.15;"></div>
+          <div class="ring" style="--ring-opacity:.25;"></div>
+          <div class="ring" style="--ring-opacity:.35;"></div>
+          <div id="avatar" class="logo-core avatar"
+            style="width:88px;height:88px;margin:0;font-size:44px;padding:0;overflow:hidden;">?</div>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top: 8px;">
+          <p id="profileName" class="title text-center">Пользователь</p>
+          <div id="profileBadge" class="status-seal" style="display:none;">
+            <svg viewBox="0 0 24 24" class="seal-svg">
+              <!-- Rounded, soft 10-point scalloped seal -->
+              <path class="seal-bg"
+                d="M10.8,3.3C11.5,2.4,12.5,2.4,13.2,3.3L14.7,5C15,5.4,15.6,5.6,16.1,5.5L18.1,5C19.2,4.8,20.1,5.6,19.9,6.7L19.4,8.7C19.3,9.2,19.5,9.8,20,10.1L21.7,11.3C22.6,12,22.6,13,21.7,13.7L20,14.9C19.5,15.2,19.3,15.8,19.4,16.3L19.9,18.3C20.1,19.4,19.2,20.2,18.1,20L16.1,19.5C15.6,19.4,15,19.6,14.7,20L13.2,21.7C12.5,22.6,11.5,22.6,10.8,21.7L9.3,20C9,19.6,8.4,19.4,7.9,19.5L5.9,20C4.8,20.2,3.9,19.4,4.1,18.3L4.6,16.3C4.7,15.8,4.5,15.2,4,14.9L2.3,13.7C1.4,13,1.4,12,2.3,11.3L4,10.1C4.5,9.8,4.7,9.2,4.6,8.7L4.1,6.7C3.9,5.6,4.8,4.8,5.9,5L7.9,5.5C8.4,5.6,9,5.4,9.3,5L10.8,3.3Z"
+                fill="var(--accent_text_color, #3aa8fc)" />
+              <!-- Even smaller focused checkmark -->
+              <path class="seal-check" d="M10.5 14L8 11.5L7.2 12.3L10.5 15.6L16.8 9.3L16 8.5L10.5 14Z" fill="white" />
+            </svg>
+            <span id="profileBadgeText" class="seal-text"></span>
           </div>
-          <button onclick="hideModal('modalPlan')" aria-label="Закрыть"
-            style="background:var(--section_bg_color, #f7f9fb); border:none; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:var(--subtitle_text_color, #8e8e93); cursor:pointer; -webkit-tap-highlight-color:transparent; flex-shrink:0;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
+        </div>
+        <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px; display:none;">—</p>
+
+        <div class="copy-field">
+          <input id="subUrlProfile" type="text" placeholder="—" readonly />
+          <button id="btnCopyProfile" class="btn-copy" aria-label="Скопировать">
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
             </svg>
           </button>
         </div>
-        <div class="gap-12"></div>
-        <div id="tariffsWrap" class="tariff-grid"></div>
 
-        <p class="section-title">Способ оплаты</p>
-        <div id="pmWrap" class="pm-list"></div>
-
-        <div class="pay-row">
-          <div>
-            <p class="total-label">Итого</p>
-            <p id="totalPrice" class="total-price">—</p>
+        <div id="newsSection" style="width: 100%; margin-top: 12px; margin-bottom: 0; display: none;">
+          <div class="news-carousel" id="newsCarousel">
+            <!-- News cards and Admin card injected by JS -->
           </div>
-          <button id="btnPay" class="btn-primary" disabled>Оплатить</button>
+        </div>
+
+        <div class="link-list">
+          <div class="link-card" id="btnReferral">
+            <div class="link-icon">
+              <!-- Outline team/referral icon -->
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+              </svg>
+            </div>
+            <div class="link-content">
+              <span class="link-name">Реферальная программа</span>
+              <span class="link-subtext">Получайте подарки за друзей</span>
+            </div>
+            <span class="link-arrow">›</span>
+          </div>
+          <div class="link-card" id="btnChannel">
+            <div class="link-icon">
+              <!-- Telegram Logo -->
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.888-.666 3.463-1.509 5.773-2.506 6.93-2.99 3.332-1.396 4.024-1.636 4.475-1.643z" />
+              </svg>
+            </div>
+            <div class="link-content">
+              <span class="link-name">Канал</span>
+              <span class="link-subtext">Все новости и обновления</span>
+            </div>
+            <span class="link-arrow">›</span>
+          </div>
+          <div class="link-card" id="btnSupport">
+            <div class="link-icon">
+              <!-- Support headset icon -->
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M12 2c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z" />
+              </svg>
+            </div>
+            <div class="link-content">
+              <span class="link-name">Поддержка</span>
+              <span class="link-subtext">Что то не так? Напиши мы поможем</span>
+            </div>
+            <span class="link-arrow">›</span>
+          </div>
         </div>
 
       </div>
     </div>
 
-    <!-- ═══ MODAL: REFERRAL ═══ -->
-    <div id="modalReferral" class="modal">
-      <div class="modal-backdrop" onclick="hideModal('modalReferral')"></div>
-      <div class="modal-content" style="display:flex;flex-direction:column;align-items:center;">
+    <!-- ═══ TAB BAR ═══ -->
+    <nav id="tabBar" class="tab-bar">
+      <button class="tab active" data-screen="screenVpn">
+        <svg class="tab-icon tab-icon-vpn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-1" />
+          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-2" />
+        </svg>
+        <span class="tab-label">VPN</span>
+      </button>
+      <button class="tab" data-screen="screenSetup">
+        <svg class="tab-icon tab-icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path class="gear-teeth"
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        <span class="tab-label">Настройка</span>
+      </button>
+      <button class="tab" data-screen="screenProfile">
+        <svg class="tab-icon tab-icon-profile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="4" class="profile-head" />
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" class="profile-body" />
+        </svg>
+        <span class="tab-label">Профиль</span>
+      </button>
+    </nav>
 
-        <button class="modal-close" onclick="hideModal('modalReferral')" aria-label="Закрыть"
-          style="align-self: flex-end; position: absolute; top: 12px; right: 12px;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+  </div>
+
+  <!-- ═══ MODAL: PLAN ═══ -->
+  <div id="modalPlan" class="modal">
+    <div class="modal-backdrop" onclick="hideModal('modalPlan')"></div>
+    <div class="modal-content" style="display:flex;flex-direction:column; padding-top: 14px;">
+
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
+        <div id="planModalHeader" style="display:flex; flex-direction:row; align-items:center; gap:8px;">
+          <p class="title-s" style="margin:0;">Выберите тариф</p>
+        </div>
+        <button onclick="hideModal('modalPlan')" aria-label="Закрыть"
+          style="background:var(--section_bg_color, #f7f9fb); border:none; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:var(--subtitle_text_color, #8e8e93); cursor:pointer; -webkit-tap-highlight-color:transparent; flex-shrink:0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
+      </div>
+      <div class="gap-12"></div>
+      <div id="tariffsWrap" class="tariff-grid"></div>
 
-        <!-- Hero icon -->
-        <div class="referral-hero" style="margin-top: 0;">
-          <div class="referral-hero__outer">
-            <div class="referral-hero__inner">
-              <svg width="40" height="40" viewBox="0 0 73 73">
-                <use href="#referral"></use>
-              </svg>
-            </div>
+      <p class="section-title">Способ оплаты</p>
+      <div id="pmWrap" class="pm-list"></div>
+
+      <div class="pay-row">
+        <div>
+          <p class="total-label">Итого</p>
+          <p id="totalPrice" class="total-price">—</p>
+        </div>
+        <button id="btnPay" class="btn-primary" disabled>Оплатить</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ MODAL: REFERRAL ═══ -->
+  <div id="modalReferral" class="modal">
+    <div class="modal-backdrop" onclick="hideModal('modalReferral')"></div>
+    <div class="modal-content" style="display:flex;flex-direction:column;align-items:center;">
+
+      <button class="modal-close" onclick="hideModal('modalReferral')" aria-label="Закрыть"
+        style="align-self: flex-end; position: absolute; top: 12px; right: 12px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+
+      <!-- Hero icon -->
+      <div class="referral-hero" style="margin-top: 0;">
+        <div class="referral-hero__outer">
+          <div class="referral-hero__inner">
+            <svg width="40" height="40" viewBox="0 0 73 73">
+              <use href="#referral"></use>
+            </svg>
           </div>
         </div>
+      </div>
 
-        <div class="gap-16"></div>
-        <p class="title-s text-center">Приглашайте друзей —<br>получайте бонусные дни</p>
-        <div class="gap-8"></div>
-        <p id="refDesc" class="body text-muted text-center" style="padding:0 8px;">Загрузка…</p>
+      <div class="gap-16"></div>
+      <p class="title-s text-center">Приглашайте друзей —<br>получайте бонусные дни</p>
+      <div class="gap-8"></div>
+      <p id="refDesc" class="body text-muted text-center" style="padding:0 8px;">Загрузка…</p>
 
-        <div class="gap-16"></div>
+      <div class="gap-16"></div>
 
-        <!-- Ref link + stats block -->
-        <div class="card referral-card" style="width:100%;">
-          <p class="caption text-muted" style="margin-bottom:4px;">Ваша реферальная ссылка</p>
-          <p id="refLinkText" class="body" style="word-break:break-all;margin-bottom:8px;">—</p>
-          <div style="display:flex;gap:16px;">
-            <div>
-              <p class="caption text-muted">Приглашено</p>
-              <p id="refCount" class="subtitle">—</p>
-            </div>
-            <div>
-              <p class="caption text-muted">Бонусных дней</p>
-              <p id="refBonus" class="subtitle">—</p>
-            </div>
+      <!-- Ref link + stats block -->
+      <div class="card referral-card" style="width:100%;">
+        <p class="caption text-muted" style="margin-bottom:4px;">Ваша реферальная ссылка</p>
+        <p id="refLinkText" class="body" style="word-break:break-all;margin-bottom:8px;">—</p>
+        <div style="display:flex;gap:16px;">
+          <div>
+            <p class="caption text-muted">Приглашено</p>
+            <p id="refCount" class="subtitle">—</p>
+          </div>
+          <div>
+            <p class="caption text-muted">Бонусных дней</p>
+            <p id="refBonus" class="subtitle">—</p>
           </div>
         </div>
-
-        <div class="gap-16"></div>
-
-        <button id="btnCopyRef" class="btn-primary">Скопировать ссылку</button>
-        <div class="gap-8"></div>
-        <button id="btnShareRef" class="btn-share">Поделиться</button>
-
       </div>
+
+      <div class="gap-16"></div>
+
+      <button id="btnCopyRef" class="btn-primary">Скопировать ссылку</button>
+      <div class="gap-8"></div>
+      <button id="btnShareRef" class="btn-share">Поделиться</button>
+
     </div>
+  </div>
 
 
-    <!-- ═══ MODAL: ADD NEWS (ADMIN) ═══ -->
-    <div id="modalAddNews" class="modal">
-      <div class="modal-backdrop" onclick="window.hideModal('modalAddNews')"></div>
-      <div class="modal-content">
-        <button class="modal-close" onclick="window.hideModal('modalAddNews')">✕</button>
-        <p class="title-s">Добавить новость</p>
-        <div class="gap-16"></div>
+  <!-- ═══ MODAL: ADD NEWS (ADMIN) ═══ -->
+  <div id="modalAddNews" class="modal">
+    <div class="modal-backdrop" onclick="window.hideModal('modalAddNews')"></div>
+    <div class="modal-content">
+      <button class="modal-close" onclick="window.hideModal('modalAddNews')">✕</button>
+      <p class="title-s">Добавить новость</p>
+      <div class="gap-16"></div>
 
-        <div id="dropZone" class="upload-zone">
-          <div class="upload-icon">📁</div>
-          <p class="body text-muted">Перетащите фото или нажмите для выбора</p>
-          <input type="file" id="fileInput" accept="image/*" style="display:none;" />
-          <img id="uploadPreview" class="upload-preview" style="display:none;" />
-        </div>
-
-        <div class="gap-12"></div>
-        <div class="input-field">
-          <input type="text" id="newsTitle" placeholder="Заголовок новости" />
-        </div>
-        <div class="gap-8"></div>
-        <div class="input-field" style="height: auto; min-height: 80px; padding: 0;">
-          <textarea id="newsDesc" placeholder="Подтекст (подробности)" rows="3"
-            style="width: 100%; height: 100%; min-height: 80px; background: none; border: none; padding: 12px; color: var(--text_color); font-family: inherit; outline: none; resize: none;"></textarea>
-        </div>
-
-        <div class="gap-16"></div>
-        <button id="btnSaveNews" class="btn-primary">Опубликовать</button>
+      <div id="dropZone" class="upload-zone">
+        <div class="upload-icon">📁</div>
+        <p class="body text-muted">Перетащите фото или нажмите для выбора</p>
+        <input type="file" id="fileInput" accept="image/*" style="display:none;" />
+        <img id="uploadPreview" class="upload-preview" style="display:none;" />
       </div>
-    </div>
 
-    <!-- Success Overlay -->
-    <div id="successOverlay" class="success-overlay" style="display:none;">
-      <div class="success-card">
-        <div class="success-icon-wrap">
-          <svg class="success-checkmark" viewBox="0 0 52 52">
-            <circle class="success-checkmark__circle" cx="26" cy="26" r="25" fill="none" />
-            <path class="success-checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
-          </svg>
-        </div>
-        <p class="title-s text-center">Оплата успешна!</p>
-        <p class="body text-center text-muted" style="margin-top: 8px;">Ваша подписка активирована.<br>Детальный чек
-          отправлен вам в бот.</p>
-        <div class="gap-16"></div>
-        <button onclick="hideSuccessOverlay()" class="btn-primary"
-          style="width: auto; padding: 12px 32px;">Отлично</button>
+      <div class="gap-12"></div>
+      <div class="input-field">
+        <input type="text" id="newsTitle" placeholder="Заголовок новости" />
       </div>
-      <div id="confetti-container"></div>
+      <div class="gap-8"></div>
+      <div class="input-field" style="height: auto; min-height: 80px; padding: 0;">
+        <textarea id="newsDesc" placeholder="Подтекст (подробности)" rows="3"
+          style="width: 100%; height: 100%; min-height: 80px; background: none; border: none; padding: 12px; color: var(--text_color); font-family: inherit; outline: none; resize: none;"></textarea>
+      </div>
+
+      <div class="gap-16"></div>
+      <button id="btnSaveNews" class="btn-primary">Опубликовать</button>
     </div>
+  </div>
 
-    <!-- Toast -->
-    <div id="toast" class="toast"></div>
+  <!-- Success Overlay -->
+  <div id="successOverlay" class="success-overlay" style="display:none;">
+    <div class="success-card">
+      <div class="success-icon-wrap">
+        <svg class="success-checkmark" viewBox="0 0 52 52">
+          <circle class="success-checkmark__circle" cx="26" cy="26" r="25" fill="none" />
+          <path class="success-checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+        </svg>
+      </div>
+      <p class="title-s text-center">Оплата успешна!</p>
+      <p class="body text-center text-muted" style="margin-top: 8px;">Ваша подписка активирована.<br>Детальный чек
+        отправлен вам в бот.</p>
+      <div class="gap-16"></div>
+      <button onclick="hideSuccessOverlay()" class="btn-primary"
+        style="width: auto; padding: 12px 32px;">Отлично</button>
+    </div>
+    <div id="confetti-container"></div>
+  </div>
 
-    <div id="spriteHost" style="display:none;"></div>
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <div id="spriteHost" style="display:none;"></div>
 
 </body>
 
