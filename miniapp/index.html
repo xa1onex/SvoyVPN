@@ -38,10 +38,10 @@
 
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/miniapp/need/assets/index_v106.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v106.css" />
+  <link rel="stylesheet" href="/miniapp/need/assets/index_v107.css" />
+  <link rel="stylesheet" href="/miniapp/need/app_v107.css" />
 
-  <script defer src="/miniapp/need/app_v106.js"></script>
+  <script defer src="/miniapp/need/app_v107.js"></script>
 </head>
 
 <body>
@@ -549,6 +549,25 @@
       <div class="gap-16"></div>
       <button id="btnSaveNews" class="btn-primary">Опубликовать</button>
     </div>
+  </div>
+
+  <!-- Success Overlay -->
+  <div id="successOverlay" class="success-overlay" style="display:none;">
+    <div class="success-card">
+      <div class="success-icon-wrap">
+        <svg class="success-checkmark" viewBox="0 0 52 52">
+          <circle class="success-checkmark__circle" cx="26" cy="26" r="25" fill="none" />
+          <path class="success-checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+        </svg>
+      </div>
+      <p class="title-s text-center">Оплата успешна!</p>
+      <p class="body text-center text-muted" style="margin-top: 8px;">Ваша подписка активирована.<br>Детальный чек
+        отправлен вам в бот.</p>
+      <div class="gap-16"></div>
+      <button onclick="hideSuccessOverlay()" class="btn-primary"
+        style="width: auto; padding: 12px 32px;">Отлично</button>
+    </div>
+    <div id="confetti-container"></div>
   </div>
 
   <!-- Toast -->

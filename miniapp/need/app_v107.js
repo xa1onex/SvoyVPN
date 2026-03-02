@@ -667,8 +667,7 @@
             });
 
             if (d && d.status === 'ok') {
-              showToast('Пробный период активирован!');
-              haptic('success');
+              showSuccessOverlay('Период активирован!', 'Пробный период успешно зачислен. Теперь вы можете пользоваться VPN!');
               await loadUser(); // Reload user state
             } else {
               showToast('Ошибка активации: ' + (d ? d.error : 'Неизвестная ошибка'));
@@ -731,7 +730,7 @@
                 body: JSON.stringify({ initData: tg.initData })
               });
               if (d && d.status === 'ok') {
-                showToast('Подарок получен! 🎁');
+                showSuccessOverlay('Подарок получен! 🎁', 'Вы получили бесплатные дни доступа. Настройте устройство на следующем шаге!');
                 await loadUser();
               } else {
                 showToast('Ошибка: ' + (d ? d.error : '?'));
@@ -1110,9 +1109,7 @@
         if (tg && tg.openInvoice) {
           tg.openInvoice(url, function (status) {
             if (status === 'paid') {
-              showToast('Оплата прошла успешно! 🎉');
-              haptic('success');
-              setTimeout(loadUser, 1500);
+              showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.<br>Детальный чек отправлен вам в бот.');
             } else if (status === 'failed') {
               showToast('Ошибка при оплате');
             }
@@ -1130,6 +1127,54 @@
       }
     } else {
       showToast('Ошибка создания платежа');
+    }
+  }
+
+  function showSuccessOverlay(title, sub) {
+    const ov = document.getElementById('successOverlay');
+    if (ov) {
+      if (title) ov.querySelector('.title-s').textContent = title;
+      if (sub) ov.querySelector('.body').innerHTML = sub;
+      ov.style.display = 'flex';
+      fireConfetti();
+      haptic('success');
+    }
+  }
+
+  window.hideSuccessOverlay = function () {
+    const ov = document.getElementById('successOverlay');
+    if (ov) {
+      ov.style.display = 'none';
+      loadUser();
+    }
+  };
+
+  function fireConfetti() {
+    const container = document.getElementById('confetti-container');
+    if (!container) return;
+    container.innerHTML = '';
+    const colors = ['#3aa8fc', '#34c759', '#ff9f0a', '#ff3b30', '#ffffff'];
+    for (let i = 0; i < 60; i++) {
+      const conf = document.createElement('div');
+      conf.className = 'confetti';
+      conf.style.left = Math.random() * 100 + '%';
+      conf.style.top = Math.random() * 20 - 20 + 'px';
+      conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+      conf.style.width = Math.random() * 8 + 4 + 'px';
+      conf.style.height = Math.random() * 8 + 4 + 'px';
+      conf.style.position = 'absolute';
+      conf.style.borderRadius = '2px';
+      container.appendChild(conf);
+
+      const duration = 2 + Math.random() * 2;
+      conf.animate([
+        { transform: `translate3d(0,0,0) rotate(0deg)`, opacity: 1 },
+        { transform: `translate3d(${(Math.random() - 0.5) * 250}px, ${window.innerHeight + 50}px, 0) rotate(${Math.random() * 1000}deg)`, opacity: 0 }
+      ], {
+        duration: duration * 1000,
+        easing: 'cubic-bezier(0, .9, .6, 1)',
+        fill: 'forwards'
+      });
     }
   }
 
