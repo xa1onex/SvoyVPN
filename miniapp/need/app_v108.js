@@ -1370,7 +1370,7 @@
      Onboarding carousel controller
   ───────────────────────────────────────── */
   function initOnboarding() {
-    const TOTAL_SLIDES = 5;
+    const TOTAL_SLIDES = 6;
 
     // State
     let currentSlide = 0;
@@ -1437,7 +1437,7 @@
     const track = document.getElementById('obTrack');
     const btnNext = document.getElementById('obBtnNext');
     const btnBack = document.getElementById('obBtnBack');
-    const dots = [0, 1, 2, 3, 4].map(i => document.getElementById('obDot' + i));
+    const dots = [0, 1, 2, 3, 4, 5].map(i => document.getElementById('obDot' + i));
     const obActionRow = document.getElementById('obActionRow');
     const obBtnCopied = document.getElementById('obBtnCopied');
     const obAppContent = document.getElementById('obAppContent');
@@ -1641,6 +1641,8 @@
         goToSlide(3, 'forward');
       } else if (currentSlide === 3) {
         goToSlide(4, 'forward');
+      } else if (currentSlide === 4) {
+        goToSlide(5, 'forward');
       } else {
         showScreen('screenVpn');
       }
@@ -1682,7 +1684,7 @@
           // swipe left → next (only if allowed)
           const canNext = !btnNext.disabled;
           if (!canNext) { haptic('error'); return; }
-          if (currentSlide === 1) renderSlide3();
+          if (currentSlide === 2) renderSlide3();
           goToSlide(currentSlide + 1, 'forward');
         } else if (dx > 0 && currentSlide > 0) {
           goToSlide(currentSlide - 1, 'back');
