@@ -37,6 +37,7 @@ class FlyerConfig(BaseModel):
 class YooKassaConfig(BaseModel):
     shop_id: str | None = Field(None, description="YooKassa Shop ID")
     secret_key: str | None = Field(None, description="YooKassa Secret Key")
+    provider_token: str | None = Field(None, description="YooKassa Provider Token for Telegram Invoices")
     enabled: bool = Field(default=False, description="Enable YooKassa integration")
     webhook_url: str | None = Field(None, description="Webhook URL for YooKassa notifications")
 
@@ -90,6 +91,7 @@ def load_config() -> AppConfig:
     yookassa = YooKassaConfig(
         shop_id=os.getenv("YOOKASSA_SHOP_ID"),
         secret_key=os.getenv("YOOKASSA_SECRET_KEY"),
+        provider_token=os.getenv("YOOKASSA_PROVIDER_TOKEN"),
         enabled=os.getenv("YOOKASSA_ENABLED", "false").lower() == "true",
         webhook_url=os.getenv("YOOKASSA_WEBHOOK_URL"),
     )

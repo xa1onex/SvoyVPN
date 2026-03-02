@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, unquote
 from aiohttp import web, web_request
 from aiohttp.web_exceptions import HTTPBadRequest, HTTPNotFound, HTTPMethodNotAllowed
 from aiohttp.http_exceptions import BadStatusLine, BadHttpMessage
+from aiogram.types import LabeledPrice
 
 from .config import FlyerConfig, YooKassaConfig
 from .database import get_connection
@@ -839,19 +840,63 @@ class WebhookServer:
             if payment_method == 'stars':
                 # Оплата через Telegram Stars
                 price_stars = plan_data.get('price_stars', 0) * device_count
-                # Здесь должна быть логика создания invoice через Telegram Bot API
-                # Пока возвращаем заглушку
-                bot_username = (await self.bot.get_me()).username
-                return web.json_response({
-                    "invoiceUrl": f"https://t.me/{bot_username}?start=payment_{tariff_id}_{device_count}",
-                    "paymentId": f"stars_{user_id}_{int(datetime.now().timestamp())}"
-                })
+                
+                try:
+                    # Создаем инвойс-ссылку для Stars
+                    labeled_prices = [LabeledPrice(label=plan_data['title'], amount=price_stars)]
+                    invoice_link = await self.bot.create_invoice_link(
+                        title=f"VPN: {plan_data['title']}",
+                        description=f"Подписка на {plan_data.get('duration', 1)} мес. ({device_count} устройство)",
+                        payload=f"stars_{user_id}_{tariff_id}_{int(datetime.now().timestamp())}",
+                        provider_token="", # Empty for Stars
+                        currency="XTR",
+                        prices=labeled_prices
+                    )
+                    return web.json_response({
+                        "invoiceUrl": invoice_link,
+                        "paymentId": f"stars_{user_id}_{int(datetime.now().timestamp())}"
+                    })
+                except Exception as e:
+                    logger.error(f"Error creating Stars invoice: {e}", exc_info=True)
+                    # Fallback to older method if invoice creation fails
+                    bot_username = (await self.bot.get_me()).username
+                    return web.json_response({
+                        "invoiceUrl": f"https://t.me/{bot_username}?start=payment_{tariff_id}_{device_count}",
+                        "paymentId": f"stars_{user_id}_{int(datetime.now().timestamp())}"
+                    })
+
             elif payment_method == 'yookassa':
                 # Оплата через ЮKassa
-                if not self.yookassa_client:
+                if not self.yookassa_config or not self.yookassa_config.enabled:
                     return web.json_response({"error": "YooKassa not configured"}, status=500)
                 
-                amount_rub = total_price / 100.0
+                total_amount_cents = plan_data.get('price_rub', 0) * device_count
+                
+                # Если есть provider_token, используем нативные инвойсы Telegram (они открываются внутри аппа)
+                if self.yookassa_config.provider_token:
+                    try:
+                        labeled_prices = [LabeledPrice(label=plan_data['title'], amount=total_amount_cents)]
+                        invoice_link = await self.bot.create_invoice_link(
+                            title=f"VPN: {plan_data['title']}",
+                            description=f"Подписка на {plan_data.get('duration', 1)} мес. ({device_count} устройство)",
+                            payload=f"yoo_{user_id}_{tariff_id}_{int(datetime.now().timestamp())}",
+                            provider_token=self.yookassa_config.provider_token,
+                            currency="RUB",
+                            prices=labeled_prices
+                        )
+                        return web.json_response({
+                            "invoiceUrl": invoice_link,
+                            "paymentId": f"tg_yoo_{user_id}_{int(datetime.now().timestamp())}"
+                        })
+                    except Exception as e:
+                        logger.error(f"Error creating native YooKassa invoice: {e}", exc_info=True)
+                        # Fallback to direct redirect if native fails
+                
+                # Стандартная оплата через ЮKassa Redirect (открывается в браузере)
+                if not self.yookassa_client:
+                    return web.json_response({"error": "YooKassa client not initialized"}, status=500)
+                
+                amount_rub = total_amount_cents / 100.0
                 bot_username = (await self.bot.get_me()).username
                 payment_data = self.yookassa_client.create_payment(
                     amount=amount_rub,

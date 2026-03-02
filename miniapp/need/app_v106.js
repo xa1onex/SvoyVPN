@@ -906,7 +906,7 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v105';
+    vBadge.textContent = 'v106';
 
     // Start auto-scroll
     startNewsAutoScroll();
@@ -1101,15 +1101,18 @@
     });
     if (d && (d.paymentUrl || d.invoiceUrl)) {
       const url = d.paymentUrl || d.invoiceUrl;
+      console.log('[Payment] Order info:', d);
 
-      if (d.invoiceUrl) {
-        // Native Telegram Invoices (e.g. Stars)
+      // logic: if it's an invoice link (contains t.me/$ or stars or invoice link from create_invoice_link)
+      const isInvoice = d.invoiceUrl || url.includes('t.me/$') || url.includes('t.me/invoice');
+
+      if (isInvoice) {
         if (tg && tg.openInvoice) {
           tg.openInvoice(url, function (status) {
             if (status === 'paid') {
               showToast('Оплата прошла успешно! 🎉');
               haptic('success');
-              loadUser();
+              setTimeout(loadUser, 1500);
             } else if (status === 'failed') {
               showToast('Ошибка при оплате');
             }
@@ -1118,9 +1121,9 @@
           tg.openLink ? tg.openLink(url) : window.open(url, '_blank');
         }
       } else {
-        // External links (e.g. YooKassa), use openLink instead of window.open
+        // Force In-App Browser for external checkout page (e.g. direct Yookassa)
         if (tg && tg.openLink) {
-          tg.openLink(url);
+          tg.openLink(url, { try_instant_view: false });
         } else {
           window.open(url, '_blank');
         }
