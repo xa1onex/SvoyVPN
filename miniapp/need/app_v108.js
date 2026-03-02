@@ -1465,7 +1465,9 @@
       track.style.transform = `translateX(-${(idx - shift) * 100}%)`;
 
       // Update dots
-      dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+      dots.forEach((d, i) => {
+        if (d) d.classList.toggle('active', i === idx);
+      });
 
       // Update buttons
       updateButtons();
@@ -1503,7 +1505,9 @@
         }
       } else {
         // Other slides
-        btnNext.textContent = isLast ? 'Готово ✓' : 'Далее →';
+        const isActuallyLast = currentSlide === TOTAL_SLIDES - 1;
+        btnNext.textContent = isActuallyLast ? 'Понятно ✓' : 'Далее →';
+
         if (obActionRow) obActionRow.classList.add('split');
         if (obBtnCopied) {
           obBtnCopied.textContent = '← Назад';
@@ -1636,13 +1640,9 @@
         } else {
           goToSlide(2, 'forward');
         }
-      } else if (currentSlide === 2) {
-        renderSlide3();
-        goToSlide(3, 'forward');
-      } else if (currentSlide === 3) {
-        goToSlide(4, 'forward');
-      } else if (currentSlide === 4) {
-        goToSlide(5, 'forward');
+      } else if (currentSlide < TOTAL_SLIDES - 1) {
+        if (currentSlide === 2) renderSlide3();
+        goToSlide(currentSlide + 1, 'forward');
       } else {
         showScreen('screenVpn');
       }
