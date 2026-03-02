@@ -809,18 +809,38 @@
     }
   }
 
-  async function loadUser() {
+  async function loadUser(silent = false) {
     if (!tg || !tg.initData) return;
+
+    // Remember state before update
+    const wasActive = S.subscription && S.subscription.isActive;
+    const oldEnd = S.subscription && S.subscription.endDate;
+
     const d = await api('/miniapp/api/user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ initData: tg.initData }),
     });
+
     if (d && d.user) {
       S.user = d.user;
       S.subscription = d.subscription;
       renderUser();
-      renderNews(); // Re-render news if admin status changed
+      renderNews();
+
+      const isActive = S.subscription && S.subscription.isActive;
+      const newEnd = S.subscription && S.subscription.endDate;
+
+      // Check for payment success if we were waiting for one
+      const pendingTime = localStorage.getItem('pending_payment_time');
+      if (pendingTime && (Date.now() - parseInt(pendingTime)) < 20 * 60 * 1000) {
+        // If sub changed from inactive to active OR end date shifted forward
+        if ((!wasActive && isActive) || (oldEnd && newEnd && oldEnd !== newEnd)) {
+          localStorage.removeItem('pending_payment_time');
+          showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.<br>Детальный чек отправлен вам в бот.');
+          hideModal('modalPlan');
+        }
+      }
     }
   }
 
@@ -905,7 +925,7 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v106';
+    vBadge.textContent = 'v107';
 
     // Start auto-scroll
     startNewsAutoScroll();
@@ -1098,7 +1118,11 @@
         deviceCount: 1,
       }),
     });
+
     if (d && (d.paymentUrl || d.invoiceUrl)) {
+      // Mark that we are initiating a payment
+      localStorage.setItem('pending_payment_time', Date.now().toString());
+
       const url = d.paymentUrl || d.invoiceUrl;
       console.log('[Payment] Order info:', d);
 
@@ -1109,8 +1133,10 @@
         if (tg && tg.openInvoice) {
           tg.openInvoice(url, function (status) {
             if (status === 'paid') {
+              localStorage.removeItem('pending_payment_time');
               showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.<br>Детальный чек отправлен вам в бот.');
             } else if (status === 'failed') {
+              localStorage.removeItem('pending_payment_time');
               showToast('Ошибка при оплате');
             }
           });
@@ -1186,6 +1212,13 @@
       tg.expand();
       // Subscribe to future theme changes
       tg.onEvent && tg.onEvent('themeChanged', applyTheme);
+
+      // Auto-refresh when user returns to the app (e.g. from payment browser)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          loadUser();
+        }
+      });
     }
 
     // Apply theme after tg.ready() so themeParams is populated
