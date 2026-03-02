@@ -1094,7 +1094,8 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 14px;
+    padding: 9px 14px;
+    /* Slightly reduced padding to keep size similar with subtext */
     border-radius: 14px;
     background: var(--section_bg_color, var(--tg-theme-section-bg-color, #f7f9fb));
     cursor: pointer;
@@ -1126,10 +1127,27 @@ body {
 
 
 
+.link-card .link-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
 .link-card .link-name {
     font-size: 14px;
     font-weight: 600;
-    flex: 1;
+    line-height: 1.2;
+}
+
+.link-card .link-subtext {
+    font-size: 11px;
+    color: var(--subtitle_text_color, #8e8e93);
+    margin-top: 1px;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .link-card .link-arrow {

@@ -906,7 +906,7 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v102-final';
+    vBadge.textContent = 'v103';
   }
 
   async function deleteNews(newsId) {
