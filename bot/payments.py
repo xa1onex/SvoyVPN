@@ -41,26 +41,34 @@ async def process_telegram_stars_payment(
     """
     user_id = message.from_user.id
     charge_id = message.successful_payment.telegram_payment_charge_id
+    provider_charge_id = message.successful_payment.provider_payment_charge_id
+    currency = message.successful_payment.currency
+    total_amount = message.successful_payment.total_amount # В минимальных единицах (копейки/звезды)
     
     async with get_connection() as conn:
         # ✅ ПРОВЕРКА НА ДУБЛИКАТЫ ПЕРЕД ОБРАБОТКОЙ
-        existing_payment = await conn.fetchrow(
-            "SELECT id, status FROM payments WHERE telegram_payment_charge_id = $1",
-            charge_id
-        )
+        # Проверяем по обоим ID для надежности
+        if provider_charge_id:
+            existing_payment = await conn.fetchrow(
+                "SELECT id, status FROM payments WHERE telegram_payment_charge_id = $1 OR yookassa_payment_id = $2",
+                charge_id, provider_charge_id
+            )
+        else:
+            existing_payment = await conn.fetchrow(
+                "SELECT id, status FROM payments WHERE telegram_payment_charge_id = $1",
+                charge_id
+            )
         
         if existing_payment and existing_payment['status'] == 'completed':
-            logger.warning(f"Payment {charge_id} already processed, skipping")
+            logger.warning(f"Payment {charge_id}/{provider_charge_id} already processed, skipping")
             await message.answer(
-                "✅ Этот платеж уже был обработан ранее. "
-                "Если у вас есть вопросы, обратитесь в поддержку."
+                "✅ Этот платеж уже был обработан ранее."
             )
             return False
         
         # ✅ ИСПОЛЬЗУЕМ ТРАНЗАКЦИЮ
         async with conn.transaction():
             duration_months = plan_data['duration']
-            price = plan_data.get(f"price_{'stars' if method_data['currency'] == 'XTR' else 'rub'}", 0)
             
             # Обновляем подписку
             if is_new_subscription:
@@ -79,15 +87,15 @@ async def process_telegram_stars_payment(
             if existing_payment:
                 await conn.execute('''
                     UPDATE payments 
-                    SET status = 'completed', amount = $1, currency = $2, plan_id = $3
-                    WHERE telegram_payment_charge_id = $4
-                ''', price, method_data['currency'], plan_id, charge_id)
+                    SET status = 'completed', amount = $1, currency = $2, plan_id = $3, yookassa_payment_id = $4
+                    WHERE telegram_payment_charge_id = $5 OR (yookassa_payment_id = $4 AND yookassa_payment_id IS NOT NULL)
+                ''', total_amount, currency, plan_id, provider_charge_id, charge_id)
             else:
                 await conn.execute('''
                     INSERT INTO payments 
-                    (user_id, amount, currency, plan_id, plan_type, status, telegram_payment_charge_id)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                ''', user_id, price, method_data['currency'], plan_id, 'subscription', 'completed', charge_id)
+                    (user_id, amount, currency, plan_id, plan_type, status, telegram_payment_charge_id, yookassa_payment_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ''', user_id, total_amount, currency, plan_id, 'subscription', 'completed', charge_id, provider_charge_id)
         
         # Создаём/активируем ключи (после транзакции)
         if is_new_subscription:
@@ -111,10 +119,10 @@ async def process_telegram_stars_payment(
             end_date_str = "неизвестно"
         
         # Форматируем цену
-        if method_data['currency'] == 'XTR':
-            formatted_price = f"{price} Stars (≈ {price * 0.01:.2f}₽)"
+        if currency == 'XTR':
+            formatted_price = f"{total_amount} Stars (≈ {total_amount * 0.01:.2f}₽)"
         else:
-            formatted_price = f"{price // 100}₽"
+            formatted_price = f"{total_amount // 100}₽"
         
         # Отправляем квитанцию пользователю
         receipt = (

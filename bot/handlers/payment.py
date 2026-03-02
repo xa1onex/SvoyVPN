@@ -28,15 +28,30 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
         """Обработка успешного платежа через Telegram Stars"""
         try:
             payload = message.successful_payment.invoice_payload
-            if "|" not in payload:
-                raise ValueError("Неверный формат платежа")
+            logger.info(f"Processing successful payment with payload: {payload}")
             
-            parts = payload.split("|")
-            if len(parts) < 2:
-                raise ValueError("Неверный формат payload")
+            plan_id = None
+            method_id = None
             
-            plan_id = parts[0]
-            method_id = parts[1]
+            if payload.startswith("stars_"):
+                method_id = "stars"
+                parts = payload.split("_")
+                # stars_{user_id}_{tariff_id}_{timestamp}
+                # tariff_id can have underscores (e.g. 1_month)
+                plan_id = "_".join(parts[2:-1])
+            elif payload.startswith("yoo_"):
+                method_id = "yookassa"
+                parts = payload.split("_")
+                # yoo_{user_id}_{tariff_id}_{timestamp}
+                plan_id = "_".join(parts[2:-1])
+            elif "|" in payload:
+                parts = payload.split("|")
+                plan_id = parts[0]
+                method_id = parts[1]
+            else:
+                # Fallback: keep existing logic if it might be just plan_id
+                plan_id = payload
+                method_id = "stars" if message.successful_payment.currency == "XTR" else "yookassa"
             
             # Получаем планы
             subscription_plans = await get_subscription_plans()
