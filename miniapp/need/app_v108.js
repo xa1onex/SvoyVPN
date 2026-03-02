@@ -809,6 +809,36 @@
     }
   }
 
+  /* ═══════ Payment Polling ═══════ */
+  let checkPaymentInterval = null;
+  function startPaymentPolling() {
+    if (checkPaymentInterval) return;
+    console.log('[Payment] Starting polling for success...');
+    checkPaymentInterval = setInterval(async () => {
+      const pendingTime = localStorage.getItem('pending_payment_time');
+      if (!pendingTime) {
+        stopPaymentPolling();
+        return;
+      }
+      // Stop polling after 15 mins
+      if (Date.now() - parseInt(pendingTime) > 15 * 60 * 1000) {
+        console.log('[Payment] Polling timeout');
+        stopPaymentPolling();
+        localStorage.removeItem('pending_payment_time');
+        return;
+      }
+      await loadUser(true);
+    }, 4000);
+  }
+
+  function stopPaymentPolling() {
+    if (checkPaymentInterval) {
+      console.log('[Payment] Stopping polling');
+      clearInterval(checkPaymentInterval);
+      checkPaymentInterval = null;
+    }
+  }
+
   async function loadUser(silent = false) {
     if (!tg || !tg.initData) return;
 
@@ -837,6 +867,7 @@
         // If sub changed from inactive to active OR end date shifted forward
         if ((!wasActive && isActive) || (oldEnd && newEnd && oldEnd !== newEnd)) {
           localStorage.removeItem('pending_payment_time');
+          stopPaymentPolling();
           showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.<br>Детальный чек отправлен вам в бот.');
           hideModal('modalPlan');
         }
@@ -925,7 +956,7 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v107';
+    vBadge.textContent = 'v108';
 
     // Start auto-scroll
     startNewsAutoScroll();
@@ -1122,6 +1153,7 @@
     if (d && (d.paymentUrl || d.invoiceUrl)) {
       // Mark that we are initiating a payment
       localStorage.setItem('pending_payment_time', Date.now().toString());
+      startPaymentPolling();
 
       const url = d.paymentUrl || d.invoiceUrl;
       console.log('[Payment] Order info:', d);
@@ -1134,9 +1166,11 @@
           tg.openInvoice(url, function (status) {
             if (status === 'paid') {
               localStorage.removeItem('pending_payment_time');
+              stopPaymentPolling();
               showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.<br>Детальный чек отправлен вам в бот.');
             } else if (status === 'failed') {
               localStorage.removeItem('pending_payment_time');
+              stopPaymentPolling();
               showToast('Ошибка при оплате');
             }
           });
@@ -1228,6 +1262,11 @@
 
     // Load SVG sprite
     loadSprite();
+
+    // If there was a pending payment from previous session, resume polling
+    if (localStorage.getItem('pending_payment_time')) {
+      startPaymentPolling();
+    }
 
     // Pre-fill user info from tg immediately (before API call)
     if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
