@@ -906,7 +906,53 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v103';
+    vBadge.textContent = 'v104';
+
+    // Start auto-scroll
+    startNewsAutoScroll();
+  }
+
+  let newsAutoScrollInterval;
+  function startNewsAutoScroll() {
+    const newsCarousel = document.getElementById('newsCarousel');
+    if (!newsCarousel) return;
+
+    if (newsAutoScrollInterval) clearInterval(newsAutoScrollInterval);
+
+    // Only scroll if there's more than 1 item
+    const items = newsCarousel.querySelectorAll('.news-card');
+    if (items.length <= 1) return;
+
+    newsAutoScrollInterval = setInterval(() => {
+      // If user is currently dragging or if the modal is open, we might want to skip, 
+      // but let's keep it simple as requested.
+
+      const cardWidth = items[0].offsetWidth;
+      const gap = 12; // from CSS .news-carousel gap: 12px
+      const step = cardWidth + gap;
+
+      let currentIndex = Math.round(newsCarousel.scrollLeft / step);
+      let nextIndex = currentIndex + 1;
+
+      if (nextIndex >= items.length) {
+        nextIndex = 0;
+      }
+
+      newsCarousel.scrollTo({
+        left: nextIndex * step,
+        behavior: 'smooth'
+      });
+    }, 5000);
+
+    // Pause auto-scroll on manual interaction to not annoy user
+    const stopAuto = () => {
+      if (newsAutoScrollInterval) {
+        clearInterval(newsAutoScrollInterval);
+        newsAutoScrollInterval = null;
+      }
+    };
+    newsCarousel.addEventListener('touchstart', stopAuto, { passive: true });
+    newsCarousel.addEventListener('mousedown', stopAuto, { passive: true });
   }
 
   async function deleteNews(newsId) {
