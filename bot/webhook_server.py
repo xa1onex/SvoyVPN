@@ -597,6 +597,7 @@ class WebhookServer:
 
                 # Admin check
                 is_admin = user_id in self.admin_ids
+                logger.info(f"Checking admin status for {user_id}: {is_admin} against {self.admin_ids}")
 
                 return web.json_response({
                     "user": {
@@ -812,11 +813,15 @@ class WebhookServer:
                 return web.json_response({"error": "User ID not found"}, status=400)
             
             # Получаем данные тарифа
-            from .plans import get_subscription_plans
+            from .plans import get_subscription_plans, get_renewal_plans
             subscription_plans = await get_subscription_plans()
-            plan_data = subscription_plans.get(tariff_id)
+            renewal_plans = await get_renewal_plans()
+            
+            # Ищем в обоих наборах
+            plan_data = subscription_plans.get(tariff_id) or renewal_plans.get(tariff_id)
             
             if not plan_data:
+                logger.warning(f"Plan not found: {tariff_id}")
                 return web.json_response({"error": "Tariff not found"}, status=404)
             
             # Получаем данные способа оплаты
