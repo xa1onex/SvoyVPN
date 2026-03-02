@@ -594,7 +594,7 @@ class WebhookServer:
                 # Trial logic
                 trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
                 trial_days = trial_settings['days'] if trial_settings and trial_settings['days'] else 0
-                trial_available = (user['trial_used'] is False) and (trial_days > 0)
+                trial_available = (user['trial_used'] is False) and (trial_days > 0) and (not is_active)
 
                 # Admin check
                 is_admin = user_id in self.admin_ids

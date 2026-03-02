@@ -246,11 +246,22 @@ async def get_main_keyboard(user_id: int, config):
     try:
         from ..database import get_connection
         async with get_connection() as conn:
-            user_trial_used = await conn.fetchval("SELECT trial_used FROM users WHERE user_id = $1", user_id)
-            if user_trial_used is False:
-                trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
-                if trial_settings and trial_settings['days'] and trial_settings['days'] > 0:
-                    show_trial = True
+            user = await conn.fetchrow("SELECT trial_used, pay_subscribed, subscription_end FROM users WHERE user_id = $1", user_id)
+            if user and user['trial_used'] is False:
+                # Проверяем, нет ли активной подписки
+                is_active = False
+                if user['pay_subscribed'] and user['subscription_end']:
+                    end_date = user['subscription_end']
+                    if isinstance(end_date, str):
+                        end_date = datetime.strptime(end_date.split()[0], "%Y-%m-%d").date()
+                    elif hasattr(end_date, 'date'):
+                        end_date = end_date.date()
+                    is_active = end_date >= datetime.now().date()
+                
+                if not is_active:
+                    trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
+                    if trial_settings and trial_settings['days'] and trial_settings['days'] > 0:
+                        show_trial = True
     except Exception as e:
         logger.error(f"Error checking trial logic: {e}")
         
