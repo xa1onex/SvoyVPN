@@ -906,7 +906,7 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v104';
+    vBadge.textContent = 'v105';
 
     // Start auto-scroll
     startNewsAutoScroll();
@@ -1101,7 +1101,30 @@
     });
     if (d && (d.paymentUrl || d.invoiceUrl)) {
       const url = d.paymentUrl || d.invoiceUrl;
-      tg.openLink ? tg.openLink(url) : window.open(url, '_blank');
+
+      if (d.invoiceUrl) {
+        // Native Telegram Invoices (e.g. Stars)
+        if (tg && tg.openInvoice) {
+          tg.openInvoice(url, function (status) {
+            if (status === 'paid') {
+              showToast('Оплата прошла успешно! 🎉');
+              haptic('success');
+              loadUser();
+            } else if (status === 'failed') {
+              showToast('Ошибка при оплате');
+            }
+          });
+        } else {
+          tg.openLink ? tg.openLink(url) : window.open(url, '_blank');
+        }
+      } else {
+        // External links (e.g. YooKassa), use openLink instead of window.open
+        if (tg && tg.openLink) {
+          tg.openLink(url);
+        } else {
+          window.open(url, '_blank');
+        }
+      }
     } else {
       showToast('Ошибка создания платежа');
     }
