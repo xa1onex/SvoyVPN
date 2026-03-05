@@ -614,7 +614,8 @@ class WebhookServer:
                     "subscription": {
                         "isActive": is_active,
                         "endDate": end_date_str,
-                        "subscriptionUrl": subscription_url
+                        "subscriptionUrl": subscription_url,
+                        "token": user['subscription_token']
                     }
                 })
                 
