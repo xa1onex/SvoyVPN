@@ -1400,7 +1400,7 @@
     const dots = [0, 1, 2, 3, 4, 5].map(i => document.getElementById('obDot' + i));
     const obActionRow = document.getElementById('obActionRow');
     const obBtnCopied = document.getElementById('obBtnCopied');
-    const obAppContent = document.getElementById('obAppContent');
+    const obConnectContent = document.getElementById('obConnectContent');
     const obDownloadContent = document.getElementById('obDownloadContent');
 
     if (!track || !btnNext || !btnBack) return;
@@ -1458,21 +1458,10 @@
       switch (currentSlide) {
         case 0: btnNext.disabled = false; break;
         case 1: btnNext.disabled = !selectedDevice; break;
-        case 2: btnNext.disabled = false; break;
-        case 3: btnNext.disabled = !selectedApp; break;
         default: btnNext.disabled = false;
       }
 
       if (btnBack) btnBack.style.display = 'none';
-
-      // Update link href if we're on connect slide
-      if (currentSlide === 4 && selectedDevice && selectedApp) {
-        const btnConnectSub = document.getElementById('btnConnectSub');
-        if (btnConnectSub) {
-          const token = S.subscription ? (S.subscription.token || 'TOKEN') : 'TOKEN';
-          btnConnectSub.href = `https://xdoublegroup.online/${selectedDevice}/${selectedApp}/${token}`;
-        }
-      }
     }
 
     function renderDownloadSlide() {
@@ -1525,65 +1514,56 @@
       obDownloadContent.appendChild(list);
     }
 
-    function renderSelectSlide() {
-      if (!obAppContent || !selectedDevice) return;
-      obAppContent.innerHTML = '';
-      selectedApp = null; // Reset selection
+    function renderConnectSlide() {
+      if (!obConnectContent || !selectedDevice) return;
+      obConnectContent.innerHTML = '';
 
       const title = document.createElement('p');
       title.className = 'ob-title';
       title.style.marginTop = '20px';
-      title.textContent = 'Приложение';
-      obAppContent.appendChild(title);
+      title.textContent = 'Подключение';
+      obConnectContent.appendChild(title);
 
       const desc = document.createElement('p');
       desc.className = 'ob-desc';
-      desc.textContent = 'Теперь выберите установленное приложение:';
-      obAppContent.appendChild(desc);
+      desc.textContent = 'Нажмите на приложение, чтобы добавить серверы:';
+      obConnectContent.appendChild(desc);
 
       const list = document.createElement('div');
       list.className = 'ob-app-list';
       const apps = APPS[selectedDevice] || [];
+      const token = S.subscription ? (S.subscription.token || 'TOKEN') : 'TOKEN';
 
       apps.forEach(app => {
-        const item = document.createElement('div');
-        item.className = 'ob-app-item ob-app-selectable';
-        item.style.cursor = 'pointer';
-        item.dataset.app = app.id;
+        const connectUrl = `https://xdoublegroup.online/${selectedDevice}/${app.id}/${token}`;
+        const item = document.createElement('a');
+        item.className = 'ob-app-item';
+        item.href = connectUrl;
+        item.target = '_blank';
+        item.rel = 'noopener';
+        item.addEventListener('click', (e) => {
+          e.preventDefault();
+          const tg = window.Telegram && window.Telegram.WebApp;
+          tg && tg.openLink ? tg.openLink(connectUrl) : window.open(connectUrl, '_blank');
+        });
 
-        const iconHtml = '<div class="ob-app-icon ob-app-icon--img" style="background:rgba(58,168,252,.12);">' +
+        const iconHtml = '<div class="ob-app-icon ob-app-icon--img" style="background:rgba(52,199,89,.12);">' +
           '<img src="' + app.iconImg + '?v=70" alt="' + app.name + '" ' +
           'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" />' +
-          '<span class="ob-app-icon-fallback" style="display:none; color:var(--accent_text_color,#3aa8fc); font-weight:bold; font-size:14px;">' + app.name.charAt(0) + '</span>' +
+          '<span class="ob-app-icon-fallback" style="display:none; color:#34c759; font-weight:bold; font-size:14px;">' + app.name.charAt(0) + '</span>' +
           '</div>';
 
         item.innerHTML =
           iconHtml +
           '<div class="ob-app-info">' +
           '<p class="ob-app-name">' + app.name + '</p>' +
-          '<p class="ob-app-store text-muted">Нажмите для выбора</p>' +
+          '<p class="ob-app-store" style="color:#34c759; font-weight:500;">Подключить в 1 клик</p>' +
           '</div>' +
-          '<div class="ob-app-check" style="margin-left:auto; display:none;"><svg viewBox="0 0 24 24" width="20" height="20" fill="var(--accent_text_color,#3aa8fc)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>';
-
-        item.addEventListener('click', () => {
-          document.querySelectorAll('.ob-app-selectable').forEach(c => {
-            c.style.border = '';
-            const chk = c.querySelector('.ob-app-check');
-            if (chk) chk.style.display = 'none';
-          });
-
-          item.style.border = '1px solid var(--accent_text_color, #3aa8fc)';
-          const chk = item.querySelector('.ob-app-check');
-          if (chk) chk.style.display = 'block';
-
-          selectedApp = item.dataset.app;
-          haptic('light');
-          updateButtons();
-        });
+          '<span class="ob-app-arrow" style="color:#34c759;">›</span>';
 
         list.appendChild(item);
       });
-      obAppContent.appendChild(list);
+      obConnectContent.appendChild(list);
     }
 
     if (obBtnCopied) {
@@ -1615,7 +1595,7 @@
         }
       } else if (currentSlide < TOTAL_SLIDES - 1) {
         if (currentSlide === 1) renderDownloadSlide();
-        if (currentSlide === 2) renderSelectSlide();
+        if (currentSlide === 2) renderConnectSlide();
         goToSlide(currentSlide + 1, 'forward');
       } else {
         showScreen('screenVpn');
@@ -1651,7 +1631,7 @@
           const canNext = !btnNext.disabled;
           if (!canNext) { haptic('error'); return; }
           if (currentSlide === 1) renderDownloadSlide();
-          if (currentSlide === 2) renderSelectSlide();
+          if (currentSlide === 2) renderConnectSlide();
           goToSlide(currentSlide + 1, 'forward');
         } else if (dx > 0 && currentSlide > 0) {
           const subActive = S.subscription && S.subscription.isActive;
@@ -1669,7 +1649,6 @@
       const subActive = S.subscription && S.subscription.isActive;
       currentSlide = subActive ? 1 : 0;
       selectedDevice = null;
-      selectedApp = null;
       const shift = subActive ? 1 : 0;
       track.style.transform = `translateX(-${(currentSlide - shift) * 100}%)`;
       dots.forEach((d, i) => d && d.classList.toggle('active', i === currentSlide));
@@ -1701,7 +1680,7 @@
     window.onboardingNext = () => {
       if (currentSlide < TOTAL_SLIDES - 1) {
         if (currentSlide === 1) renderDownloadSlide();
-        if (currentSlide === 2) renderSelectSlide();
+        if (currentSlide === 2) renderConnectSlide();
         goToSlide(currentSlide + 1, 'forward');
       }
     };
