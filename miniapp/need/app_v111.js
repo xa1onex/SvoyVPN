@@ -1378,17 +1378,17 @@
 
     const APPS = {
       apple: [
-        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://testflight.apple.com/join/vP2s6E8J' },
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://testflight.apple.com/join/vP2s6E8J' },
         { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png', storeUrl: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532' },
         { id: 'v2raytun', name: 'V2RayTun', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://apps.apple.com/app/v2raytun/id6476628951' }
       ],
       android: [
-        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://play.google.com/store/apps/details?id=com.happ.vpn' },
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://play.google.com/store/apps/details?id=com.happ.vpn' },
         { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png', storeUrl: 'https://play.google.com/store/apps/details?id=app.hiddify.com' },
         { id: 'v2raytun', name: 'V2RayTun', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://play.google.com/store/apps/details?id=com.v2raytun.android' }
       ],
       windows: [
-        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://github.com/happ/happ-app/releases' },
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://github.com/happ/happ-app/releases' },
         { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png', storeUrl: 'https://github.com/hiddify/hiddify-app/releases' },
         { id: 'v2rayn', name: 'V2RayN', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://github.com/2dust/v2rayN/releases' }
       ]
@@ -1432,36 +1432,44 @@
 
     function updateButtons() {
       const subActive = S.subscription && S.subscription.isActive;
-      const isFirstSlide = currentSlide === 0 || (subActive && currentSlide === 1);
+      const isActuallyStart = currentSlide === 0 || (subActive && currentSlide === 1);
 
-      if (isFirstSlide) {
-        btnNext.textContent = currentSlide === 0 ? 'Выбрать тариф' : 'Далее →';
-        btnNext.disabled = false;
+      // Label
+      if (currentSlide === 0) {
+        btnNext.textContent = 'Выбрать тариф';
+      } else if (currentSlide === TOTAL_SLIDES - 1) {
+        btnNext.textContent = 'Понятно ✓';
+      } else {
+        btnNext.textContent = 'Далее →';
+      }
+
+      // Layout split (Back button)
+      if (isActuallyStart) {
         if (obActionRow) obActionRow.classList.remove('split');
       } else {
-        const isActuallyLast = currentSlide === TOTAL_SLIDES - 1;
-        btnNext.textContent = isActuallyLast ? 'Понятно ✓' : 'Далее →';
-
         if (obActionRow) obActionRow.classList.add('split');
         if (obBtnCopied) {
           obBtnCopied.textContent = '← Назад';
           obBtnCopied.className = 'ob-btn-copied is-back';
         }
-
-        switch (currentSlide) {
-          case 1: btnNext.disabled = !selectedDevice; break;
-          // Sub-steps for slide 2 (Downloads) and 3 (Select) don't strictly block next unless logic added
-          case 3: btnNext.disabled = !selectedApp; break;
-          default: btnNext.disabled = false;
-        }
       }
+
+      // Disabled state
+      switch (currentSlide) {
+        case 0: btnNext.disabled = false; break;
+        case 1: btnNext.disabled = !selectedDevice; break;
+        case 2: btnNext.disabled = false; break;
+        case 3: btnNext.disabled = !selectedApp; break;
+        default: btnNext.disabled = false;
+      }
+
       if (btnBack) btnBack.style.display = 'none';
 
       // Update link href if we're on connect slide
       if (currentSlide === 4 && selectedDevice && selectedApp) {
         const btnConnectSub = document.getElementById('btnConnectSub');
         if (btnConnectSub) {
-          const token = S.subscription ? S.subscription.token : 'TOKEN';
+          const token = S.subscription ? (S.subscription.token || 'TOKEN') : 'TOKEN';
           btnConnectSub.href = `https://xdoublegroup.online/${selectedDevice}/${selectedApp}/${token}`;
         }
       }
