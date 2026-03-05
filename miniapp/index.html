@@ -139,7 +139,6 @@
             <div class="ob-dot" id="obDot2"></div>
             <div class="ob-dot" id="obDot3"></div>
             <div class="ob-dot" id="obDot4"></div>
-            <div class="ob-dot" id="obDot5"></div>
           </div>
 
           <!-- Slides track -->
@@ -157,41 +156,14 @@
               </div>
             </div>
 
-            <!-- ── SLIDE 1: Copy link ── -->
+            <!-- ── SLIDE 1: Choose device ── -->
             <div class="ob-slide" id="obSlide1">
               <div class="ob-slide-inner">
-                <p class="ob-title" style="margin-top:20px;">Ваша ссылка конфигурации</p>
-                <p class="ob-desc">Скопируйте уникальную ссылку — она понадобится для подключения в приложении.</p>
-
-
-                <div class="ob-copy-wrap" id="setupCopyWrap">
-                  <div class="copy-field">
-                    <input id="subUrlSetup" type="text" placeholder="Ссылка появится после покупки" readonly />
-                    <button id="btnCopySetup" class="btn-copy" aria-label="Скопировать">
-                      <svg viewBox="0 0 24 24">
-                        <path
-                          d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="text-muted"
-                  style="font-size:12px; line-height:1.4; background:rgba(58,168,252,0.05); padding:10px; border-radius:10px; border:1px dashed rgba(58,168,252,0.15); margin-top:10px;">
-                  💡 <b>Уже есть подписка?</b> Если новые серверы не появились — просто обновите конфигурацию в
-                  приложении.
-                </div>
-              </div>
-            </div>
-
-            <!-- ── SLIDE 2: Choose device ── -->
-            <div class="ob-slide" id="obSlide2">
-              <div class="ob-slide-inner">
-                <p class="ob-title" style="margin-top:20px;">Выберите устройство</p>
-                <p class="ob-desc">Укажите тип вашего устройства — мы подберём подходящее приложение.</p>
+                <p class="ob-title" style="margin-top:20px;">Устройство</p>
+                <p class="ob-desc">Укажите ваше устройство — на чем будем смотреть?</p>
                 <div class="ob-device-grid">
                   <!-- iPhone -->
-                  <div class="ob-device-card" data-device="ios">
+                  <div class="ob-device-card" data-device="apple">
                     <div class="ob-check"><svg viewBox="0 0 24 24">
                         <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
                       </svg></div>
@@ -223,61 +195,40 @@
                     </svg>
                     <span>Windows</span>
                   </div>
-                  <!-- Mac -->
-                  <div class="ob-device-card" data-device="mac">
-                    <div class="ob-check"><svg viewBox="0 0 24 24">
-                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                      </svg></div>
-                    <svg viewBox="0 0 24 24">
-                      <path
-                        d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z" />
-                    </svg>
-                    <span>Mac</span>
-                  </div>
                 </div>
               </div>
             </div>
 
-            <!-- ── SLIDE 3: Open app (content injected by JS) ── -->
-            <div class="ob-slide" id="obSlide3">
+            <!-- ── SLIDE 2: Choose app (content injected by JS) ── -->
+            <div class="ob-slide" id="obSlide2">
               <div class="ob-slide-inner" id="obAppContent">
                 <!-- populated dynamically -->
               </div>
             </div>
 
-            <!-- ── SLIDE 4: Add subscription ── -->
-            <div class="ob-slide" id="obSlide4">
+            <!-- ── SLIDE 3: Connect -->
+            <div class="ob-slide" id="obSlide3">
               <div class="ob-slide-inner">
-                <p class="ob-title" style="margin-top:20px;">Добавьте подписку</p>
-                <p class="ob-desc">Откройте приложение → раздел «Подписки» (или +) → вставьте скопированную ссылку.
-                  Серверы добавятся автоматически.</p>
+                <p class="ob-title" style="margin-top:20px;">Подключение</p>
+                <p class="ob-desc">Нажмите на ссылку ниже — приложение откроется само и добавит все нужные серверы.</p>
+
                 <div class="ob-app-list">
-                  <div class="ob-app-item" style="cursor:default;">
-                    <div class="ob-app-icon" style="background:rgba(58,168,252,.12);">
-                      <svg viewBox="0 0 24 24" style="fill:var(--accent_text_color,#3aa8fc);width:24px;height:24px;">
-                        <path
-                          d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 11H7v-2h8v2zm3-4H7V9h11v2z" />
-                      </svg>
-                    </div>
-                    <div class="ob-app-info">
-                      <p class="ob-app-name">Вставьте ссылку</p>
-                      <p class="ob-app-store">в поле «Subscription URL»</p>
-                    </div>
-                  </div>
-                  <div class="ob-app-item" style="cursor:default;">
+                  <a href="#" class="ob-app-item" id="btnConnectSub" target="_blank" rel="noopener">
                     <div class="ob-app-icon" style="background:rgba(52,199,89,.12);">
                       <svg viewBox="0 0 24 24" style="fill:#34c759;width:24px;height:24px;">
                         <path
-                          d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                          d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
                       </svg>
                     </div>
                     <div class="ob-app-info">
-                      <p class="ob-app-name">Готово!</p>
-                      <p class="ob-app-store">Серверы подключатся автоматически</p>
+                      <p class="ob-app-name">Подключить VPN</p>
+                      <p class="ob-app-store" style="white-space:normal;line-height:1.2;">Приложение откроется
+                        автоматически</p>
                     </div>
-                  </div>
+                  </a>
+
                   <a href="https://t.me/SvoyVPN_support" class="ob-app-item" target="_blank" rel="noopener"
-                    style="margin-top:2px;">
+                    style="margin-top:8px;">
                     <div class="ob-app-icon" style="background:rgba(255,149,0,.12);">
                       <svg viewBox="0 0 24 24" style="fill:#FF9500;width:24px;height:24px;">
                         <path
@@ -286,18 +237,19 @@
                     </div>
                     <div class="ob-app-info">
                       <p class="ob-app-name">Не получилось?</p>
-                      <p class="ob-app-store" style="white-space:normal;line-height:1.2;">Тапни здесь, мы во
-                        всем разберемся!</p>
+                      <p class="ob-app-store" style="white-space:normal;line-height:1.2;">Тапни здесь, мы поможем!</p>
                     </div>
                   </a>
                 </div>
               </div>
             </div>
-            <!-- ── SLIDE 5: Update subscription ── -->
-            <div class="ob-slide" id="obSlide5">
+
+            <!-- ── SLIDE 4: Update subscription ── -->
+            <div class="ob-slide" id="obSlide4">
               <div class="ob-slide-inner">
                 <p class="ob-title" style="margin-top:20px;">Обновление серверов</p>
-                <p class="ob-desc">Если мы добавили новые серверы или что-то изменилось, подписку нужно обновить.</p>
+                <p class="ob-desc">Если мы добавили новые серверы или что-то не работает, нужно обновить серверы в
+                  приложении.</p>
                 <div class="ob-app-list">
                   <div class="ob-app-item" style="cursor:default;">
                     <div class="ob-app-icon" style="background:rgba(58,168,252,.12);">
@@ -307,7 +259,7 @@
                       </svg>
                     </div>
                     <div class="ob-app-info">
-                      <p class="ob-app-name">Обновите конфигурацию</p>
+                      <p class="ob-app-name">Зайдите в приложение</p>
                       <p class="ob-app-store">Свайпните вниз или нажмите «Update»</p>
                     </div>
                   </div>
@@ -318,8 +270,8 @@
                       </svg>
                     </div>
                     <div class="ob-app-info">
-                      <p class="ob-app-name">Новые серверы</p>
-                      <p class="ob-app-store">Они мгновенно появятся в списке</p>
+                      <p class="ob-app-name">Готово</p>
+                      <p class="ob-app-store">Серверы подгружены и снова работают</p>
                     </div>
                   </div>
                 </div>

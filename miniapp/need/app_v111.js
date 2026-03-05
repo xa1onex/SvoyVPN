@@ -1370,90 +1370,47 @@
      Onboarding carousel controller
   ───────────────────────────────────────── */
   function initOnboarding() {
-    const TOTAL_SLIDES = 6;
+    const TOTAL_SLIDES = 5;
 
-    // State
     let currentSlide = 0;
-    let selectedDevice = null; // 'ios' | 'android' | 'windows' | 'mac'
-    let linkCopied = false;
+    let selectedDevice = null;
+    let selectedApp = null;
 
-    // App data per platform — icons loaded from /miniapp/images/ (add files there)
     const APPS = {
-      ios: [
-        {
-          name: 'V2RayTun',
-          store: 'App Store',
-          iconImg: '/miniapp/images/v2raytun.png',
-          url: 'https://apps.apple.com/app/v2raytun/id6476628951',
-        },
-        {
-          name: 'Hiddify',
-          store: 'App Store',
-          iconImg: '/miniapp/images/hiddify.png',
-          url: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532',
-        },
+      apple: [
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/v2raytun.png' },
+        { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png' },
+        { id: 'v2raytun', name: 'V2RayTun', iconImg: '/miniapp/images/v2raytun.png' }
       ],
       android: [
-        {
-          name: 'V2RayTun',
-          store: 'Google Play',
-          iconImg: '/miniapp/images/v2raytun.png',
-          url: 'https://play.google.com/store/apps/details?id=com.v2raytun.android',
-        },
-        {
-          name: 'Hiddify',
-          store: 'Google Play',
-          iconImg: '/miniapp/images/hiddify.png',
-          url: 'https://play.google.com/store/apps/details?id=app.hiddify.com',
-        },
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/v2raytun.png' },
+        { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png' },
+        { id: 'v2raytun', name: 'V2RayTun', iconImg: '/miniapp/images/v2raytun.png' }
       ],
-      windows: null,
-      mac: [
-        {
-          name: 'V2RayTun',
-          store: 'App Store',
-          iconImg: '/miniapp/images/v2raytun.png',
-          url: 'https://apps.apple.com/kz/app/v2raytun/id6476628951',
-        },
-        {
-          name: 'Hiddify',
-          store: 'App Store',
-          iconImg: '/miniapp/images/hiddify.png',
-          url: 'https://apps.apple.com/kz/app/hiddify-proxy-vpn/id6596777532',
-        },
-      ],
-    };
-
-    const PC_STEPS = {
       windows: [
-        'Скачайте <strong>Hiddify</strong> с <a href="https://github.com/hiddify/hiddify-app/releases" target="_blank" style="color:var(--accent_text_color,#3aa8fc)">GitHub</a> или <strong>Nekoray</strong> с официального сайта.',
-        'Установите приложение и запустите его.',
-        'Нажмите «+» или «Добавить подписку» → вставьте скопированную ссылку.',
-        'Нажмите «Обновить» — серверы появятся автоматически.',
-      ],
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/v2raytun.png' },
+        { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png' },
+        { id: 'v2rayn', name: 'V2RayN', iconImg: '/miniapp/images/v2raytun.png' }
+      ]
     };
 
-    // DOM refs
     const track = document.getElementById('obTrack');
     const btnNext = document.getElementById('obBtnNext');
     const btnBack = document.getElementById('obBtnBack');
-    const dots = [0, 1, 2, 3, 4, 5].map(i => document.getElementById('obDot' + i));
+    const dots = [0, 1, 2, 3, 4].map(i => document.getElementById('obDot' + i));
     const obActionRow = document.getElementById('obActionRow');
     const obBtnCopied = document.getElementById('obBtnCopied');
     const obAppContent = document.getElementById('obAppContent');
 
     if (!track || !btnNext || !btnBack) return;
 
-    /* ── Slide navigation ── */
     function goToSlide(idx, direction) {
       if (idx < 0 || idx >= TOTAL_SLIDES) return;
 
-      // Animate the outgoing slide
       const animClass = direction === 'forward' ? 'anim-in' : 'anim-back';
       const slide = document.getElementById('obSlide' + idx);
       if (slide) {
         slide.classList.remove('anim-in', 'anim-back');
-        // Force reflow
         void slide.offsetWidth;
         slide.classList.add(animClass);
         setTimeout(() => slide.classList.remove(animClass), 400);
@@ -1464,47 +1421,28 @@
       const shift = subActive ? 1 : 0;
       track.style.transform = `translateX(-${(idx - shift) * 100}%)`;
 
-      // Update dots
       dots.forEach((d, i) => {
         if (d) d.classList.toggle('active', i === idx);
       });
 
-      // Update buttons
       updateButtons();
       haptic('light');
     }
 
     function updateButtons() {
-      const isLast = currentSlide === TOTAL_SLIDES - 1;
       const subActive = S.subscription && S.subscription.isActive;
 
-      if (currentSlide === 0) {
-        // Slide 0: Activation Check
-        if (!subActive) {
+      const isFirstSlide = currentSlide === 0 || (subActive && currentSlide === 1);
+
+      if (isFirstSlide) {
+        if (currentSlide === 0) {
           btnNext.textContent = 'Выбрать тариф';
-          btnNext.disabled = false;
         } else {
           btnNext.textContent = 'Далее →';
-          btnNext.disabled = false;
         }
+        btnNext.disabled = false;
         if (obActionRow) obActionRow.classList.remove('split');
-      } else if (currentSlide === 1) {
-        // Slide 1: Copy Link
-        if (!linkCopied) {
-          btnNext.textContent = 'Скопировать ссылку';
-          btnNext.disabled = !subActive;
-          if (obActionRow) obActionRow.classList.remove('split');
-        } else {
-          btnNext.textContent = 'Далее →';
-          btnNext.disabled = false;
-          if (obActionRow) obActionRow.classList.add('split');
-          if (obBtnCopied) {
-            obBtnCopied.textContent = '✓ Скопировано';
-            obBtnCopied.className = 'ob-btn-copied';
-          }
-        }
       } else {
-        // Other slides
         const isActuallyLast = currentSlide === TOTAL_SLIDES - 1;
         btnNext.textContent = isActuallyLast ? 'Понятно ✓' : 'Далее →';
 
@@ -1513,109 +1451,96 @@
           obBtnCopied.textContent = '← Назад';
           obBtnCopied.className = 'ob-btn-copied is-back';
         }
+
         switch (currentSlide) {
-          case 2: btnNext.disabled = !selectedDevice; break;
+          case 1: btnNext.disabled = !selectedDevice; break;
+          case 2: btnNext.disabled = !selectedApp; break;
           default: btnNext.disabled = false;
         }
       }
       if (btnBack) btnBack.style.display = 'none';
+
+      // Update link href if we're on connect slide
+      if (currentSlide === 3 && selectedDevice && selectedApp) {
+        const btnConnectSub = document.getElementById('btnConnectSub');
+        if (btnConnectSub) {
+          const token = S.subscription ? S.subscription.token : 'TOKEN';
+          btnConnectSub.href = `https://xdoublegroup.online/${selectedDevice}/${selectedApp}/${token}`;
+        }
+      }
     }
 
-    /* ── Slide 3 content (app list or PC steps) ── */
-    function renderSlide3() {
+    function renderSlide2() {
       if (!obAppContent || !selectedDevice) return;
       obAppContent.innerHTML = '';
+      selectedApp = null; // Reset selection
 
-      const isPC = selectedDevice === 'windows';
-      const platformLabel = { ios: 'iPhone', android: 'Android', windows: 'Windows', mac: 'Mac' }[selectedDevice];
-
-      // Title + desc
       const title = document.createElement('p');
       title.className = 'ob-title';
-      title.textContent = isPC ? 'Установите приложение' : 'Откройте приложение';
+      title.style.marginTop = '20px';
+      title.textContent = 'Приложение';
       obAppContent.appendChild(title);
 
       const desc = document.createElement('p');
       desc.className = 'ob-desc';
-      desc.textContent = isPC
-        ? 'Следуйте шагам ниже для подключения на ' + platformLabel + ':'
-        : 'Выберите приложение и установите его из магазина:';
+      desc.textContent = 'Выберите приложение, которое вы установили:';
       obAppContent.appendChild(desc);
 
-      if (isPC) {
-        // PC steps
-        const stepsWrap = document.createElement('div');
-        stepsWrap.className = 'ob-pc-steps';
-        const steps = PC_STEPS[selectedDevice] || [];
-        steps.forEach((text, i) => {
-          const row = document.createElement('div');
-          row.className = 'ob-pc-step';
-          row.innerHTML =
-            '<div class="ob-pc-num">' + (i + 1) + '</div>' +
-            '<div class="ob-pc-text">' + text + '</div>';
-          stepsWrap.appendChild(row);
-        });
-        obAppContent.appendChild(stepsWrap);
-      } else {
-        // App links
-        const list = document.createElement('div');
-        list.className = 'ob-app-list';
-        const apps = APPS[selectedDevice] || [];
-        apps.forEach(app => {
-          const item = document.createElement('a');
-          item.className = 'ob-app-item';
-          item.href = app.url;
-          item.target = '_blank';
-          item.rel = 'noopener';
-          item.addEventListener('click', e => {
-            e.preventDefault();
-            haptic('light');
-            const tg = window.Telegram && window.Telegram.WebApp;
-            tg && tg.openLink ? tg.openLink(app.url) : window.open(app.url, '_blank');
-          });
-          // Build icon: img tag with fallback to letter avatar
-          const iconHtml = '<div class="ob-app-icon ob-app-icon--img">' +
-            '<img src="' + app.iconImg + '?v=70" alt="' + app.name + '" ' +
-            'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" />' +
-            '<span class="ob-app-icon-fallback" style="display:none;">' + app.name.charAt(0) + '</span>' +
-            '</div>';
-          item.innerHTML =
-            iconHtml +
-            '<div class="ob-app-info">' +
-            '<p class="ob-app-name">' + app.name + '</p>' +
-            '<p class="ob-app-store">Открыть в ' + app.store + '</p>' +
-            '</div>' +
-            '<span class="ob-app-arrow">›</span>';
-          list.appendChild(item);
-        });
-        obAppContent.appendChild(list);
-      }
-    }
+      const list = document.createElement('div');
+      list.className = 'ob-app-list';
+      const apps = APPS[selectedDevice] || [];
 
-    /* ── Perform copy + trigger split animation ── */
-    function doSlideCopy() {
-      const url = document.getElementById('subUrlSetup').value;
-      copyText(url, null);
-      if (!linkCopied) {
-        linkCopied = true;
-        if (obActionRow) obActionRow.classList.add('split');
-        updateButtons();
-      } else {
-        haptic('light'); // manual tactile feedback on repeat copy
-      }
+      apps.forEach(app => {
+        const item = document.createElement('div');
+        item.className = 'ob-app-item ob-app-selectable';
+        item.style.cursor = 'pointer';
+        item.dataset.app = app.id;
+
+        const iconHtml = '<div class="ob-app-icon ob-app-icon--img" style="background:rgba(58,168,252,.12);">' +
+          '<img src="' + app.iconImg + '?v=70" alt="' + app.name + '" ' +
+          'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" />' +
+          '<span class="ob-app-icon-fallback" style="display:none; color:var(--accent_text_color,#3aa8fc); font-weight:bold; font-size:14px;">' + app.name.charAt(0) + '</span>' +
+          '</div>';
+
+        item.innerHTML =
+          iconHtml +
+          '<div class="ob-app-info">' +
+          '<p class="ob-app-name">' + app.name + '</p>' +
+          '<p class="ob-app-store text-muted">Нажмите для выбора</p>' +
+          '</div>' +
+          '<div class="ob-app-check" style="margin-left:auto; display:none;"><svg viewBox="0 0 24 24" width="20" height="20" fill="var(--accent_text_color,#3aa8fc)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>';
+
+        item.addEventListener('click', () => {
+          document.querySelectorAll('.ob-app-selectable').forEach(c => {
+            c.style.border = '';
+            const check = c.querySelector('.ob-app-check');
+            if (check) check.style.display = 'none';
+          });
+
+          item.style.border = '1px solid var(--accent_text_color, #3aa8fc)';
+          const check = item.querySelector('.ob-app-check');
+          if (check) check.style.display = 'block';
+
+          selectedApp = item.dataset.app;
+          haptic('light');
+          updateButtons();
+        });
+
+        list.appendChild(item);
+      });
+      obAppContent.appendChild(list);
     }
 
     if (obBtnCopied) {
       obBtnCopied.addEventListener('click', () => {
-        if (currentSlide === 1) {
-          doSlideCopy();
-        } else {
+        if (currentSlide > 0) {
+          const subActive = S.subscription && S.subscription.isActive;
+          if (subActive && currentSlide === 1) return;
           goToSlide(currentSlide - 1, 'back');
         }
       });
     }
 
-    /* ── Slide 2: Device picker ── */
     document.querySelectorAll('.ob-device-card').forEach(card => {
       card.addEventListener('click', () => {
         document.querySelectorAll('.ob-device-card').forEach(c => c.classList.remove('selected'));
@@ -1626,7 +1551,6 @@
       });
     });
 
-    /* ── Next/Copy button ── */
     btnNext.addEventListener('click', () => {
       if (currentSlide === 0) {
         if (S.subscription && S.subscription.isActive) {
@@ -1634,26 +1558,14 @@
         } else {
           window.showModal('modalPlan');
         }
-      } else if (currentSlide === 1) {
-        if (!linkCopied) {
-          doSlideCopy();
-        } else {
-          goToSlide(2, 'forward');
-        }
       } else if (currentSlide < TOTAL_SLIDES - 1) {
-        if (currentSlide === 2) renderSlide3();
+        if (currentSlide === 1) renderSlide2();
         goToSlide(currentSlide + 1, 'forward');
       } else {
         showScreen('screenVpn');
       }
     });
 
-    /* ── Back button ── */
-    btnBack.addEventListener('click', () => {
-      goToSlide(currentSlide - 1, 'back');
-    });
-
-    /* ── Swipe support (horizontal) ── */
     let touchStartX = 0;
     let touchStartY = 0;
     let isSwiping = false;
@@ -1672,7 +1584,6 @@
         if (!isSwiping && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
           isSwiping = true;
         }
-        // Don't prevent default — allow vertical scroll on device grid if needed
       }, { passive: true });
 
       carousel.addEventListener('touchend', e => {
@@ -1681,24 +1592,27 @@
         if (Math.abs(dx) < 40) return;
 
         if (dx < 0 && currentSlide < TOTAL_SLIDES - 1) {
-          // swipe left → next (only if allowed)
           const canNext = !btnNext.disabled;
           if (!canNext) { haptic('error'); return; }
-          if (currentSlide === 2) renderSlide3();
+          if (currentSlide === 1) renderSlide2();
           goToSlide(currentSlide + 1, 'forward');
         } else if (dx > 0 && currentSlide > 0) {
+          const subActive = S.subscription && S.subscription.isActive;
+          if (subActive && currentSlide === 1) {
+            isSwiping = false;
+            return;
+          }
           goToSlide(currentSlide - 1, 'back');
         }
         isSwiping = false;
       }, { passive: true });
     }
 
-    /* ── Reset carousel ── */
     function resetCarousel() {
       const subActive = S.subscription && S.subscription.isActive;
       currentSlide = subActive ? 1 : 0;
       selectedDevice = null;
-      linkCopied = false;
+      selectedApp = null;
       const shift = subActive ? 1 : 0;
       track.style.transform = `translateX(-${(currentSlide - shift) * 100}%)`;
       dots.forEach((d, i) => d && d.classList.toggle('active', i === currentSlide));
@@ -1714,14 +1628,12 @@
       if (s0) s0.style.display = subActive ? 'none' : 'block';
       if (d0) d0.style.display = subActive ? 'none' : 'block';
 
-      // Force UI update to show Link slide if starting fresh with sub
       if (subActive && currentSlide === 0) {
         currentSlide = 1;
         updateButtons();
         track.style.transform = 'translateX(0)';
         dots.forEach((d, i) => d && d.classList.toggle('active', i === 1));
-      } else if (!subActive && currentSlide === 1 && !linkCopied) {
-        // user was on link but sub expired? unlikely but...
+      } else if (!subActive && currentSlide > 0) {
         currentSlide = 0;
         updateButtons();
         track.style.transform = 'translateX(0)';
@@ -1731,12 +1643,11 @@
     window.updateOnboardingSubState = updateOnboardingSubState;
     window.onboardingNext = () => {
       if (currentSlide < TOTAL_SLIDES - 1) {
-        if (currentSlide === 2) renderSlide3();
+        if (currentSlide === 1) renderSlide2();
         goToSlide(currentSlide + 1, 'forward');
       }
     };
 
-    // Listen for tab switch away from setup screen — reset on re-entry
     document.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.dataset.screen !== 'screenSetup') {
@@ -1747,17 +1658,6 @@
       });
     });
 
-    /* ── Icon copy button in copy-field also triggers the split ── */
-    const btnCopySetupIcon = document.getElementById('btnCopySetup');
-    if (btnCopySetupIcon) {
-      btnCopySetupIcon.addEventListener('click', function () {
-        if (document.getElementById('subUrlSetup').value && !linkCopied) {
-          doSlideCopy();
-        }
-      });
-    }
-
-    // Initial state (slide 0, next disabled)
     updateButtons();
   }
 })();
