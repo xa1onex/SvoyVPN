@@ -1,0 +1,18 @@
+[Unit]
+Description=SvoyVPN Bot and Webhook Service
+After=network.target
+
+[Service]
+# Укажите пользователя, под которым будет запущен бот. 
+# Если вы работаете из-под root, оставьте root.
+User=root
+# Путь к директории проекта
+WorkingDirectory=/root/SvoyVPN
+# Путь к python внутри виртуального окружения
+ExecStart=/root/SvoyVPN/venv/bin/python3 -m bot.main
+# Автоматический перезапуск при падении
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
