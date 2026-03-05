@@ -1378,19 +1378,24 @@
 
     const APPS = {
       apple: [
-        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://testflight.apple.com/join/vP2s6E8J' },
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215' },
         { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png', storeUrl: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532' },
         { id: 'v2raytun', name: 'V2RayTun', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://apps.apple.com/app/v2raytun/id6476628951' }
       ],
       android: [
-        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://play.google.com/store/apps/details?id=com.happ.vpn' },
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://play.google.com/store/apps/details?id=com.happproxy' },
         { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png', storeUrl: 'https://play.google.com/store/apps/details?id=app.hiddify.com' },
         { id: 'v2raytun', name: 'V2RayTun', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://play.google.com/store/apps/details?id=com.v2raytun.android' }
       ],
       windows: [
-        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://github.com/happ/happ-app/releases' },
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://github.com/Happ-proxy/happ-desktop/releases/download/2.4.0/setup-Happ.x64.exe' },
         { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png', storeUrl: 'https://github.com/hiddify/hiddify-app/releases' },
         { id: 'v2rayn', name: 'V2RayN', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://github.com/2dust/v2rayN/releases' }
+      ],
+      mac: [
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215' },
+        { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png', storeUrl: 'https://github.com/hiddify/hiddify-app/releases' },
+        { id: 'v2raytun', name: 'V2RayTun', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://apps.apple.com/app/v2raytun/id6476628951' }
       ]
     };
 
@@ -1535,7 +1540,8 @@
       const token = S.subscription ? (S.subscription.token || 'TOKEN') : 'TOKEN';
 
       apps.forEach(app => {
-        const connectUrl = `https://xdoublegroup.online/${selectedDevice}/${app.id}/${token}`;
+        const devicePath = selectedDevice === 'mac' ? 'apple' : selectedDevice;
+        const connectUrl = `https://xdoublegroup.online/${devicePath}/${app.id}/${token}`;
         const item = document.createElement('a');
         item.className = 'ob-app-item';
         item.href = connectUrl;
