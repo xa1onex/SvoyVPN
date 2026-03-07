@@ -142,6 +142,8 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
             builder = InlineKeyboardBuilder()
             if HAS_COPY_BUTTON:
                 builder.row(InlineKeyboardButton(text="📋 Скопировать ссылку", copy_text=CopyTextButton(text=link)))
+            else:
+                builder.row(InlineKeyboardButton(text="📋 Скопировать конфигурацию", callback_data="copy_manual_config"))
             builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="get_vpn_link"))
             
             await callback.message.edit_text(
@@ -173,6 +175,20 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
             reply_markup=builder.as_markup()
         )
         await callback.answer()
+
+    @dp.callback_query(F.data == "copy_manual_config")
+    async def handle_copy_manual_config(callback: CallbackQuery):
+        """Отправляет конфигурацию отдельным сообщением для копирования"""
+        user_id = callback.from_user.id
+        link = await get_user_subscription_url(user_id, config)
+        
+        await callback.message.answer(
+            f"📋 <b>Ваша конфигурация:</b>\n\n"
+            f"<code>{link}</code>\n\n"
+            "Нажмите на ссылку чтобы скопировать её.",
+            parse_mode="HTML"
+        )
+        await callback.answer("✅ Конфигурация отправлена выше!", show_alert=True)
 
     @dp.callback_query(F.data.startswith("ob_app_"))
     async def handle_ob_app(callback: CallbackQuery):
