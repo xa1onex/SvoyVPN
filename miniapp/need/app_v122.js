@@ -969,7 +969,7 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v121';
+    vBadge.textContent = 'v122';
 
     // Start auto-scroll
     startNewsAutoScroll();
