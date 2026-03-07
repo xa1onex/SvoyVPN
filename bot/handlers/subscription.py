@@ -19,6 +19,30 @@ from ..yookassa_client import YooKassaClient
 logger = logging.getLogger(__name__)
 
 
+ONBOARDING_APPS = {
+    "apple": [
+        {"id": "happ", "name": "Happ", "url": "https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215"},
+        {"id": "hiddify", "name": "Hiddify", "url": "https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532"},
+        {"id": "v2raytun", "name": "V2RayTun", "url": "https://apps.apple.com/app/v2raytun/id6476628951"}
+    ],
+    "android": [
+        {"id": "happ", "name": "Happ", "url": "https://play.google.com/store/apps/details?id=com.happproxy"},
+        {"id": "hiddify", "name": "Hiddify", "url": "https://play.google.com/store/apps/details?id=app.hiddify.com"},
+        {"id": "v2raytun", "name": "V2RayTun", "url": "https://play.google.com/store/apps/details?id=com.v2raytun.android"}
+    ],
+    "windows": [
+        {"id": "happ", "name": "Happ", "url": "https://github.com/Happ-proxy/happ-desktop/releases/download/2.4.0/setup-Happ.x64.exe"},
+        {"id": "hiddify", "name": "Hiddify", "url": "https://github.com/hiddify/hiddify-app/releases"},
+        {"id": "v2rayn", "name": "V2RayN", "url": "https://github.com/2dust/v2rayN/releases"}
+    ],
+    "mac": [
+        {"id": "happ", "name": "Happ", "url": "https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215"},
+        {"id": "hiddify", "name": "Hiddify", "url": "https://github.com/hiddify/hiddify-app/releases"},
+        {"id": "v2raytun", "name": "V2RayTun", "url": "https://apps.apple.com/app/v2raytun/id6476628951"}
+    ]
+}
+
+
 async def should_show_discount(days_remaining: int) -> bool:
     """Проверяет, должна ли показываться скидка
     
@@ -72,22 +96,124 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
     
     @dp.callback_query(F.data == "get_vpn_link")
     async def handle_get_vpn_link(callback: CallbackQuery):
-        """Отправляет пользователю ссылку подписки"""
-        user_id = callback.from_user.id
-        link = await get_user_subscription_url(user_id, config)
-        await callback.message.answer(
-            "🔗 <b>Получить VPN</b>\n\n"
-            "Добавьте эту ссылку в приложение как <b>подписку</b>:\n"
-            f"<code>{link}</code>\n\n"
-            "📱 <b>Как использовать:</b>\n"
-            "1. Скопируйте ссылку выше\n"
-            "2. Откройте приложение (v2rayNG, v2rayN, sing-box и т.п.)\n"
-            "3. Добавьте ссылку как <b>подписку</b>\n"
-            "4. Обновите/синхронизируйте подписку в приложении",
+        """Отправляет пользователю выбор устройства"""
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="📱 iPhone", callback_data="ob_dev_apple"))
+        builder.row(InlineKeyboardButton(text="🤖 Android", callback_data="ob_dev_android"))
+        builder.row(InlineKeyboardButton(text="💻 Windows", callback_data="ob_dev_windows"))
+        builder.row(InlineKeyboardButton(text="🖥 macOS", callback_data="ob_dev_mac"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
+        
+        text = (
+            "💻 <b>Выберите ваше устройство</b>\n\n"
+            "На чем вы будете использовать VPN? Мы подготовили пошаговую инструкцию для каждой платформы."
+        )
+        
+        try:
+            await callback.message.edit_text(
+                text,
+                parse_mode="HTML",
+                reply_markup=builder.as_markup()
+            )
+        except TelegramBadRequest:
+            await callback.message.answer(
+                text,
+                parse_mode="HTML",
+                reply_markup=builder.as_markup()
+            )
+        await callback.answer()
+
+    @dp.callback_query(F.data.startswith("ob_dev_"))
+    async def handle_ob_device(callback: CallbackQuery):
+        """Выбор приложения для конкретного устройства"""
+        device = callback.data.replace("ob_dev_", "")
+        apps = ONBOARDING_APPS.get(device, [])
+        
+        builder = InlineKeyboardBuilder()
+        for app in apps:
+            builder.row(InlineKeyboardButton(text=f"🚀 {app['name']}", callback_data=f"ob_app_{device}_{app['id']}"))
+            
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="get_vpn_link"))
+        
+        device_names = {"apple": "iPhone", "android": "Android", "windows": "Windows", "mac": "macOS"}
+        dev_name = device_names.get(device, device)
+        
+        await callback.message.edit_text(
+            f"📱 <b>{dev_name} — Выберите приложение</b>\n\n"
+            "Выберите приложение, которое хотите использовать. Мы рекомендуем <b>Happ</b> для максимальной скорости.",
             parse_mode="HTML",
-            disable_web_page_preview=True,
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
+
+    @dp.callback_query(F.data.startswith("ob_app_"))
+    async def handle_ob_app(callback: CallbackQuery):
+        """Инструкция по установке и кнопка подключения"""
+        # data format: ob_app_{device}_{app_id}
+        parts = callback.data.split("_")
+        device = parts[2]
+        app_id = parts[3]
+        
+        apps = ONBOARDING_APPS.get(device, [])
+        app = next((a for a in apps if a["id"] == app_id), None)
+        if not app:
+            await callback.answer("❌ Ошибка: приложение не сканируется")
+            return
+            
+        user_id = callback.from_user.id
+        token = await ensure_subscription_token(user_id)
+        
+        # Deep link logic (Mac uses apple path)
+        device_path = "apple" if device == "mac" else device
+        connect_url = f"https://xdoublegroup.online/{device_path}/{app_id}/{token}"
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="📥 1. Скачать приложение", url=app['url']))
+        builder.row(InlineKeyboardButton(text="⚡️ 2. ПОДКЛЮЧИТЬ VPN", url=connect_url))
+        
+        # Кнопка для фото-инструкции, если она есть
+        from ..database import get_device_instruction_photos
+        photos = await get_device_instruction_photos(device)
+        if photos:
+            builder.row(InlineKeyboardButton(text="📸 Посмотреть инструкцию", callback_data=f"ob_photos_{device}"))
+            
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"ob_dev_{device}"))
+        
+        await callback.message.edit_text(
+            f"🚀 <b>Настройка {app['name']}</b>\n\n"
+            f"1️⃣ <b>Скачайте</b> приложение (если еще не установлено).\n\n"
+            f"2️⃣ <b>Нажмите</b> кнопку «ПОДКЛЮЧИТЬ VPN» — приложение откроется само и добавит все нужные сервера.\n\n"
+            f"3️⃣ <b>Запустите</b> VPN в приложении!\n\n"
+            f"<i>* Если ссылка не открывается, убедитесь, что приложение установлено.</i>",
+            parse_mode="HTML",
+            reply_markup=builder.as_markup()
+        )
+        await callback.answer()
+
+    @dp.callback_query(F.data.startswith("ob_photos_"))
+    async def handle_ob_photos(callback: CallbackQuery):
+        """Показ фото-инструкций для устройства"""
+        device = callback.data.replace("ob_photos_", "")
+        from ..database import get_device_instruction_photos
+        photos = await get_device_instruction_photos(device)
+        
+        if not photos:
+            await callback.answer("Инструкции пока нет")
+            return
+            
+        await callback.answer()
+        for photo_id in photos:
+            try:
+                await callback.message.answer_photo(photo_id)
+            except Exception:
+                continue
+        
+        await callback.message.answer(
+            "Выше приведены фото-инструкции для вашего устройства. Если остались вопросы, напишите в поддержку.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Назад", callback_data=f"ob_dev_{device}")]
+            ])
+        )
     
     @dp.callback_query(F.data == "open_premium")
     async def handle_open_premium(callback: CallbackQuery, state: FSMContext):
