@@ -969,7 +969,7 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v118';
+    vBadge.textContent = 'v119';
 
     // Start auto-scroll
     startNewsAutoScroll();
@@ -1356,9 +1356,10 @@
 
     // Links
     addClick('btnChannel', () => {
+      const channel = 'https://t.me/SvoyVPN_channel';
       tg && tg.openTelegramLink
-        ? tg.openTelegramLink('https://t.me/SvoyVPN')
-        : window.open('https://t.me/SvoyVPN', '_blank');
+        ? tg.openTelegramLink(channel)
+        : window.open(channel, '_blank');
     });
     addClick('btnSupport', () => {
       const link = (S.user && S.user.supportLink) || 'https://t.me/SvoyVPN_support';
