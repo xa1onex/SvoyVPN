@@ -4,7 +4,13 @@
 import logging
 from datetime import datetime
 from aiogram import Bot, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, CopyTextButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
+try:
+    from aiogram.types import CopyTextButton
+    HAS_COPY_BUTTON = True
+except ImportError:
+    HAS_COPY_BUTTON = False
+    CopyTextButton = None
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -134,7 +140,8 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
             link = await get_user_subscription_url(user_id, config)
             
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="📋 Скопировать ссылку", copy_text=CopyTextButton(text=link)))
+            if HAS_COPY_BUTTON:
+                builder.row(InlineKeyboardButton(text="📋 Скопировать ссылку", copy_text=CopyTextButton(text=link)))
             builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="get_vpn_link"))
             
             await callback.message.edit_text(
