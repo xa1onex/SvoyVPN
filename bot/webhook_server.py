@@ -710,7 +710,7 @@ class WebhookServer:
                 except Exception:
                     pass  # if something goes wrong, fallback to normal prices
             
-            from .plans import get_subscription_plans, get_renewal_plans
+            from .plans import get_subscription_plans, get_renewal_plans, SUBSCRIPTION_PLANS_BASE
             
             if is_renew:
                 subscription_plans = await get_renewal_plans()
@@ -719,27 +719,44 @@ class WebhookServer:
                 
             tariffs = []
             
+            # Helper to find corresponding base plan ID
+            def get_base_id(pid):
+                return pid.replace("_renew", "")
+
             for plan_id, plan_data in subscription_plans.items():
                 months = plan_data.get('duration', 1)
                 price_rub = plan_data.get('price_rub', 0) / 100.0  # Конвертируем из копеек
                 price_stars = plan_data.get('price_stars', 0)
                 
-                # Вычисляем старую цену (для скидки)
-                base_price_per_month = price_rub / months
-                old_price = None
+                # Поиск базового тарифа для расчета "старой" цены
+                base_id = get_base_id(plan_id)
+                base_plan = SUBSCRIPTION_PLANS_BASE.get(base_id)
                 
-                base_price_stars_per_month = price_stars / months
+                old_price = None
                 old_price_stars = None
                 
-                if months > 1:
-                    # Старая цена = цена за 1 месяц * количество месяцев
-                    old_price = base_price_per_month * months * 1.2  # Примерная старая цена
-                    old_price_stars = int(base_price_stars_per_month * months * 1.2)
-                
-                # На 1 месяц renewal тоже даем метку "скидка"
-                if is_renew and not old_price:
-                    old_price = getattr(self, '_base_1m_price', 199.0) # hardcode normal price fallback
-                    old_price_stars = 199
+                if base_plan:
+                    # 1. Цена из SUBSCRIPTION_PLANS_BASE (дефолтная из кода)
+                    # Если мы в режиме renewal или админ снизил цену в price_settings, 
+                    # показываем дефолтную как "зачеркнутую"
+                    base_rub = base_plan.get('price_rub', 0) / 100.0
+                    base_stars = base_plan.get('price_stars', 0)
+                    
+                    if price_rub < base_rub:
+                        old_price = base_rub
+                    if price_stars < base_stars:
+                        old_price_stars = base_stars
+                        
+                    # 2. Логика "Оптом дешевле": если даже цена равна базовой, 
+                    # но "базовая суммарно" (1 мес * X) выше
+                    m1_base = SUBSCRIPTION_PLANS_BASE.get('1_month', {}).get('price_rub', 19900) / 100.0
+                    m1_stars_base = SUBSCRIPTION_PLANS_BASE.get('1_month', {}).get('price_stars', 199)
+                    
+                    if months > 1:
+                        if not old_price and price_rub < (m1_base * months):
+                            old_price = m1_base * months
+                        if not old_price_stars and price_stars < (m1_stars_base * months):
+                            old_price_stars = m1_stars_base * months
 
                 tariffs.append({
                     "id": plan_id,
@@ -750,7 +767,7 @@ class WebhookServer:
                     "priceStars": price_stars,
                     "oldPriceStars": old_price_stars,
                     "pricePerMonthStars": round(price_stars / months),
-                    "popular": months == 12,  # Годовой тариф помечаем как популярный
+                    "popular": months == 12,
                     "isRenew": is_renew
                 })
             
