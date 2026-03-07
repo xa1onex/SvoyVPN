@@ -4,7 +4,7 @@
 import logging
 from datetime import datetime
 from aiogram import Bot, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, CopyTextButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -102,6 +102,7 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
         builder.row(InlineKeyboardButton(text="🤖 Android", callback_data="ob_dev_android"))
         builder.row(InlineKeyboardButton(text="💻 Windows", callback_data="ob_dev_windows"))
         builder.row(InlineKeyboardButton(text="🖥 macOS", callback_data="ob_dev_mac"))
+        builder.row(InlineKeyboardButton(text="⚙️ Настроить вручную", callback_data="ob_dev_manual"))
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
         
         text = (
@@ -125,8 +126,28 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
 
     @dp.callback_query(F.data.startswith("ob_dev_"))
     async def handle_ob_device(callback: CallbackQuery):
-        """Выбор приложения для конкретного устройства"""
+        """Выбор приложения для конкретного устройства или ручная настройка"""
         device = callback.data.replace("ob_dev_", "")
+        
+        if device == "manual":
+            user_id = callback.from_user.id
+            link = await get_user_subscription_url(user_id, config)
+            
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="📋 Скопировать ссылку", copy_text=CopyTextButton(text=link)))
+            builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="get_vpn_link"))
+            
+            await callback.message.edit_text(
+                "⚙️ <b>Ручная настройка</b>\n\n"
+                "Ваша универсальная ссылка на подписку:\n"
+                f"<code>{link}</code>\n\n"
+                "Она подходит для любого приложения, работающего через протоколы VLESS/V2Ray (например, v2rayNG, V2RayN, Hiddify, sing-box и т.д.).",
+                parse_mode="HTML",
+                reply_markup=builder.as_markup()
+            )
+            await callback.answer()
+            return
+
         apps = ONBOARDING_APPS.get(device, [])
         
         builder = InlineKeyboardBuilder()
