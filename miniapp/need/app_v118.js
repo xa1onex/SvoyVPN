@@ -579,6 +579,19 @@
       }
     }
 
+    // Support links update
+    if (S.user && S.user.supportLink) {
+      const obLink = document.getElementById('obSupportLink');
+      const obHandle = document.getElementById('obSupportHandle');
+      if (obLink) obLink.href = S.user.supportLink;
+      if (obHandle) {
+        // Extract handle like @SvoyVPN_support from https://t.me/SvoyVPN_support
+        let handle = S.user.supportLink.split('t.me/')[1] || S.user.supportLink;
+        if (!handle.startsWith('@') && handle.includes('_')) handle = '@' + handle;
+        obHandle.textContent = handle;
+      }
+    }
+
     if (subBlockBox) {
       if (sub && sub.isActive) {
         if (vpnStatus) vpnStatus.textContent = 'Подписка активна';
@@ -956,7 +969,7 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v117';
+    vBadge.textContent = 'v118';
 
     // Start auto-scroll
     startNewsAutoScroll();
@@ -1348,9 +1361,10 @@
         : window.open('https://t.me/SvoyVPN', '_blank');
     });
     addClick('btnSupport', () => {
+      const link = (S.user && S.user.supportLink) || 'https://t.me/SvoyVPN_support';
       tg && tg.openTelegramLink
-        ? tg.openTelegramLink('https://t.me/SvoyVPN_support')
-        : window.open('https://t.me/SvoyVPN_support', '_blank');
+        ? tg.openTelegramLink(link)
+        : window.open(link, '_blank');
     });
 
     // Load data

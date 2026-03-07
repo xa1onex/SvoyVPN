@@ -39,9 +39,9 @@
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/miniapp/need/assets/index_v111.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v117.css?v=117" />
+  <link rel="stylesheet" href="/miniapp/need/app_v118.css?v=118" />
 
-  <script defer src="/miniapp/need/app_v117.js?v=117"></script>
+  <script defer src="/miniapp/need/app_v118.js?v=118"></script>
 </head>
 
 <body>
@@ -232,7 +232,8 @@
                 <p class="ob-desc">Если возникли вопросы или что-то не получается — мы всегда на связи.</p>
 
                 <div class="ob-app-list">
-                  <a href="https://t.me/SvoyVPN_support" class="ob-app-item" target="_blank" rel="noopener">
+                  <a href="https://t.me/SvoyVPN_support" id="obSupportLink" class="ob-app-item" target="_blank"
+                    rel="noopener">
                     <div class="ob-app-icon" style="background:rgba(58,168,252,.12);">
                       <svg viewBox="0 0 24 24" style="fill:var(--accent_text_color,#3aa8fc);width:24px;height:24px;">
                         <path
@@ -241,7 +242,7 @@
                     </div>
                     <div class="ob-app-info">
                       <p class="ob-app-name">Написать в поддержку</p>
-                      <p class="ob-app-store">@SvoyVPN_support</p>
+                      <p class="ob-app-store" id="obSupportHandle">@SvoyVPN_support</p>
                     </div>
                     <span class="ob-app-arrow">›</span>
                   </a>

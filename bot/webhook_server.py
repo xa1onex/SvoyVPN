@@ -600,6 +600,9 @@ class WebhookServer:
                 is_admin = user_id in self.admin_ids
                 logger.info(f"Checking admin status for {user_id}: {is_admin} against {self.admin_ids}")
 
+                from .database import get_support_link
+                support_link = await get_support_link() or "https://t.me/SvoyVPN_support" # Fallback
+
                 return web.json_response({
                     "user": {
                         "id": user_id,
@@ -609,7 +612,8 @@ class WebhookServer:
                         "photoUrl": photo_url_fetched,
                         "trialAvailable": trial_available,
                         "trialDays": trial_days,
-                        "isAdmin": is_admin
+                        "isAdmin": is_admin,
+                        "supportLink": support_link
                     },
                     "subscription": {
                         "isActive": is_active,
