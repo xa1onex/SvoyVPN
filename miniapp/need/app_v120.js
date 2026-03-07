@@ -969,7 +969,7 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v119';
+    vBadge.textContent = 'v120';
 
     // Start auto-scroll
     startNewsAutoScroll();
@@ -1257,6 +1257,9 @@
     if (tg) {
       tg.ready();
       tg.expand();
+      if (tg.requestFullscreen) {
+        tg.requestFullscreen();
+      }
       // Subscribe to future theme changes
       tg.onEvent && tg.onEvent('themeChanged', applyTheme);
 
