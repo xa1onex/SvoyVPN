@@ -43,13 +43,61 @@ async def setup_start_handler(dp, bot: Bot, config):
                     logger.warning(f"Migration check failed: {e}")
                 
                 if migrated_data:
+                    # ── UTM бонус для мигрированного пользователя ──
+                    utm_bonus_info = ""
+                    if utm_tag:
+                        try:
+                            await conn.execute('''
+                                INSERT INTO utm_visits (user_id, utm_tag, is_new_user)
+                                VALUES ($1, $2, TRUE)
+                            ''', user_id, utm_tag)
+                        except Exception as e:
+                            logger.warning(f"Could not log UTM visit for migrated user: {e}")
+                        
+                        # Обновляем utm_source
+                        try:
+                            await conn.execute(
+                                "UPDATE users SET utm_source = $1 WHERE user_id = $2",
+                                utm_tag, user_id
+                            )
+                        except Exception:
+                            pass
+                        
+                        # Применяем UTM бонус
+                        try:
+                            campaign = await conn.fetchrow(
+                                'SELECT * FROM utm_campaigns WHERE tag = $1 AND is_active = TRUE', utm_tag
+                            )
+                            if campaign and campaign['bonus_days'] and campaign['bonus_days'] > 0:
+                                utm_days = campaign['bonus_days']
+                                await conn.execute('''
+                                    UPDATE users SET
+                                        subscription_end = CASE
+                                            WHEN subscription_end IS NULL OR subscription_end < CURRENT_DATE
+                                            THEN CURRENT_DATE + ($2 || ' days')::INTERVAL
+                                            ELSE subscription_end + ($2 || ' days')::INTERVAL
+                                        END,
+                                        pay_subscribed = TRUE
+                                    WHERE user_id = $1
+                                ''', user_id, str(utm_days))
+                                utm_bonus_info = f"\n🎁 Бонус по акции: +{utm_days} дней VPN"
+                                logger.info(f"UTM bonus {utm_days} days applied to migrated user {user_id} (tag: {utm_tag})")
+                        except Exception as e:
+                            logger.warning(f"Could not apply UTM bonus to migrated user: {e}")
+                    
                     # Пользователь мигрирован — показываем приветствие
-                    sub_status = await get_subscription_status(user_id)
                     sub_info = ""
                     if migrated_data.get('pay_subscribed') and migrated_data.get('subscription_end'):
-                        end_str = migrated_data['subscription_end']
-                        if hasattr(end_str, 'strftime'):
-                            end_str = end_str.strftime('%d.%m.%Y')
+                        # Перечитаем актуальную дату (могли добавить UTM дни)
+                        updated_user = await conn.fetchrow(
+                            'SELECT subscription_end FROM users WHERE user_id = $1', user_id
+                        )
+                        if updated_user and updated_user['subscription_end']:
+                            end_str = updated_user['subscription_end'].strftime('%d.%m.%Y')
+                        else:
+                            end_str = migrated_data['subscription_end']
+                            if hasattr(end_str, 'strftime'):
+                                end_str = end_str.strftime('%d.%m.%Y')
                         sub_info = f"\n✅ Ваша подписка перенесена (до {end_str})"
                     
                     keys_info = ""
@@ -58,12 +106,13 @@ async def setup_start_handler(dp, bot: Bot, config):
                     
                     await message.answer(
                         f"🔄 <b>Миграция завершена!</b>\n\n"
-                        f"Ваши данные успешно перенесены из старого бота.{sub_info}{keys_info}\n\n"
+                        f"Ваши данные успешно перенесены из старого бота.{sub_info}{utm_bonus_info}{keys_info}\n\n"
                         f"Добро пожаловать в новый <b>VPN бот</b>! 🎉",
                         parse_mode="HTML",
                         reply_markup=await get_main_keyboard(user_id, config)
                     )
                     return
+
                 
                 # ── Обычная регистрация нового пользователя ──
                 # Создаём нового пользователя
