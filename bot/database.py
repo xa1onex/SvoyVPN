@@ -466,9 +466,9 @@ async def check_expired_subscriptions() -> None:
 def generate_subscription_token() -> str:
     """
     Генерирует уникальный токен подписки (URL-safe).
-    Длина ~ 32-43 символа, подходит для использования в URL.
+    Длина ~ 19 символов — достаточно для уникальности и не режется браузерами.
     """
-    return secrets.token_urlsafe(32)
+    return secrets.token_urlsafe(14)
 
 
 async def ensure_subscription_token(user_id: int) -> str:
