@@ -5,12 +5,6 @@ import logging
 from datetime import datetime
 from aiogram import Bot, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
-try:
-    from aiogram.types import CopyTextButton
-    HAS_COPY_BUTTON = True
-except ImportError:
-    HAS_COPY_BUTTON = False
-    CopyTextButton = None
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -140,10 +134,11 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
             link = await get_user_subscription_url(user_id, config)
             
             builder = InlineKeyboardBuilder()
-            if HAS_COPY_BUTTON:
-                builder.row(InlineKeyboardButton(text="📋 Скопировать ссылку", copy_text=CopyTextButton(text=link)))
-            else:
-                builder.row(InlineKeyboardButton(text="📋 Скопировать конфигурацию", callback_data="copy_manual_config"))
+            # Нативная кнопка copy_text (Telegram Bot API, aiogram 2.x)
+            builder.row(InlineKeyboardButton(
+                text="📋 Скопировать конфигурацию",
+                copy_text={"text": link}
+            ))
             builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="get_vpn_link"))
             
             await callback.message.edit_text(
@@ -175,20 +170,6 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
             reply_markup=builder.as_markup()
         )
         await callback.answer()
-
-    @dp.callback_query(F.data == "copy_manual_config")
-    async def handle_copy_manual_config(callback: CallbackQuery):
-        """Отправляет конфигурацию отдельным сообщением для копирования"""
-        user_id = callback.from_user.id
-        link = await get_user_subscription_url(user_id, config)
-        
-        await callback.message.answer(
-            f"📋 <b>Ваша конфигурация:</b>\n\n"
-            f"<code>{link}</code>\n\n"
-            "Нажмите на ссылку чтобы скопировать её.",
-            parse_mode="HTML"
-        )
-        await callback.answer("✅ Конфигурация отправлена выше!", show_alert=True)
 
     @dp.callback_query(F.data.startswith("ob_app_"))
     async def handle_ob_app(callback: CallbackQuery):
