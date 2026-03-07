@@ -710,54 +710,52 @@ class WebhookServer:
                 except Exception:
                     pass  # if something goes wrong, fallback to normal prices
             
-            from .plans import get_subscription_plans, get_renewal_plans, SUBSCRIPTION_PLANS_BASE
+            from .plans import get_subscription_plans, get_renewal_plans
             
-            if is_renew:
-                subscription_plans = await get_renewal_plans()
-            else:
-                subscription_plans = await get_subscription_plans()
-                
+            # Предварительно загружаем ОБА набора планов, чтобы сравнивать цены
+            regular_plans = await get_subscription_plans()
+            renewal_plans = await get_renewal_plans()
+            
+            current_tariffs = renewal_plans if is_renew else regular_plans
             tariffs = []
             
-            # Helper to find corresponding base plan ID
-            def get_base_id(pid):
-                return pid.replace("_renew", "")
+            # Получаем текущую цену за 1 месяц (для расчета выгоды оптом)
+            m1_reg = regular_plans.get('1_month', {})
+            m1_rub = m1_reg.get('price_rub', 19900) / 100.0
+            m1_stars = m1_reg.get('price_stars', 199)
 
-            for plan_id, plan_data in subscription_plans.items():
+            for plan_id, plan_data in current_tariffs.items():
                 months = plan_data.get('duration', 1)
-                price_rub = plan_data.get('price_rub', 0) / 100.0  # Конвертируем из копеек
+                price_rub = plan_data.get('price_rub', 0) / 100.0
                 price_stars = plan_data.get('price_stars', 0)
-                
-                # Поиск базового тарифа для расчета "старой" цены
-                base_id = get_base_id(plan_id)
-                base_plan = SUBSCRIPTION_PLANS_BASE.get(base_id)
                 
                 old_price = None
                 old_price_stars = None
                 
-                if base_plan:
-                    # 1. Цена из SUBSCRIPTION_PLANS_BASE (дефолтная из кода)
-                    # Если мы в режиме renewal или админ снизил цену в price_settings, 
-                    # показываем дефолтную как "зачеркнутую"
-                    base_rub = base_plan.get('price_rub', 0) / 100.0
-                    base_stars = base_plan.get('price_stars', 0)
-                    
-                    if price_rub < base_rub:
-                        old_price = base_rub
-                    if price_stars < base_stars:
-                        old_price_stars = base_stars
-                        
-                    # 2. Логика "Оптом дешевле": если даже цена равна базовой, 
-                    # но "базовая суммарно" (1 мес * X) выше
-                    m1_base = SUBSCRIPTION_PLANS_BASE.get('1_month', {}).get('price_rub', 19900) / 100.0
-                    m1_stars_base = SUBSCRIPTION_PLANS_BASE.get('1_month', {}).get('price_stars', 199)
-                    
-                    if months > 1:
-                        if not old_price and price_rub < (m1_base * months):
-                            old_price = m1_base * months
-                        if not old_price_stars and price_stars < (m1_stars_base * months):
-                            old_price_stars = m1_stars_base * months
-
+                # Логика для планов продления (сравниваем с обычными ценами)
+                if is_renew:
+                    # '1_month_renew' -> '1_month'
+                    base_id = plan_id.replace("_renew", "")
+                    base_plan = regular_plans.get(base_id)
+                    if base_plan:
+                        base_rub = base_plan.get('price_rub', 0) / 100.0
+                        base_stars = base_plan.get('price_stars', 0)
+                        if price_rub < base_rub:
+                            old_price = base_rub
+                        if price_stars < base_stars:
+                            old_price_stars = base_stars
+                
+                # Логика "Оптом дешевле" или "Скидка от админа" для всех планов
+                if months > 1:
+                    # Если цена за план меньше, чем (цена 1 мес * кол-во месяцев)
+                    if not old_price and price_rub < (m1_rub * months):
+                        old_price = m1_rub * months
+                    if not old_price_stars and price_stars < (m1_stars * months):
+                        old_price_stars = m1_stars_base = m1_stars * months
+                
+                # Если админ просто снизил цену ниже дефолта (проверка против SUBSCRIPTION_PLANS_BASE не нужна здесь, 
+                # так как мы ориентируемся на то, что админ видит в "Управлении ценами")
+                
                 tariffs.append({
                     "id": plan_id,
                     "months": months,
