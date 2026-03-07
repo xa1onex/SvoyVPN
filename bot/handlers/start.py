@@ -34,6 +34,38 @@ async def setup_start_handler(dp, bot: Bot, config):
             user = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
             
             if not user:
+                # ── Lazy migration: пробуем перенести из старой базы ──
+                migrated_data = None
+                try:
+                    from ..migration import migrate_user
+                    migrated_data = await migrate_user(user_id, conn)
+                except Exception as e:
+                    logger.warning(f"Migration check failed: {e}")
+                
+                if migrated_data:
+                    # Пользователь мигрирован — показываем приветствие
+                    sub_status = await get_subscription_status(user_id)
+                    sub_info = ""
+                    if migrated_data.get('pay_subscribed') and migrated_data.get('subscription_end'):
+                        end_str = migrated_data['subscription_end']
+                        if hasattr(end_str, 'strftime'):
+                            end_str = end_str.strftime('%d.%m.%Y')
+                        sub_info = f"\n✅ Ваша подписка перенесена (до {end_str})"
+                    
+                    keys_info = ""
+                    if migrated_data.get('keys_migrated', 0) > 0:
+                        keys_info = f"\n🔑 VPN ключей перенесено: {migrated_data['keys_migrated']}"
+                    
+                    await message.answer(
+                        f"🔄 <b>Миграция завершена!</b>\n\n"
+                        f"Ваши данные успешно перенесены из старого бота.{sub_info}{keys_info}\n\n"
+                        f"Добро пожаловать в новый <b>VPN бот</b>! 🎉",
+                        parse_mode="HTML",
+                        reply_markup=await get_main_keyboard(user_id, config)
+                    )
+                    return
+                
+                # ── Обычная регистрация нового пользователя ──
                 # Создаём нового пользователя
                 new_referral_code = secrets.token_hex(4)
                 sub_token = generate_subscription_token()
