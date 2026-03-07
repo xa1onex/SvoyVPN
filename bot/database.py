@@ -101,6 +101,10 @@ async def init_db() -> None:
             if 'trial_used' not in existing_columns:
                 await conn.execute("ALTER TABLE users ADD COLUMN trial_used BOOLEAN DEFAULT FALSE")
                 logging.info("Added trial_used column to users table")
+            
+            if 'utm_source' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN utm_source TEXT")
+                logging.info("Added utm_source column to users table")
         except Exception as e:
             logging.warning(f"Could not add columns to users table: {e}")
         
@@ -399,6 +403,36 @@ async def init_db() -> None:
             ''')
         except Exception as e:
             logging.warning(f"Could not create news table: {e}")
+
+        # UTM campaigns
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS utm_campaigns (
+                    id SERIAL PRIMARY KEY,
+                    tag TEXT UNIQUE NOT NULL,
+                    description TEXT DEFAULT '',
+                    bonus_days INTEGER DEFAULT 0,
+                    bonus_trial_days INTEGER DEFAULT 0,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        except Exception as e:
+            logging.warning(f"Could not create utm_campaigns table: {e}")
+
+        # UTM visits
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS utm_visits (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    utm_tag TEXT NOT NULL,
+                    is_new_user BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        except Exception as e:
+            logging.warning(f"Could not create utm_visits table: {e}")
 
 
 async def check_expired_subscriptions() -> None:

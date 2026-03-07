@@ -56,6 +56,9 @@ class AdminStates(StatesGroup):
     DEVICE_APP_ORDER = State()
     DEVICE_INSTRUCTION_PHOTO_MULTIPLE = State()
     MANAGER_SUPPORT_LINK = State()
+    UTM_TAG = State()
+    UTM_DESCRIPTION = State()
+    UTM_BONUS_DAYS = State()
 
 
 class AdminEditStates(StatesGroup):
@@ -124,6 +127,7 @@ def get_admin_panel_keyboard():
     builder.row(InlineKeyboardButton(text="👥 Управление админами", callback_data="admin_manage_admins"))
     builder.row(InlineKeyboardButton(text="🛟 Управление менеджерами", callback_data="admin_manage_managers"))
     builder.row(InlineKeyboardButton(text="📱 Управление приложениями", callback_data="admin_device_apps"))
+    builder.row(InlineKeyboardButton(text="📈 UTM метки", callback_data="admin_utm"))
     builder.row(InlineKeyboardButton(text="⏰ Ручная отправка напоминаний", callback_data="admin_manual_reminder"))
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back_to_main"))
     return builder.as_markup()
@@ -2855,3 +2859,289 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         # Возвращаемся к управлению фото
         new_callback = callback.model_copy(update={'data': f"admin_manage_device_photos:{device_type}"})
         await handle_admin_manage_device_photos(new_callback)
+
+    # ═══════════════════════════════════════════
+    #  UTM TRACKING
+    # ═══════════════════════════════════════════
+
+    @dp.callback_query(F.data == "admin_utm")
+    async def handle_admin_utm(callback: CallbackQuery):
+        """Главная страница UTM"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        async with get_connection() as conn:
+            campaigns = await conn.fetch('SELECT * FROM utm_campaigns ORDER BY created_at DESC')
+            total_visits = await conn.fetchval('SELECT COUNT(*) FROM utm_visits') or 0
+            total_new = await conn.fetchval('SELECT COUNT(*) FROM utm_visits WHERE is_new_user = TRUE') or 0
+            visits_today = await conn.fetchval(
+                "SELECT COUNT(*) FROM utm_visits WHERE DATE(created_at) = CURRENT_DATE"
+            ) or 0
+        
+        text = (
+            f"📈 <b>UTM метки</b>\n\n"
+            f"📊 Всего переходов: <b>{total_visits}</b>\n"
+            f"👤 Новых пользователей: <b>{total_new}</b>\n"
+            f"📅 Переходов сегодня: <b>{visits_today}</b>\n\n"
+        )
+        
+        if campaigns:
+            text += "<b>Настроенные кампании:</b>\n"
+            for c in campaigns:
+                status = "✅" if c['is_active'] else "❌"
+                bonus = f"+{c['bonus_days']}д" if c['bonus_days'] else "без бонуса"
+                text += f"{status} <code>{c['tag']}</code> — {c['description'] or 'без описания'} ({bonus})\n"
+        else:
+            text += "<i>Нет настроенных кампаний</i>\n"
+        
+        text += (
+            "\n💡 Любая ссылка вида <code>https://t.me/SvoyVPN_robot?start=tag</code> "
+            "будет засчитана автоматически, даже без создания кампании в админке."
+        )
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="➕ Создать кампанию", callback_data="utm_create"))
+        builder.row(InlineKeyboardButton(text="📊 Детальная статистика", callback_data="utm_stats_detail"))
+        if campaigns:
+            for c in campaigns:
+                builder.row(InlineKeyboardButton(
+                    text=f"⚙️ {c['tag']}",
+                    callback_data=f"utm_manage:{c['tag']}"
+                ))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data == "utm_create")
+    async def handle_utm_create(callback: CallbackQuery, state: FSMContext):
+        """Начать создание UTM кампании"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        await state.set_state(AdminStates.UTM_TAG)
+        await callback.message.edit_text(
+            "📈 <b>Создание UTM кампании</b>\n\n"
+            "Введите тег (латиницей, без пробелов).\n"
+            "Пример: <code>googleads</code>, <code>youtube_channel</code>, <code>blogger_ivan</code>\n\n"
+            "Ссылка будет: <code>https://t.me/SvoyVPN_robot?start=ваш_тег</code>",
+            parse_mode="HTML"
+        )
+        await safe_callback_answer(callback)
+
+    @dp.message(AdminStates.UTM_TAG)
+    async def process_utm_tag(message: Message, state: FSMContext):
+        """Сохранить UTM тег"""
+        tag = message.text.strip().lower().replace(' ', '_')
+        if not tag or len(tag) < 2:
+            await message.answer("❌ Тег слишком короткий (минимум 2 символа)")
+            return
+        if tag.startswith('ref_'):
+            await message.answer("❌ Тег не может начинаться с <code>ref_</code> (зарезервировано для рефералов)", parse_mode="HTML")
+            return
+        
+        # Проверяем уникальность
+        async with get_connection() as conn:
+            existing = await conn.fetchrow('SELECT id FROM utm_campaigns WHERE tag = $1', tag)
+            if existing:
+                await message.answer(f"❌ Тег <code>{tag}</code> уже существует", parse_mode="HTML")
+                return
+        
+        await state.update_data(utm_tag=tag)
+        await state.set_state(AdminStates.UTM_DESCRIPTION)
+        await message.answer(
+            f"Тег: <code>{tag}</code>\n\n"
+            "Введите описание кампании (например: 'Реклама в Google')\n"
+            "Или отправьте <code>-</code> чтобы пропустить:",
+            parse_mode="HTML"
+        )
+
+    @dp.message(AdminStates.UTM_DESCRIPTION)
+    async def process_utm_description(message: Message, state: FSMContext):
+        """Сохранить описание"""
+        desc = message.text.strip()
+        if desc == '-':
+            desc = ''
+        
+        await state.update_data(utm_description=desc)
+        await state.set_state(AdminStates.UTM_BONUS_DAYS)
+        await message.answer(
+            "Сколько бонусных дней VPN давать новым пользователям по этой ссылке?\n\n"
+            "Введите число (например: <code>7</code>) или <code>0</code> если без бонуса:",
+            parse_mode="HTML"
+        )
+
+    @dp.message(AdminStates.UTM_BONUS_DAYS)
+    async def process_utm_bonus_days(message: Message, state: FSMContext):
+        """Сохранить бонусные дни и создать кампанию"""
+        try:
+            bonus_days = int(message.text.strip())
+            if bonus_days < 0:
+                raise ValueError
+        except ValueError:
+            await message.answer("❌ Введите неотрицательное число")
+            return
+        
+        data = await state.get_data()
+        tag = data['utm_tag']
+        desc = data.get('utm_description', '')
+        
+        async with get_connection() as conn:
+            await conn.execute('''
+                INSERT INTO utm_campaigns (tag, description, bonus_days)
+                VALUES ($1, $2, $3)
+            ''', tag, desc, bonus_days)
+        
+        await state.clear()
+        
+        bot_info = await bot.get_me()
+        link = f"https://t.me/{bot_info.username}?start={tag}"
+        
+        bonus_text = f"+{bonus_days} дней VPN" if bonus_days > 0 else "без бонуса"
+        await message.answer(
+            f"✅ UTM кампания создана!\n\n"
+            f"🏷 Тег: <code>{tag}</code>\n"
+            f"📝 Описание: {desc or '—'}\n"
+            f"🎁 Бонус: {bonus_text}\n\n"
+            f"🔗 Ссылка:\n<code>{link}</code>",
+            parse_mode="HTML"
+        )
+
+    @dp.callback_query(F.data.startswith("utm_manage:"))
+    async def handle_utm_manage(callback: CallbackQuery):
+        """Управление конкретной UTM кампанией"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        tag = callback.data.split(":", 1)[1]
+        
+        async with get_connection() as conn:
+            campaign = await conn.fetchrow('SELECT * FROM utm_campaigns WHERE tag = $1', tag)
+            if not campaign:
+                await safe_callback_answer(callback, "❌ Кампания не найдена", show_alert=True)
+                return
+            
+            total_visits = await conn.fetchval(
+                'SELECT COUNT(*) FROM utm_visits WHERE utm_tag = $1', tag
+            ) or 0
+            new_users = await conn.fetchval(
+                'SELECT COUNT(*) FROM utm_visits WHERE utm_tag = $1 AND is_new_user = TRUE', tag
+            ) or 0
+            visits_7d = await conn.fetchval(
+                "SELECT COUNT(*) FROM utm_visits WHERE utm_tag = $1 AND created_at >= CURRENT_DATE - INTERVAL '7 days'",
+                tag
+            ) or 0
+            # Конверсия: из новых пользователей сколько купили подписку
+            conversions = await conn.fetchval('''
+                SELECT COUNT(DISTINCT p.user_id)
+                FROM payments p
+                JOIN utm_visits uv ON p.user_id = uv.user_id
+                WHERE uv.utm_tag = $1 AND uv.is_new_user = TRUE AND p.status = 'completed'
+            ''', tag) or 0
+        
+        conversion_rate = (conversions / new_users * 100) if new_users > 0 else 0
+        status = "✅ Активна" if campaign['is_active'] else "❌ Неактивна"
+        bonus = f"+{campaign['bonus_days']} дней" if campaign['bonus_days'] else "без бонуса"
+        
+        bot_info = await bot.get_me()
+        link = f"https://t.me/{bot_info.username}?start={tag}"
+        
+        text = (
+            f"⚙️ <b>Кампания: {tag}</b>\n\n"
+            f"📝 Описание: {campaign['description'] or '—'}\n"
+            f"📊 Статус: {status}\n"
+            f"🎁 Бонус: {bonus}\n\n"
+            f"📈 Всего переходов: <b>{total_visits}</b>\n"
+            f"👤 Новых пользователей: <b>{new_users}</b>\n"
+            f"💰 Конверсия в оплату: <b>{conversions}</b> ({conversion_rate:.1f}%)\n"
+            f"📅 За 7 дней: <b>{visits_7d}</b>\n\n"
+            f"🔗 Ссылка:\n<code>{link}</code>"
+        )
+        
+        toggle_text = "🔴 Деактивировать" if campaign['is_active'] else "🟢 Активировать"
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=toggle_text, callback_data=f"utm_toggle:{tag}"))
+        builder.row(InlineKeyboardButton(text="🗑 Удалить", callback_data=f"utm_delete:{tag}"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_utm"))
+        
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data.startswith("utm_toggle:"))
+    async def handle_utm_toggle(callback: CallbackQuery):
+        """Переключить активность кампании"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        tag = callback.data.split(":", 1)[1]
+        async with get_connection() as conn:
+            await conn.execute(
+                'UPDATE utm_campaigns SET is_active = NOT is_active WHERE tag = $1', tag
+            )
+        
+        await safe_callback_answer(callback, "✅ Статус изменён")
+        # Возвращаемся к управлению кампанией
+        new_callback = callback.model_copy(update={'data': f"utm_manage:{tag}"})
+        await handle_utm_manage(new_callback)
+
+    @dp.callback_query(F.data.startswith("utm_delete:"))
+    async def handle_utm_delete(callback: CallbackQuery):
+        """Удалить UTM кампанию"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        tag = callback.data.split(":", 1)[1]
+        async with get_connection() as conn:
+            await conn.execute('DELETE FROM utm_campaigns WHERE tag = $1', tag)
+        
+        await safe_callback_answer(callback, "✅ Кампания удалена")
+        new_callback = callback.model_copy(update={'data': 'admin_utm'})
+        await handle_admin_utm(new_callback)
+
+    @dp.callback_query(F.data == "utm_stats_detail")
+    async def handle_utm_stats_detail(callback: CallbackQuery):
+        """Детальная статистика по всем UTM меткам"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        async with get_connection() as conn:
+            # Статистика по каждому тегу
+            stats = await conn.fetch('''
+                SELECT 
+                    utm_tag,
+                    COUNT(*) as total_visits,
+                    COUNT(*) FILTER (WHERE is_new_user = TRUE) as new_users,
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '7 days') as visits_7d,
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '30 days') as visits_30d,
+                    MIN(created_at) as first_visit,
+                    MAX(created_at) as last_visit
+                FROM utm_visits
+                GROUP BY utm_tag
+                ORDER BY total_visits DESC
+                LIMIT 30
+            ''')
+        
+        if not stats:
+            text = "📊 <b>UTM статистика</b>\n\n<i>Нет данных о переходах</i>"
+        else:
+            text = "📊 <b>Детальная UTM статистика</b>\n\n"
+            for s in stats:
+                last_visit = s['last_visit'].strftime('%d.%m %H:%M') if s['last_visit'] else '—'
+                text += (
+                    f"🏷 <code>{s['utm_tag']}</code>\n"
+                    f"   Всего: {s['total_visits']} | Новых: {s['new_users']} "
+                    f"| 7д: {s['visits_7d']} | 30д: {s['visits_30d']}\n"
+                    f"   Последний: {last_visit}\n\n"
+                )
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_utm"))
+        
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
+        await safe_callback_answer(callback)

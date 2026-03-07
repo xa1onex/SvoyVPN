@@ -25,8 +25,10 @@ async def setup_start_handler(dp, bot: Bot, config):
         first_name = message.from_user.first_name or "Пользователь"
         args = message.text.split()
         
-        # Парсим реферальный код
-        referral_code = args[1][4:] if len(args) > 1 and args[1].startswith('ref_') else None
+        # Парсим deep link аргумент
+        deep_link_arg = args[1] if len(args) > 1 else None
+        referral_code = deep_link_arg[4:] if deep_link_arg and deep_link_arg.startswith('ref_') else None
+        utm_tag = deep_link_arg if deep_link_arg and not deep_link_arg.startswith('ref_') else None
         
         async with get_connection() as conn:
             user = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
@@ -39,14 +41,50 @@ async def setup_start_handler(dp, bot: Bot, config):
                 await conn.execute('''
                     INSERT INTO users (
                         user_id, username, first_name, registration_date, last_activity,
-                        referral_code, invited_by, pay_subscribed, subscription_end, subscription_token
-                    ) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $4, NULL, FALSE, NULL, $5)
-                ''', user_id, username, first_name, new_referral_code, sub_token)
+                        referral_code, invited_by, pay_subscribed, subscription_end, subscription_token,
+                        utm_source
+                    ) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $4, NULL, FALSE, NULL, $5, $6)
+                ''', user_id, username, first_name, new_referral_code, sub_token, utm_tag)
                 
                 # Обработка реферального кода
                 has_referral = False
                 invited_bonus_days = None
                 invited_end_date = None
+                
+                # --- UTM tracking ---
+                utm_bonus_applied = False
+                utm_bonus_days = 0
+                utm_campaign_desc = None
+                
+                if utm_tag:
+                    # Записываем визит в utm_visits
+                    try:
+                        await conn.execute('''
+                            INSERT INTO utm_visits (user_id, utm_tag, is_new_user)
+                            VALUES ($1, $2, TRUE)
+                        ''', user_id, utm_tag)
+                    except Exception as e:
+                        logger.warning(f"Could not log UTM visit: {e}")
+                    
+                    # Проверяем, есть ли настроенная кампания с привилегиями
+                    try:
+                        campaign = await conn.fetchrow(
+                            'SELECT * FROM utm_campaigns WHERE tag = $1 AND is_active = TRUE', utm_tag
+                        )
+                        if campaign and campaign['bonus_days'] and campaign['bonus_days'] > 0:
+                            utm_bonus_days = campaign['bonus_days']
+                            utm_campaign_desc = campaign['description']
+                            # Выдаём бонусные дни
+                            await conn.execute('''
+                                UPDATE users SET
+                                    subscription_end = CURRENT_DATE + ($2 || ' days')::INTERVAL,
+                                    pay_subscribed = TRUE
+                                WHERE user_id = $1
+                            ''', user_id, str(utm_bonus_days))
+                            utm_bonus_applied = True
+                            logger.info(f"UTM bonus {utm_bonus_days} days applied to user {user_id} (tag: {utm_tag})")
+                    except Exception as e:
+                        logger.warning(f"Could not process UTM campaign: {e}")
                 
                 if referral_code:
                     inviter = await conn.fetchrow('SELECT user_id FROM users WHERE referral_code = $1', referral_code)
@@ -65,7 +103,6 @@ async def setup_start_handler(dp, bot: Bot, config):
                         
                         inviter_id = inviter['user_id']
                         
-                        # ✅ ИСПРАВЛЕНО: Используем параметризованные запросы
                         await conn.execute('''
                             UPDATE users SET
                                 referral_count = referral_count + 1,
@@ -102,7 +139,12 @@ async def setup_start_handler(dp, bot: Bot, config):
                         invited_end_date = datetime.now() + timedelta(days=invited_bonus_days)
                 
                 # Уведомление админам
-                referral_info = "по реферальной ссылке" if has_referral else "без рефералки"
+                source_info = "по реферальной ссылке" if has_referral else "без рефералки"
+                if utm_tag:
+                    source_info = f"UTM: <code>{utm_tag}</code>"
+                    if utm_bonus_applied:
+                        source_info += f" (+{utm_bonus_days} дн.)"
+                
                 for admin_id in config.bot.admin_ids:
                     try:
                         await bot.send_message(
@@ -112,7 +154,7 @@ async def setup_start_handler(dp, bot: Bot, config):
                             f"Имя: {first_name}\n"
                             f"Username: @{username if username else 'нет'}\n"
                             f"Реферальный код: <code>{new_referral_code}</code>\n"
-                            f"Регистрация: {referral_info}",
+                            f"Источник: {source_info}",
                             parse_mode="HTML"
                         )
                     except Exception as e:
@@ -137,6 +179,17 @@ async def setup_start_handler(dp, bot: Bot, config):
                         f"🎁 Вы получили +{invited_bonus_days} {'день' if invited_bonus_days == 1 else 'дня' if invited_bonus_days < 5 else 'дней'} <b>VPN</b> за регистрацию по реферальной ссылке!\n"
                         f"Ваш <b>VPN</b> активен до: {expiration_date}\n\n"
                     )
+                elif utm_bonus_applied and utm_bonus_days > 0:
+                    user_data = await conn.fetchrow('SELECT subscription_end FROM users WHERE user_id = $1', user_id)
+                    if user_data and user_data['subscription_end']:
+                        expiration_date = user_data['subscription_end'].strftime("%d.%m.%Y")
+                    else:
+                        expiration_date = (datetime.now() + timedelta(days=utm_bonus_days)).strftime("%d.%m.%Y")
+                    
+                    welcome_msg_parts.append(
+                        f"🎁 Вы получили +{utm_bonus_days} {'день' if utm_bonus_days == 1 else 'дня' if utm_bonus_days < 5 else 'дней'} <b>VPN</b> по акции!\n"
+                        f"Ваш <b>VPN</b> активен до: {expiration_date}\n\n"
+                    )
 
                 welcome_msg_parts.extend([
                     "<b>Бот предоставляет</b>:\n"
@@ -158,6 +211,16 @@ async def setup_start_handler(dp, bot: Bot, config):
             else:
                 # Обновляем активность
                 await conn.execute("UPDATE users SET last_activity = CURRENT_TIMESTAMP WHERE user_id = $1", user_id)
+                
+                # Логируем UTM визит для существующего пользователя (без привилегий)
+                if utm_tag:
+                    try:
+                        await conn.execute('''
+                            INSERT INTO utm_visits (user_id, utm_tag, is_new_user)
+                            VALUES ($1, $2, FALSE)
+                        ''', user_id, utm_tag)
+                    except Exception as e:
+                        logger.warning(f"Could not log UTM visit for existing user: {e}")
                 
                 subscription_status = await get_subscription_status(user_id)
                 await message.answer(
