@@ -52,18 +52,21 @@
   const FLAGS = {
     us: '🇺🇸', usa: '🇺🇸', сша: '🇺🇸', 'united states': '🇺🇸',
     de: '🇩🇪', germany: '🇩🇪', германия: '🇩🇪',
-    nl: '🇳🇱', netherlands: '🇳🇱', нидерланды: '🇳🇱', голландия: '🇳🇱',
-    fi: '🇫🇮', finland: '🇫🇮', финляндия: '🇫🇮',
-    ru: '🇷🇺', russia: '🇷🇺', россия: '🇷🇺',
+    nl: '🇳🇱', netherlands: '🇳🇱', нидерланды: '🇳🇱', голландия: '🇳🇱', amsterdam: '🇳🇱', амстердам: '🇳🇱',
+    fi: '🇫🇮', finland: '🇫🇮', финляндия: '🇫🇮', helsinki: '🇫🇮', хельсинки: '🇫🇮',
+    ru: '🇷🇺', russia: '🇷🇺', россия: '🇷🇺', moscow: '🇷🇺', москва: '🇷🇺',
     sg: '🇸🇬', singapore: '🇸🇬', сингапур: '🇸🇬',
-    gb: '🇬🇧', uk: '🇬🇧', великобритания: '🇬🇧',
-    fr: '🇫🇷', france: '🇫🇷', франция: '🇫🇷',
+    gb: '🇬🇧', uk: '🇬🇧', великобритания: '🇬🇧', london: '🇬🇧', лондон: '🇬🇧',
+    fr: '🇫🇷', france: '🇫🇷', франция: '🇫🇷', paris: '🇫🇷', париж: '🇫🇷',
     jp: '🇯🇵', japan: '🇯🇵', япония: '🇯🇵',
     ca: '🇨🇦', canada: '🇨🇦', канада: '🇨🇦',
-    kz: '🇰🇿', kazakhstan: '🇰🇿', казахстан: '🇰🇿',
-    tr: '🇹🇷', turkey: '🇹🇷', турция: '🇹🇷',
-    ae: '🇦🇪', uae: '🇦🇪', оаэ: '🇦🇪',
+    kz: '🇰🇿', kazakhstan: '🇰🇿', казахстан: '🇰🇿', astana: '🇰🇿', almaty: '🇰🇿', астана: '🇰🇿', алматы: '🇰🇿',
+    tr: '🇹🇷', turkey: '🇹🇷', турция: '🇹🇷', istanbul: '🇹🇷', стамбул: '🇹🇷',
+    ae: '🇦🇪', uae: '🇦🇪', оаэ: '🇦🇪', dubai: '🇦🇪', дубай: '🇦🇪',
     in: '🇮🇳', india: '🇮🇳', индия: '🇮🇳',
+    pl: '🇵🇱', poland: '🇵🇱', польша: '🇵🇱', warsaw: '🇵🇱', варшава: '🇵🇱',
+    se: '🇸🇪', sweden: '🇸🇪', швеция: '🇸🇪', stockholm: '🇸🇪', стокгольм: '🇸🇪',
+    at: '🇦🇹', austria: '🇦🇹', австрия: '🇦🇹', vienna: '🇦🇹', вена: '🇦🇹',
   };
 
   function getFlag(name) {
@@ -379,7 +382,7 @@
     el.setAttribute('data-server-id', s.id);
     el.innerHTML =
       '<div class="server-card__header">' +
-      '<span class="server-card__flag">' + getFlag(s.name) + '</span>' +
+      '<span class="server-card__flag">' + (s.emoji || getFlag(s.name)) + '</span>' +
       '<span class="server-card__name">' + s.name + '</span>' +
       '</div>' +
       '<span class="server-card__ip">' + maskIp(s.ip) + '</span>' +

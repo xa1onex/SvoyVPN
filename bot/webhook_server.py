@@ -119,6 +119,32 @@ class WebhookServer:
         self.runner = None
         logger.info(f"WebhookServer initialized with routes: /, /sub/{{token}}, /webhook/flyer, /webhook/yookassa")
     
+    @staticmethod
+    def get_emoji_for_server(name: str) -> str:
+        """Определяет эмодзи (флаг) на основе названия сервера"""
+        name_lower = name.lower()
+        
+        mapping = {
+            "🇳🇱": ["netherland", "nederland", "nl", "амстердам", "amsterdam", "нидерланды"],
+            "🇩🇪": ["germany", "deutchland", "de", "германия", "frankfurt", "франкфурт"],
+            "🇫🇷": ["france", "fr", "франция", "paris", "париж"],
+            "🇺🇸": ["usa", "us", "сша", "america", "united states", "new york", "нью йорк"],
+            "🇬🇧": ["uk", "united kingdom", "gb", "англия", "london", "лондон"],
+            "🇵🇱": ["poland", "pl", "польша", "warsaw", "варшава"],
+            "🇹🇷": ["turkey", "tr", "турция", "istanbul", "стамбул"],
+            "🇰🇿": ["kazakhstan", "kz", "казахстан", "astana", "almaty", "астана", "алматы"],
+            "🇷🇺": ["russia", "ru", "россия", "moscow", "москва"],
+            "🇫🇮": ["finland", "fi", "финляндия", "helsinki", "хельсинки"],
+            "🇸🇪": ["sweden", "se", "швеция", "stockholm", "стокгольм"],
+            "🇦🇹": ["austria", "at", "австрия", "vienna", "вена"]
+        }
+        
+        for emoji, keywords in mapping.items():
+            if any(kw in name_lower for kw in keywords):
+                return emoji
+                
+        return "🌐" # Дефолтный эмодзи
+
     async def root_handler(self, request: web_request.Request) -> web.Response:
         """Обработчик корневого пути"""
         return web.json_response({"status": "ok", "service": "webhook_server"})
@@ -950,6 +976,7 @@ class WebhookServer:
                 servers = [{
                     "id": r["id"],
                     "name": r["name"],
+                    "emoji": self.get_emoji_for_server(r["name"]),
                     "ip": r["ip"],
                     "port": r["port"],
                     "protocol": r["protocol"],
