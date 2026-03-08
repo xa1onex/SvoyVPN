@@ -81,6 +81,7 @@ class XUIClient:
         display_name: str,
         traffic_gb: int | None,
         expiry_time_unix_ms: int,
+        public_ip: str | None = None,
     ) -> dict[str, Any]:
         """Создать VLESS-клиента с заданным сроком."""
         self.ensure_login()
@@ -180,10 +181,18 @@ class XUIClient:
             elif isinstance(fingerprints, str) and fingerprints:
                 fp = fingerprints
 
-        listen_ip = chosen.get("listen") or ""
-        if not listen_ip or listen_ip == "0.0.0.0":
-            url_part = self.base_url.split("//")[-1].split("/")[0]
-            listen_ip = url_part.split(":")[0]
+        # Определяем IP для ссылки
+        listen_ip = public_ip
+        if not listen_ip:
+            listen_ip = chosen.get("listen") or ""
+            if not listen_ip or listen_ip in ("0.0.0.0", "127.0.0.1", "localhost"):
+                url_part = self.base_url.split("//")[-1].split("/")[0]
+                listen_ip = url_part.split(":")[0]
+                
+        # Если все еще 127.0.0.1 — это проблема для внешнего клиента
+        if listen_ip in ("127.0.0.1", "localhost"):
+             import logging
+             logging.warning(f"VLESS link generated with {listen_ip}. This might not work for external clients.")
 
         link = f"vless://{client_uuid}@{listen_ip}:{port}/?type=tcp&encryption=none&security=reality"
         if pbk:

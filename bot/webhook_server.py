@@ -142,12 +142,10 @@ class WebhookServer:
         
         try:
             async with get_connection() as conn:
-                user_row = await conn.fetchrow('''
-                    SELECT user_id, blacklisted, pay_subscribed, subscription_end 
-                    FROM users 
-                    WHERE subscription_token = $1 
-                       OR (length($1) > 20 AND subscription_token = LEFT($1, 19))
-                ''', token)
+                user_row = await conn.fetchrow(
+                    "SELECT user_id, blacklisted, pay_subscribed, subscription_end FROM users WHERE subscription_token = $1",
+                    token
+                )
                 
                 if not user_row:
                     logger.warning(f"User not found for token: {token[:10]}...")

@@ -86,7 +86,7 @@ async def create_keys_for_specific_server(server_id: int) -> None:
             # Получаем информацию о сервере
             server = await conn.fetchrow(
                 """
-                SELECT id, name, username, password, inbound_id, base_url, is_active
+                SELECT id, name, ip, username, password, inbound_id, base_url, is_active
                 FROM servers
                 WHERE id = $1
                 """,
@@ -177,6 +177,7 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                             display_name=server["name"],
                             traffic_gb=None,
                             expiry_time_unix_ms=expiry_ms,
+                            public_ip=server.get("ip")
                         )
                         
                         if not result.get("id") or not result.get("link"):
@@ -255,7 +256,7 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
 
             servers = await conn.fetch(
                 """
-                SELECT id, name, username, password, inbound_id, base_url
+                SELECT id, name, ip, username, password, inbound_id, base_url
                 FROM servers
                 WHERE is_active = TRUE
                 """
@@ -326,6 +327,7 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                             display_name=server["name"],
                             traffic_gb=None,
                             expiry_time_unix_ms=expiry_ms,
+                            public_ip=server.get("ip")
                         )
                         
                         if not result.get("id") or not result.get("link"):

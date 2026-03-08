@@ -66,37 +66,27 @@ async def main():
                 skipped += 1
                 continue
 
-            # Пытаемся сократить текущий токен (взять первые 19 символов)
-            # Это сохранит совместимость старых ссылок с новым поиском по префиксу
-            new_token = old_token[:19]
-            
-            # Если вдруг сокращенный токен совпал с чьим-то (маловероятно),
-            # генерируем полностью новый
-            try:
-                result = await conn.execute(
-                    "UPDATE users SET subscription_token = $1 WHERE user_id = $2",
-                    new_token,
-                    user_id,
-                )
-                updated += 1
-                print(f"  ✅ {user_id}: {old_token[:12]}… → {new_token}")
-            except asyncpg.UniqueViolationError:
-                # Генерируем новый короткий токен, если коллизия
-                for attempt in range(10):
-                    new_token = secrets.token_urlsafe(14)
-                    try:
-                        await conn.execute(
-                            "UPDATE users SET subscription_token = $1 WHERE user_id = $2",
-                            new_token,
-                            user_id,
-                        )
-                        updated += 1
-                        print(f"  🆕 {user_id}: коллизия, новый токен → {new_token}")
-                        break
-                    except asyncpg.UniqueViolationError:
-                        if attempt == 9:
-                            print(f"  ❌ Не удалось обновить {user_id}")
-                            errors += 1
+            # Генерируем новый короткий токен, гарантируем уникальность
+            for attempt in range(10):
+                new_token = secrets.token_urlsafe(14)
+                try:
+                    result = await conn.execute(
+                        """
+                        UPDATE users
+                        SET subscription_token = $1
+                        WHERE user_id = $2
+                        """,
+                        new_token,
+                        user_id,
+                    )
+                    updated += 1
+                    print(f"  ✅ {user_id}: {old_token[:12]}… → {new_token}")
+                    break
+                except asyncpg.UniqueViolationError:
+                    print(f"  ⚠️  Коллизия для {user_id}, попытка {attempt + 1}")
+                    if attempt == 9:
+                        print(f"  ❌ Не удалось обновить {user_id}")
+                        errors += 1
 
     await pool.close()
 
