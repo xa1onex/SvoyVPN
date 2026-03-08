@@ -49,29 +49,47 @@
     return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
   }
 
-  const FLAGS = {
-    us: '🇺🇸', usa: '🇺🇸', сша: '🇺🇸', 'united states': '🇺🇸',
-    de: '🇩🇪', germany: '🇩🇪', германия: '🇩🇪',
-    nl: '🇳🇱', netherlands: '🇳🇱', нидерланды: '🇳🇱', голландия: '🇳🇱', amsterdam: '🇳🇱', амстердам: '🇳🇱',
-    fi: '🇫🇮', finland: '🇫🇮', финляндия: '🇫🇮', helsinki: '🇫🇮', хельсинки: '🇫🇮',
-    ru: '🇷🇺', russia: '🇷🇺', россия: '🇷🇺', moscow: '🇷🇺', москва: '🇷🇺',
-    sg: '🇸🇬', singapore: '🇸🇬', сингапур: '🇸🇬',
-    gb: '🇬🇧', uk: '🇬🇧', великобритания: '🇬🇧', london: '🇬🇧', лондон: '🇬🇧',
-    fr: '🇫🇷', france: '🇫🇷', франция: '🇫🇷', paris: '🇫🇷', париж: '🇫🇷',
-    jp: '🇯🇵', japan: '🇯🇵', япония: '🇯🇵',
-    ca: '🇨🇦', canada: '🇨🇦', канада: '🇨🇦',
-    kz: '🇰🇿', kazakhstan: '🇰🇿', казахстан: '🇰🇿', astana: '🇰🇿', almaty: '🇰🇿', астана: '🇰🇿', алматы: '🇰🇿',
-    tr: '🇹🇷', turkey: '🇹🇷', турция: '🇹🇷', istanbul: '🇹🇷', стамбул: '🇹🇷',
-    ae: '🇦🇪', uae: '🇦🇪', оаэ: '🇦🇪', dubai: '🇦🇪', дубай: '🇦🇪',
-    in: '🇮🇳', india: '🇮🇳', индия: '🇮🇳',
-    pl: '🇵🇱', poland: '🇵🇱', польша: '🇵🇱', warsaw: '🇵🇱', варшава: '🇵🇱',
-    se: '🇸🇪', sweden: '🇸🇪', швеция: '🇸🇪', stockholm: '🇸🇪', стокгольм: '🇸🇪',
-    at: '🇦🇹', austria: '🇦🇹', австрия: '🇦🇹', vienna: '🇦🇹', вена: '🇦🇹',
+  const FLAGS_LONG = {
+    '🇳🇱': ['netherland', 'nederland', 'нидерланды', 'голландия', 'amsterdam', 'амстердам'],
+    '🇩🇪': ['germany', 'deutchland', 'германия', 'frankfurt', 'франкфурт'],
+    '🇫🇷': ['france', 'франция', 'paris', 'париж'],
+    '🇺🇸': ['usa', 'сша', 'america', 'united states', 'new york', 'нью йорк'],
+    '🇬🇧': ['united kingdom', 'англия', 'london', 'лондон'],
+    '🇵🇱': ['poland', 'польша', 'warsaw', 'варшава'],
+    '🇹🇷': ['turkey', 'турция', 'istanbul', 'стамбул'],
+    '🇰🇿': ['kazakhstan', 'казахстан', 'astana', 'almaty', 'астана', 'алматы'],
+    '🇷🇺': ['russia', 'россия', 'moscow', 'москва'],
+    '🇫🇮': ['finland', 'финляндия', 'helsinki', 'хельсинки'],
+    '🇸🇪': ['sweden', 'швеция', 'stockholm', 'стокгольм'],
+    '🇦🇹': ['austria', 'австрия', 'vienna', 'вена'],
+    '🇨🇦': ['canada', 'канада'],
+    '🇯🇵': ['japan', 'япония'],
+    '🇸🇬': ['singapore', 'сингапур'],
+    '🇦🇪': ['uae', 'оаэ', 'dubai', 'дубай']
+  };
+
+  const FLAGS_SHORT = {
+    '🇳🇱': ['nl'], '🇩🇪': ['de'], '🇫🇷': ['fr'], '🇺🇸': ['us'], '🇬🇧': ['uk', 'gb'],
+    '🇵🇱': ['pl'], '🇹🇷': ['tr'], '🇰🇿': ['kz'], '🇷🇺': ['ru'], '🇫🇮': ['fi'],
+    '🇸🇪': ['se'], '🇦🇹': ['at'], '🇨🇦': ['ca'], '🇯🇵': ['jp'], '🇸🇬': ['sg'], '🇦🇪': ['ae']
   };
 
   function getFlag(name) {
     const n = (name || '').toLowerCase();
-    for (const [k, v] of Object.entries(FLAGS)) if (n.includes(k)) return v;
+
+    // 1. Сначала полные названия
+    for (const [emoji, keywords] of Object.entries(FLAGS_LONG)) {
+      if (keywords.some(kw => n.includes(kw))) return emoji;
+    }
+
+    // 2. Затем короткие коды (только как отдельные элементы)
+    for (const [emoji, codes] of Object.entries(FLAGS_SHORT)) {
+      for (const code of codes) {
+        const regex = new RegExp(`(^|[^a-z])${code}([^a-z]|$)`, 'i');
+        if (regex.test(n)) return emoji;
+      }
+    }
+
     return '🌍';
   }
 
