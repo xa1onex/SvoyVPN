@@ -996,7 +996,7 @@ class WebhookServer:
         try:
             async with get_connection() as conn:
                 rows = await conn.fetch(
-                    "SELECT id, name, ip, port, protocol, is_active FROM servers WHERE is_active = TRUE ORDER BY id"
+                    "SELECT id, name, ip, port, protocol, is_active FROM servers WHERE is_active = TRUE ORDER BY id DESC"
                 )
                 servers = [{
                     "id": r["id"],
