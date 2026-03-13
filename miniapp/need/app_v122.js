@@ -1196,10 +1196,10 @@
       const isCryptoPay = url.includes('CryptoBot') || url.includes('CryptoTestnetBot');
 
       if (isCryptoPay) {
-        if (tg && tg.openTelegramLink) {
-          tg.openTelegramLink(url);
+        if (tg && tg.openLink) {
+          tg.openLink(url);
         } else {
-          tg.openLink ? tg.openLink(url) : window.open(url, '_blank');
+          window.open(url, '_blank');
         }
       } else if (isNativeInvoice) {
         if (tg && tg.openInvoice) {
