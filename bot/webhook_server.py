@@ -451,7 +451,7 @@ class WebhookServer:
             logger.debug(f"Crypto Pay signature header: {signature}")
             
             if not signature or not self.cryptopay_config or not self.cryptopay_config.api_token:
-                logger.warning("Missing signature or Crypto Pay API token")
+                logger.warning(f"Unauthorized Crypto Pay webhook attempt. Signature present: {bool(signature)}, Token present: {bool(self.cryptopay_config and self.cryptopay_config.api_token)}")
                 return web.Response(status=401, text="Unauthorized")
                 
             import hashlib
@@ -459,12 +459,12 @@ class WebhookServer:
             secret = hashlib.sha256(self.cryptopay_config.api_token.encode()).digest()
             calculated_hmac = hmac.new(secret, body, hashlib.sha256).hexdigest()
             
-            if calculated_hmac != signature:
-                logger.warning("Invalid Crypto Pay signature")
+            if calculated_hmac != signature.lower():
+                logger.warning(f"Invalid Crypto Pay signature. Received: {signature}, Calculated: {calculated_hmac}")
                 return web.Response(status=401, text="Unauthorized")
             
             data = json.loads(body.decode('utf-8'))
-            logger.info(f"Received Crypto Pay webhook: {json.dumps(data, ensure_ascii=False)}")
+            logger.info(f"Received VALID Crypto Pay webhook: {json.dumps(data, ensure_ascii=False)}")
             
             update_type = data.get("update_type")
             payload = data.get("payload", {})

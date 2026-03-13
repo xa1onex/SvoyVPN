@@ -197,6 +197,8 @@ async def process_webhook_payment(
     plan_id = metadata.get("plan_id")
     method_id = metadata.get("method_id", "yookassa")
     
+    logger.info(f"Processing webhook payment: id={payment_id}, method={method_id}, user={user_id}, plan={plan_id}")
+    
     if user_id is None or plan_id is None:
         logger.warning(f"Webhook payment {payment_id} missing required metadata")
         return False
