@@ -118,12 +118,14 @@ class WebhookServer:
         
         self.app.middlewares.append(self.handle_bad_requests_middleware)
         self.runner = None
-        logger.info(f"WebhookServer initialized")
         
-        self.app.middlewares.append(self.handle_bad_requests_middleware)
-        self.runner = None
-        logger.info(f"WebhookServer initialized with routes (POST): /webhook/flyer, /webhook/yookassa (if enabled), /webhook/cryptopay (if enabled)")
-        logger.info(f"WebhookServer initialized with routes (GET): /, /sub/{{token}}, /api/*")
+        # Подавляем шум в логах от сканеров
+        for logger_name in ("aiohttp.access", "aiohttp.server"):
+            l = logging.getLogger(logger_name)
+            l.addFilter(BadStatusLineFilter())
+
+        logger.info(f"WebhookServer initialized with routes (POST): /webhook/flyer, /webhook/yookassa, /webhook/cryptopay")
+        logger.info(f"WebhookServer initialized with routes (GET): /, /sub/{{token}}, /api/*, /webhook/cryptopay")
     
     @staticmethod
     def get_emoji_for_server(name: str) -> str:
