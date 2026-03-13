@@ -103,8 +103,12 @@ def load_config() -> AppConfig:
         webhook_url=os.getenv("YOOKASSA_WEBHOOK_URL"),
     )
     
+    api_token = os.getenv("CRYPTOPAY_API_TOKEN")
+    if api_token:
+        api_token = api_token.strip().strip('"').strip("'")
+        
     cryptopay = CryptoPayConfig(
-        api_token=os.getenv("CRYPTOPAY_API_TOKEN"),
+        api_token=api_token,
         enabled=os.getenv("CRYPTOPAY_ENABLED", "false").lower() == "true",
         testnet=os.getenv("CRYPTOPAY_TESTNET", "false").lower() == "true",
     )

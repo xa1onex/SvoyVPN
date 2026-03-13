@@ -460,7 +460,10 @@ class WebhookServer:
             calculated_hmac = hmac.new(secret, body, hashlib.sha256).hexdigest()
             
             if calculated_hmac != signature.lower():
-                logger.warning(f"Invalid Crypto Pay signature. Received: {signature}, Calculated: {calculated_hmac}")
+                logger.warning(f"Invalid Crypto Pay signature.")
+                logger.warning(f"  Received (header): {signature}")
+                logger.warning(f"  Calculated (HMAC): {calculated_hmac}")
+                logger.warning(f"  Token used (first 4): {self.cryptopay_config.api_token[:4] if self.cryptopay_config.api_token else 'NONE'}")
                 return web.Response(status=401, text="Unauthorized")
             
             data = json.loads(body.decode('utf-8'))

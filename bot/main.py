@@ -178,6 +178,12 @@ async def main():
         admin_ids=config.bot.admin_ids
     )
     
+    logger.info(f"Payment methods: YooKassa={'ENABLED' if config.yookassa.enabled else 'DISABLED'}, CryptoPay={'ENABLED' if config.cryptopay.enabled else 'DISABLED'} (testnet={config.cryptopay.testnet})")
+    if config.cryptopay.enabled and config.cryptopay.api_token:
+        logger.info(f"CryptoPay Token loaded: {config.cryptopay.api_token[:4]}...{config.cryptopay.api_token[-4:]}")
+    elif config.cryptopay.enabled:
+        logger.error("⚠️ CryptoPay is ENABLED but CRYPTOPAY_API_TOKEN is MISSING!")
+    
     webhook_task = None
     if webhook_server:
         try:
