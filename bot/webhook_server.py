@@ -1050,11 +1050,11 @@ class WebhookServer:
                 
                 amount_rub = (plan_data.get('price_rub', 0) * device_count) / 100.0
                 api_url = "https://testnet-pay.crypt.bot/api/createInvoice" if self.cryptopay_config.testnet else "https://pay.crypt.bot/api/createInvoice"
-                
                 payload_str = json.dumps({
                     "user_id": user_id,
                     "plan_id": tariff_id,
-                    "device_count": device_count
+                    "device_count": device_count,
+                    "method_id": "cryptopay"
                 })
                 
                 import aiohttp
