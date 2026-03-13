@@ -84,6 +84,7 @@ class WebhookServer:
             self.app.router.add_post('/webhook/yookassa', self.handle_yookassa_webhook)
         if cryptopay_config and cryptopay_config.enabled:
             self.app.router.add_post('/webhook/cryptopay', self.handle_cryptopay_webhook)
+            self.app.router.add_get('/webhook/cryptopay', self.health_check_cryptopay)
         
         # Miniapp routes
         self.app.router.add_get('/miniapp', self.serve_miniapp)
@@ -121,7 +122,8 @@ class WebhookServer:
         
         self.app.middlewares.append(self.handle_bad_requests_middleware)
         self.runner = None
-        logger.info(f"WebhookServer initialized with routes: /, /sub/{{token}}, /webhook/flyer, /webhook/yookassa")
+        logger.info(f"WebhookServer initialized with routes (POST): /webhook/flyer, /webhook/yookassa (if enabled), /webhook/cryptopay (if enabled)")
+        logger.info(f"WebhookServer initialized with routes (GET): /, /sub/{{token}}, /api/*")
     
     @staticmethod
     def get_emoji_for_server(name: str) -> str:
@@ -439,6 +441,11 @@ class WebhookServer:
         except Exception as e:
             logger.error(f"Error processing YooKassa webhook: {e}", exc_info=True)
             return web.json_response({"status": "error", "message": str(e)}, status=500)
+    
+    async def health_check_cryptopay(self, request: web_request.Request) -> web.Response:
+        """Health check for Crypto Pay webhook endpoint"""
+        logger.info(f"Crypto Pay health check request from {request.remote}")
+        return web.Response(text="Crypto Pay Webhook Endpoint is ALIVE", status=200)
     
     async def handle_cryptopay_webhook(self, request: web_request.Request) -> web.Response:
         """Обработчик вебхуков от Crypto Pay"""
