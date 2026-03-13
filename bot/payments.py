@@ -167,7 +167,7 @@ async def process_telegram_stars_payment(
         return True
 
 
-async def process_yookassa_payment(
+async def process_webhook_payment(
     payment_id: str,
     payment_obj: dict,
     metadata: dict,
@@ -178,10 +178,10 @@ async def process_yookassa_payment(
     payment_methods: dict
 ) -> bool:
     """
-    Обрабатывает платеж через YooKassa (из webhook)
+    Обрабатывает платеж через вебхуки (YooKassa, Crypto Pay)
     
     Args:
-        payment_id: ID платежа в YooKassa
+        payment_id: ID платежа (в YooKassa или Crypto Pay)
         payment_obj: Объект платежа
         metadata: Метаданные платежа
         bot: Экземпляр бота (опционально)
@@ -198,13 +198,13 @@ async def process_yookassa_payment(
     method_id = metadata.get("method_id", "yookassa")
     
     if user_id is None or plan_id is None:
-        logger.warning(f"YooKassa payment {payment_id} missing required metadata")
+        logger.warning(f"Webhook payment {payment_id} missing required metadata")
         return False
     
     try:
         user_id = int(user_id)
     except (TypeError, ValueError):
-        logger.error(f"Invalid user_id in YooKassa metadata: {user_id}")
+        logger.error(f"Invalid user_id in webhook metadata: {user_id}")
         return False
     
     if user_id <= 0:
@@ -220,19 +220,24 @@ async def process_yookassa_payment(
             plan_data = renewal_plans[plan_id]
             is_new_subscription = False
         else:
-            logger.error(f"Unknown plan_id in YooKassa payment: {plan_id}")
+            logger.error(f"Unknown plan_id in webhook payment: {plan_id}")
             return False
         
         method_data = payment_methods.get(method_id, {
-            "title": "ЮKassa",
+            "title": "Онлайн-оплата",
             "currency": "RUB",
         })
         
         duration_months = plan_data["duration"]
         
         # Получаем сумму из объекта платежа
-        amount_obj = payment_obj.get("amount") or {}
-        amount_value = amount_obj.get("value")
+        amount_val = payment_obj.get("amount")
+        amount_value = None
+        if isinstance(amount_val, dict):
+            amount_value = amount_val.get("value")
+        elif isinstance(amount_val, (str, int, float)):
+            amount_value = amount_val
+            
         try:
             amount_rub = float(amount_value) if amount_value is not None else plan_data.get("price_rub", 0) / 100.0
         except (TypeError, ValueError):
@@ -247,7 +252,7 @@ async def process_yookassa_payment(
             )
             
             if existing and existing['status'] == 'completed':
-                logger.warning(f"YooKassa payment {payment_id} already processed, skipping")
+                logger.warning(f"Webhook payment {payment_id} already processed, skipping")
                 return False
             
             # Проверяем пользователя
@@ -256,7 +261,7 @@ async def process_yookassa_payment(
                 user_id
             )
             if not user_exists:
-                logger.error(f"User {user_id} not found for YooKassa payment {payment_id}")
+                logger.error(f"User {user_id} not found for webhook payment {payment_id}")
                 return False
             
             # ✅ ИСПОЛЬЗУЕМ ТРАНЗАКЦИЮ
@@ -315,14 +320,14 @@ async def process_yookassa_payment(
             if bot:
                 try:
                     text = (
-                        "✅ <b>Оплата через ЮKassa успешно получена!</b>\n\n"
+                        f"✅ <b>Оплата через {method_data['title']} успешно получена!</b>\n\n"
                         f"План: <i>{plan_data['title']}</i>\n"
                         f"Подписка активна до: <b>{end_str}</b>\n\n"
                         "Нажмите <b>🔗 Получить VPN</b> в главном меню, чтобы получить ссылку подписки."
                     )
                     await bot.send_message(user_id, text, parse_mode="HTML")
                 except Exception as e:
-                    logger.error(f"Error sending YooKassa confirmation to user {user_id}: {e}")
+                    logger.error(f"Error sending webhook confirmation to user {user_id}: {e}")
             
             # Уведомление админам
             if bot:
@@ -341,11 +346,11 @@ async def process_yookassa_payment(
                         try:
                             await bot.send_message(
                                 admin_id,
-                                f"💳 <b>Покупка подписки (ЮKassa)</b>\n\n"
+                                f"💳 <b>Покупка подписки ({method_data['title']})</b>\n\n"
                                 f"Пользователь: {first_name} (@{username})\n"
                                 f"ID: <code>{user_id}</code>\n"
                                 f"План: {plan_data['title']}\n"
-                                f"Способ оплаты: ЮKassa\n"
+                                f"Способ оплаты: {method_data['title']}\n"
                                 f"Сумма: {formatted_price}\n"
                                 f"Срок: {duration_months} месяцев\n"
                                 f"Активирована до: {end_str}",
@@ -354,9 +359,9 @@ async def process_yookassa_payment(
                         except Exception as e:
                             logger.error(f"Failed to send admin notification to {admin_id}: {e}")
             
-            logger.info(f"Successfully processed YooKassa payment {payment_id} for user {user_id}")
+            logger.info(f"Successfully processed webhook payment {payment_id} for user {user_id}")
             return True
         
     except Exception as e:
-        logger.error(f"Error processing YooKassa payment {payment_id}: {e}", exc_info=True)
+        logger.error(f"Error processing webhook payment {payment_id}: {e}", exc_info=True)
         return False

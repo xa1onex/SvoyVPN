@@ -17,7 +17,7 @@ from .subscriptions import handle_expired_subscriptions
 from .webhook_server import WebhookServer
 from .yookassa_client import YooKassaClient
 from .flyer_client import FlyerClient
-from .payments import process_yookassa_payment
+from .payments import process_webhook_payment
 from .plans import get_subscription_plans, get_renewal_plans, PAYMENT_METHODS
 
 # Импортируем обработчики
@@ -59,12 +59,12 @@ def setup_scheduler():
     logger.info("APScheduler started")
 
 
-async def create_yookassa_payment_processor():
-    """Создаёт функцию-обработчик платежей YooKassa для webhook сервера"""
+async def create_webhook_payment_processor():
+    """Создаёт функцию-обработчик платежей для webhook сервера"""
     async def processor(payment_id: str, payment_obj: dict, metadata: dict):
         subscription_plans = await get_subscription_plans()
         renewal_plans = await get_renewal_plans()
-        await process_yookassa_payment(
+        await process_webhook_payment(
             payment_id=payment_id,
             payment_obj=payment_obj,
             metadata=metadata,
@@ -166,11 +166,12 @@ async def main():
     # Запускаем вебхук сервер
     global webhook_server
     yookassa_client = YooKassaClient(config.yookassa) if config.yookassa.enabled else None
-    payment_processor = await create_yookassa_payment_processor() if config.yookassa.enabled else None
+    payment_processor = await create_webhook_payment_processor()
     
     webhook_server = WebhookServer(
         flyer_config=config.flyer,
         yookassa_config=config.yookassa if config.yookassa.enabled else None,
+        cryptopay_config=config.cryptopay,
         bot_instance=bot,
         yookassa_client=yookassa_client,
         payment_processor=payment_processor,
