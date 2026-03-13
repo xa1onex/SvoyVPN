@@ -42,6 +42,12 @@ class YooKassaConfig(BaseModel):
     webhook_url: str | None = Field(None, description="Webhook URL for YooKassa notifications")
 
 
+class CryptoPayConfig(BaseModel):
+    api_token: str | None = Field(None, description="Crypto Pay API Token")
+    enabled: bool = Field(default=False, description="Enable Crypto Pay integration")
+    testnet: bool = Field(default=False, description="Use Crypto Pay Testnet")
+
+
 class AppConfig(BaseModel):
     bot: BotConfig
     xui: XUIConfig
@@ -49,6 +55,7 @@ class AppConfig(BaseModel):
     payment: PaymentConfig = Field(default_factory=PaymentConfig)
     flyer: FlyerConfig = Field(default_factory=FlyerConfig)
     yookassa: YooKassaConfig = Field(default_factory=YooKassaConfig)
+    cryptopay: CryptoPayConfig = Field(default_factory=CryptoPayConfig)
     subscription_base_url: str | None = Field(None, description="Base URL for subscription links")
     app_url: str | None = Field(None, description="Base URL for miniapp (APP_URL)")
 
@@ -96,6 +103,12 @@ def load_config() -> AppConfig:
         webhook_url=os.getenv("YOOKASSA_WEBHOOK_URL"),
     )
     
+    cryptopay = CryptoPayConfig(
+        api_token=os.getenv("CRYPTOPAY_API_TOKEN"),
+        enabled=os.getenv("CRYPTOPAY_ENABLED", "false").lower() == "true",
+        testnet=os.getenv("CRYPTOPAY_TESTNET", "false").lower() == "true",
+    )
+    
     subscription_base_url = (
         os.getenv("SUBSCRIPTION_BASE_URL") or 
         os.getenv("PUBLIC_BASE_URL") or 
@@ -116,6 +129,7 @@ def load_config() -> AppConfig:
         payment=payment,
         flyer=flyer,
         yookassa=yookassa,
+        cryptopay=cryptopay,
         subscription_base_url=subscription_base_url,
         app_url=app_url,
     )

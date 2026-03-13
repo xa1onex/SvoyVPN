@@ -1192,10 +1192,16 @@
       const url = d.paymentUrl || d.invoiceUrl;
       console.log('[Payment] Order info:', d);
 
-      // logic: if it's an invoice link (contains t.me/$ or stars or invoice link from create_invoice_link)
-      const isInvoice = d.invoiceUrl || url.includes('t.me/$') || url.includes('t.me/invoice');
+      const isNativeInvoice = d.invoiceUrl || url.includes('t.me/$') || url.includes('t.me/invoice');
+      const isCryptoPay = url.includes('CryptoBot') || url.includes('CryptoTestnetBot');
 
-      if (isInvoice) {
+      if (isCryptoPay) {
+        if (tg && tg.openTelegramLink) {
+          tg.openTelegramLink(url);
+        } else {
+          tg.openLink ? tg.openLink(url) : window.open(url, '_blank');
+        }
+      } else if (isNativeInvoice) {
         if (tg && tg.openInvoice) {
           tg.openInvoice(url, function (status) {
             if (status === 'paid') {

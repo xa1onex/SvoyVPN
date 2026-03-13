@@ -60,6 +60,7 @@ class WebhookServer:
         self,
         flyer_config: FlyerConfig,
         yookassa_config: Optional[YooKassaConfig] = None,
+        cryptopay_config = None,
         bot_instance=None,
         yookassa_client=None,
         payment_processor=None,
@@ -67,6 +68,7 @@ class WebhookServer:
     ):
         self.flyer_config = flyer_config
         self.yookassa_config = yookassa_config
+        self.cryptopay_config = cryptopay_config
         self.bot = bot_instance
         self.yookassa_client = yookassa_client
         self.payment_processor = payment_processor
@@ -80,6 +82,8 @@ class WebhookServer:
         self.app.router.add_get('/webhook/flyer', self.health_check)
         if yookassa_config and yookassa_config.enabled:
             self.app.router.add_post('/webhook/yookassa', self.handle_yookassa_webhook)
+        if cryptopay_config and cryptopay_config.enabled:
+            self.app.router.add_post('/webhook/cryptopay', self.handle_cryptopay_webhook)
         
         # Miniapp routes
         self.app.router.add_get('/miniapp', self.serve_miniapp)
@@ -434,6 +438,61 @@ class WebhookServer:
             return web.json_response({"status": "error", "message": "Invalid JSON"}, status=400)
         except Exception as e:
             logger.error(f"Error processing YooKassa webhook: {e}", exc_info=True)
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
+    
+    async def handle_cryptopay_webhook(self, request: web_request.Request) -> web.Response:
+        """Обработчик вебхуков от Crypto Pay"""
+        try:
+            body = await request.read()
+            signature = request.headers.get('crypto-pay-api-signature')
+            
+            if not signature or not self.cryptopay_config or not self.cryptopay_config.api_token:
+                logger.warning("Missing signature or Crypto Pay API token")
+                return web.Response(status=401, text="Unauthorized")
+                
+            import hashlib
+            import hmac
+            secret = hashlib.sha256(self.cryptopay_config.api_token.encode()).digest()
+            calculated_hmac = hmac.new(secret, body, hashlib.sha256).hexdigest()
+            
+            if calculated_hmac != signature:
+                logger.warning("Invalid Crypto Pay signature")
+                return web.Response(status=401, text="Unauthorized")
+            
+            data = json.loads(body.decode('utf-8'))
+            logger.info(f"Received Crypto Pay webhook: {json.dumps(data, ensure_ascii=False)}")
+            
+            update_type = data.get("update_type")
+            payload = data.get("payload", {})
+            
+            if update_type == "invoice_paid":
+                status = payload.get("status")
+                if status == "paid":
+                    invoice_id = payload.get("invoice_id")
+                    meta_payload = payload.get("payload", "")
+                    try:
+                        metadata = json.loads(meta_payload) if meta_payload else {}
+                    except:
+                        metadata = {}
+                        
+                    if self.payment_processor:
+                        await self.payment_processor(
+                            payment_id=str(invoice_id),
+                            payment_obj=payload,
+                            metadata=metadata
+                        )
+                else:
+                    logger.warning(f"Crypto Pay invoice not paid: {payload}")
+            else:
+                logger.info(f"Crypto Pay webhook update_type '{update_type}' ignored")
+                
+            return web.json_response({"status": "ok"})
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in Crypto Pay webhook: {e}")
+            return web.json_response({"status": "error", "message": "Invalid JSON"}, status=400)
+        except Exception as e:
+            logger.error(f"Error processing Crypto Pay webhook: {e}", exc_info=True)
             return web.json_response({"status": "error", "message": str(e)}, status=500)
     
     async def serve_miniapp(self, request: web_request.Request) -> web.Response:
@@ -839,7 +898,8 @@ class WebhookServer:
             for method_id, method_data in PAYMENT_METHODS.items():
                 icon_map = {
                     "stars": "⭐",
-                    "yookassa": "💳"
+                    "yookassa": "💳",
+                    "cryptopay": "💎"
                 }
                 methods.append({
                     "id": method_id,
@@ -984,6 +1044,42 @@ class WebhookServer:
                     "paymentUrl": payment_data.get("confirmation_url"),
                     "paymentId": payment_data.get("id")
                 })
+            elif payment_method == "cryptopay":
+                if not self.cryptopay_config or not self.cryptopay_config.enabled:
+                    return web.json_response({"error": "Crypto Pay not configured"}, status=500)
+                
+                amount_rub = (plan_data.get('price_rub', 0) * device_count) / 100.0
+                api_url = "https://testnet-pay.crypt.bot/api/createInvoice" if self.cryptopay_config.testnet else "https://pay.crypt.bot/api/createInvoice"
+                
+                payload_str = json.dumps({
+                    "user_id": user_id,
+                    "plan_id": tariff_id,
+                    "device_count": device_count
+                })
+                
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    headers = {"Crypto-Pay-API-Token": self.cryptopay_config.api_token}
+                    data_pay = {
+                        "currency_type": "fiat",
+                        "fiat": "RUB",
+                        "amount": f"{amount_rub:.2f}",
+                        "description": f"VPN подписка - {plan_data['title']}",
+                        "payload": payload_str
+                    }
+                    async with session.post(api_url, headers=headers, json=data_pay) as resp:
+                        res = await resp.json()
+                        if res.get("ok"):
+                            # Можно так же отдавать 'bot_invoice_url', если хотим открывать в Telegram
+                            invoice_url = res["result"]["bot_invoice_url"]
+                            invoice_id = res["result"]["invoice_id"]
+                            return web.json_response({
+                                "paymentUrl": invoice_url,
+                                "paymentId": invoice_id
+                            })
+                        else:
+                            logger.error(f"Crypto Pay API Error: {res}")
+                            return web.json_response({"error": "Crypto Pay error"}, status=500)
             else:
                 return web.json_response({"error": "Payment method not supported"}, status=400)
                 

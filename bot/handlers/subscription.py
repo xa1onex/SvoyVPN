@@ -497,6 +497,13 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                         callback_data=f"buy_subscription:{plan_id}:yookassa"
                     )
                 )
+            if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
+                builder.row(
+                    InlineKeyboardButton(
+                        text=f"💎 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})",
+                        callback_data=f"buy_subscription:{plan_id}:cryptopay"
+                    )
+                )
         
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
         
@@ -529,6 +536,13 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                     InlineKeyboardButton(
                         text=f"💳 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})",
                         callback_data=f"buy_renewal:{plan_id}:yookassa"
+                    )
+                )
+            if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
+                builder.row(
+                    InlineKeyboardButton(
+                        text=f"💎 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})",
+                        callback_data=f"buy_renewal:{plan_id}:cryptopay"
                     )
                 )
         
@@ -602,6 +616,15 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 InlineKeyboardButton(
                     text=f"💳 Банковская карта ({format_price_rub(plan_data['price_rub'])})",
                     callback_data=f"{'buy_renewal' if is_renewal else 'buy_subscription'}:{plan_id}:yookassa"
+                )
+            )
+            
+        # Кнопка для оплаты Crypto Pay (если включена)
+        if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"💎 Crypto Pay ({format_price_rub(plan_data['price_rub'])})",
+                    callback_data=f"{'buy_renewal' if is_renewal else 'buy_subscription'}:{plan_id}:cryptopay"
                 )
             )
         
@@ -751,6 +774,73 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 await callback.answer("❌ Ошибка при создании платежа. Попробуйте позже.", show_alert=True)
                 return
         
+        elif method_id == "cryptopay":
+            if not hasattr(config, 'cryptopay') or not config.cryptopay.enabled:
+                await callback.answer("❌ Crypto Pay не настроен", show_alert=True)
+                return
+            
+            amount_rub = price / 100.0
+            api_url = "https://testnet-pay.crypt.bot/api/createInvoice" if config.cryptopay.testnet else "https://pay.crypt.bot/api/createInvoice"
+            
+            import json
+            payload_str = json.dumps({
+                "user_id": callback.from_user.id,
+                "plan_id": plan_id,
+                "method_id": method_id
+            })
+            
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    headers = {"Crypto-Pay-API-Token": config.cryptopay.api_token}
+                    data_pay = {
+                        "currency_type": "fiat",
+                        "fiat": "RUB",
+                        "amount": f"{amount_rub:.2f}",
+                        "description": f"VPN подписка - {plan_data['title']}",
+                        "payload": payload_str
+                    }
+                    async with session.post(api_url, headers=headers, json=data_pay) as resp:
+                        res = await resp.json()
+                        if res.get("ok"):
+                            invoice_url = res["result"]["bot_invoice_url"]
+                            invoice_id = res["result"]["invoice_id"]
+                            
+                            # Сохраняем платеж в БД со статусом pending
+                            async with get_connection() as conn:
+                                await conn.execute('''
+                                    INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                                ''',
+                                    callback.from_user.id,
+                                    price,
+                                    "RUB",
+                                    plan_id,
+                                    "subscription" if not is_renewal else "renewal",
+                                    "pending",
+                                    str(invoice_id)
+                                )
+                            
+                            builder = InlineKeyboardBuilder()
+                            builder.row(InlineKeyboardButton(text="💎 Перейти к оплате", url=invoice_url))
+                            builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
+                            
+                            await callback.message.edit_text(
+                                f"💎 <b>Оплата через Crypto Pay</b>\n\n"
+                                f"План: <i>{plan_data['title']}</i>\n"
+                                f"Сумма: <i>{format_price_rub(price)}</i>\n\n"
+                                f"Нажмите кнопку ниже, чтобы перейти к оплате.\n"
+                                f"После успешной оплаты подписка будет активирована автоматически.\n\n",
+                                reply_markup=builder.as_markup(),
+                                parse_mode="HTML"
+                            )
+                            await callback.answer()
+                        else:
+                            logger.error(f"Crypto Pay API Error: {res}")
+                            await callback.answer("❌ Ошибка при создании платежа.", show_alert=True)
+            except Exception as e:
+                logger.error(f"Error creating Crypto Pay payment: {e}", exc_info=True)
+                await callback.answer("❌ Ошибка при создании платежа. Попробуйте позже.", show_alert=True)
         else:
             # Оплата через Telegram (Stars)
             # Проверяем минимальную сумму

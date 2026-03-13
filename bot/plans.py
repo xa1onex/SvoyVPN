@@ -84,6 +84,10 @@ PAYMENT_METHODS = {
     "yookassa": {
         "title": "ЮKassa",
         "currency": "RUB"
+    },
+    "cryptopay": {
+        "title": "Crypto Pay",
+        "currency": "RUB"
     }
 }
 
