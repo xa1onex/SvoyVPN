@@ -1087,7 +1087,7 @@ class WebhookServer:
                         res = await resp.json()
                         if res.get("ok"):
                             # Можно так же отдавать 'bot_invoice_url', если хотим открывать в Telegram
-                            invoice_url = res["result"]["bot_invoice_url"]
+                            invoice_url = res["result"].get("mini_app_invoice_url", res["result"]["bot_invoice_url"])
                             invoice_id = res["result"]["invoice_id"]
                             return web.json_response({
                                 "paymentUrl": invoice_url,
