@@ -722,6 +722,10 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 amount_rub = price / 100.0
                 
                 # Создаем платеж через ЮKassa
+                # The original metadata was a dictionary. The instruction implies changing to a colon-separated string.
+                # Assuming the intent is to store a colon-separated string within the metadata.
+                # The provided edit was malformed, so we'll add a 'payload' key to the metadata dictionary.
+                payload_str = f"{callback.from_user.id}:{plan_id}:{method_id}"
                 payment_data = yookassa_client.create_payment(
                     amount=amount_rub,
                     description=f"VPN подписка - {plan_data['title']}",
@@ -729,7 +733,8 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                     metadata={
                         "user_id": callback.from_user.id,
                         "plan_id": plan_id,
-                        "method_id": method_id
+                        "method_id": method_id,
+                        "payload": payload_str # Adding the colon-separated string here
                     }
                 )
                 
@@ -781,13 +786,8 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             
             amount_rub = price / 100.0
             api_url = "https://testnet-pay.crypt.bot/api/createInvoice" if config.cryptopay.testnet else "https://pay.crypt.bot/api/createInvoice"
-            
-            import json
-            payload_str = json.dumps({
-                "user_id": callback.from_user.id,
-                "plan_id": plan_id,
-                "method_id": method_id
-            })
+            # Using simple string payload to avoid JSON stripping issues
+            payload_str = f"{callback.from_user.id}:{plan_id}:{method_id}"
             
             try:
                 import aiohttp

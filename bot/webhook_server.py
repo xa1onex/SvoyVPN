@@ -489,7 +489,15 @@ class WebhookServer:
                     try:
                         metadata = json.loads(meta_payload) if meta_payload else {}
                     except:
-                        metadata = {}
+                        if meta_payload and ":" in meta_payload:
+                            parts = meta_payload.split(":")
+                            metadata = {
+                                "user_id": int(parts[0]),
+                                "plan_id": parts[1],
+                                "method_id": parts[2] if len(parts) > 2 else "cryptopay"
+                            }
+                        else:
+                            metadata = {}
                         
                     if self.payment_processor:
                         await self.payment_processor(
@@ -1066,12 +1074,7 @@ class WebhookServer:
                 
                 amount_rub = (plan_data.get('price_rub', 0) * device_count) / 100.0
                 api_url = "https://testnet-pay.crypt.bot/api/createInvoice" if self.cryptopay_config.testnet else "https://pay.crypt.bot/api/createInvoice"
-                payload_str = json.dumps({
-                    "user_id": user_id,
-                    "plan_id": tariff_id,
-                    "device_count": device_count,
-                    "method_id": "cryptopay"
-                })
+                payload_str = f"{user_id}:{tariff_id}:cryptopay:{device_count}"
                 
                 import aiohttp
                 async with aiohttp.ClientSession() as session:
