@@ -442,9 +442,13 @@ class WebhookServer:
     
     async def handle_cryptopay_webhook(self, request: web_request.Request) -> web.Response:
         """Обработчик вебхуков от Crypto Pay"""
+        logger.info(f"Crypto Pay webhook request received from {request.remote}")
         try:
             body = await request.read()
             signature = request.headers.get('crypto-pay-api-signature')
+            
+            logger.debug(f"Crypto Pay body: {body.decode('utf-8', errors='ignore')}")
+            logger.debug(f"Crypto Pay signature header: {signature}")
             
             if not signature or not self.cryptopay_config or not self.cryptopay_config.api_token:
                 logger.warning("Missing signature or Crypto Pay API token")
