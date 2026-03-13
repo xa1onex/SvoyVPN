@@ -82,9 +82,12 @@ class WebhookServer:
         self.app.router.add_get('/webhook/flyer', self.health_check)
         if yookassa_config and yookassa_config.enabled:
             self.app.router.add_post('/webhook/yookassa', self.handle_yookassa_webhook)
+            self.app.router.add_post('/webhook/yookassa/', self.handle_yookassa_webhook)
         if cryptopay_config and cryptopay_config.enabled:
             self.app.router.add_post('/webhook/cryptopay', self.handle_cryptopay_webhook)
+            self.app.router.add_post('/webhook/cryptopay/', self.handle_cryptopay_webhook)
             self.app.router.add_get('/webhook/cryptopay', self.health_check_cryptopay)
+            self.app.router.add_get('/webhook/cryptopay/', self.health_check_cryptopay)
         
         # Miniapp routes
         self.app.router.add_get('/miniapp', self.serve_miniapp)
