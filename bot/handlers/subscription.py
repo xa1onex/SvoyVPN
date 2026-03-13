@@ -803,8 +803,9 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                     async with session.post(api_url, headers=headers, json=data_pay) as resp:
                         res = await resp.json()
                         if res.get("ok"):
-                            invoice_url = res["result"]["bot_invoice_url"]
+                            invoice_url = res["result"].get("mini_app_invoice_url", res["result"]["bot_invoice_url"])
                             invoice_id = res["result"]["invoice_id"]
+                            logger.info(f"CryptoPay payment created: {invoice_id}")
                             
                             # Сохраняем платеж в БД со статусом pending
                             async with get_connection() as conn:
