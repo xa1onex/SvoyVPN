@@ -990,7 +990,7 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v122';
+    vBadge.textContent = 'v123';
 
     // Start auto-scroll
     startNewsAutoScroll();
@@ -1192,16 +1192,10 @@
       const url = d.paymentUrl || d.invoiceUrl;
       console.log('[Payment] Order info:', d);
 
-      const isNativeInvoice = d.invoiceUrl || url.includes('t.me/$') || url.includes('t.me/invoice');
+      const isNativeInvoice = url.includes('t.me/$') || url.includes('t.me/invoice');
       const isCryptoPay = url.includes('CryptoBot') || url.includes('CryptoTestnetBot');
 
-      if (isCryptoPay) {
-        if (tg && tg.openLink) {
-          tg.openLink(url);
-        } else {
-          window.open(url, '_blank');
-        }
-      } else if (isNativeInvoice) {
+      if (isNativeInvoice) {
         if (tg && tg.openInvoice) {
           tg.openInvoice(url, function (status) {
             if (status === 'paid') {
@@ -1215,10 +1209,17 @@
             }
           });
         } else {
-          tg.openLink ? tg.openLink(url) : window.open(url, '_blank');
+          tg && tg.openLink ? tg.openLink(url) : window.open(url, '_blank');
+        }
+      } else if (isCryptoPay) {
+        // CryptoBot mini app invoice URL should be opened via openLink
+        if (tg && tg.openLink) {
+          tg.openLink(url);
+        } else {
+          window.open(url, '_blank');
         }
       } else {
-        // Force In-App Browser for external checkout page (e.g. direct Yookassa)
+        // Other external links
         if (tg && tg.openLink) {
           tg.openLink(url, { try_instant_view: false });
         } else {
