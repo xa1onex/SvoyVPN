@@ -13,7 +13,8 @@ from urllib.parse import parse_qs, unquote
 from aiohttp import web, web_request
 from aiohttp.web_exceptions import HTTPBadRequest, HTTPNotFound, HTTPMethodNotAllowed
 from aiohttp.http_exceptions import BadStatusLine, BadHttpMessage
-from aiogram.types import LabeledPrice
+from aiogram.types import LabeledPrice, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .config import FlyerConfig, YooKassaConfig
 from .database import get_connection
@@ -1095,6 +1096,42 @@ class WebhookServer:
                             # Можно так же отдавать 'bot_invoice_url', если хотим открывать в Telegram
                             invoice_url = res["result"].get("mini_app_invoice_url", res["result"]["bot_invoice_url"])
                             invoice_id = res["result"]["invoice_id"]
+                            
+                            # Сохраняем платеж в БД со статусом pending
+                            try:
+                                async with get_connection() as conn:
+                                    # Определяем тип подписки (базовая проверка по id плана)
+                                    subscription_plans = await get_subscription_plans()
+                                    plan_type = "subscription" if tariff_id in subscription_plans else "renewal"
+                                    
+                                    await conn.execute('''
+                                        INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                                    ''', 
+                                        user_id, int(round(amount_rub * 100)), "RUB", 
+                                        tariff_id, plan_type, "pending", str(invoice_id)
+                                    )
+                            except Exception as db_e:
+                                logger.error(f"Error saving pending CryptoPay payment to DB: {db_e}")
+
+                            # Отправляем уведомление в бот пользователю
+                            try:
+                                builder = InlineKeyboardBuilder()
+                                builder.row(InlineKeyboardButton(text="💎 Перейти к оплате", url=invoice_url))
+                                builder.row(InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_crypto:{invoice_id}"))
+                                
+                                await self.bot.send_message(
+                                    user_id,
+                                    f"🚀 <b>Счёт на оплату создан!</b>\n\n"
+                                    f"Цена: <b>{amount_rub:.2f} ₽</b>\n"
+                                    f"Тариф: <b>{plan_data['title']}</b>\n\n"
+                                    f"Вы можете оплатить счёт в приложении Crypto Bot. После оплаты нажмите кнопку ниже для проверки.",
+                                    parse_mode="HTML",
+                                    reply_markup=builder.as_markup()
+                                )
+                            except Exception as msg_e:
+                                logger.error(f"Error sending CryptoPay message to user {user_id}: {msg_e}")
+
                             return web.json_response({
                                 "paymentUrl": invoice_url,
                                 "paymentId": invoice_id
