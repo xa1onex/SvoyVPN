@@ -321,13 +321,23 @@ async def process_webhook_payment(
             # Уведомление пользователю
             if bot:
                 try:
+                    formatted_price = f"{amount_rub:.2f} ₽"
                     text = (
-                        f"✅ <b>Оплата через {method_data['title']} успешно получена!</b>\n\n"
-                        f"План: <i>{plan_data['title']}</i>\n"
-                        f"Подписка активна до: <b>{end_str}</b>\n\n"
-                        "Нажмите <b>🔗 Получить VPN</b> в главном меню, чтобы получить ссылку подписки."
+                        f"✅ <b>Оплата успешно получена!</b>\n\n"
+                        f"💳 <b>Детали платежа:</b>\n"
+                        f"• Способ: <i>{method_data['title']}</i>\n"
+                        f"• Сумма: <i>{formatted_price}</i>\n"
+                        f"• ID транзакции: <code>{payment_id}</i>\n\n"
+                        f"💎 <b>Подписка:</b>\n"
+                        f"• План: <i>{plan_data['title']}</i>\n"
+                        f"• Активна до: <b>{end_str}</b>\n\n"
+                        f"Нажмите кнопку ниже, чтобы получить настройки VPN."
                     )
-                    await bot.send_message(user_id, text, parse_mode="HTML")
+                    
+                    builder = InlineKeyboardBuilder()
+                    builder.row(InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"))
+                    
+                    await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=builder.as_markup())
                 except Exception as e:
                     logger.error(f"Error sending webhook confirmation to user {user_id}: {e}")
             
