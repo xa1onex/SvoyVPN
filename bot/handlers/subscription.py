@@ -759,6 +759,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 # Отправляем пользователю ссылку на оплату
                 builder = InlineKeyboardBuilder()
                 builder.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=confirmation_url))
+                builder.row(InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_yookassa:{payment_id}"))
                 builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
                 
                 await callback.message.edit_text(
@@ -824,6 +825,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                             
                             builder = InlineKeyboardBuilder()
                             builder.row(InlineKeyboardButton(text="💎 Перейти к оплате", url=invoice_url))
+                            builder.row(InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_crypto:{invoice_id}"))
                             builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
                             
                             await callback.message.edit_text(
@@ -869,6 +871,113 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 logger.error(f"Error sending invoice: {e}", exc_info=True)
                 await callback.answer("❌ Ошибка при создании инвойса. Попробуйте позже.", show_alert=True)
     
+    @dp.callback_query(F.data.startswith("check_crypto:"))
+    async def handle_check_crypto_payment(callback: CallbackQuery):
+        """Ручная проверка оплаты Crypto Pay"""
+        invoice_id = callback.data.split(":")[1]
+        
+        # Получаем данные планов и методов
+        subscription_plans = get_subscription_plans()
+        renewal_plans = get_renewal_plans()
+        
+        api_url = "https://testnet-pay.crypt.bot/api/getInvoices" if config.cryptopay.testnet else "https://pay.crypt.bot/api/getInvoices"
+        
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                headers = {"Crypto-Pay-API-Token": config.cryptopay.api_token}
+                params = {"invoice_ids": invoice_id}
+                async with session.get(api_url, headers=headers, params=params) as resp:
+                    res = await resp.json()
+                    if res.get("ok") and res.get("result", {}).get("items"):
+                        invoice = res["result"]["items"][0]
+                        status = invoice.get("status")
+                        
+                        if status == "paid":
+                            # Оплачено! Процессим.
+                            from ..payments import process_webhook_payment
+                            
+                            # Парсим метаданные из payload
+                            meta_payload = invoice.get("payload", "")
+                            metadata = {}
+                            if meta_payload and ":" in meta_payload:
+                                parts = meta_payload.split(":")
+                                metadata = {
+                                    "user_id": int(parts[0]),
+                                    "plan_id": parts[1],
+                                    "method_id": parts[2] if len(parts) > 2 else "cryptopay"
+                                }
+                            
+                            success = await process_webhook_payment(
+                                payment_id=str(invoice_id),
+                                payment_obj=invoice,
+                                metadata=metadata,
+                                bot=bot,
+                                config=config,
+                                subscription_plans=subscription_plans,
+                                renewal_plans=renewal_plans,
+                                payment_methods=PAYMENT_METHODS
+                            )
+                            
+                            if success:
+                                # Сообщение об успехе уже отправлено в process_webhook_payment
+                                # Но мы можем убрать кнопки на текущем сообщении
+                                await callback.message.edit_reply_markup(reply_markup=None)
+                                await callback.answer("✅ Оплата подтверждена!", show_alert=True)
+                            else:
+                                await callback.answer("✅ Оплата уже была обработана.", show_alert=True)
+                        else:
+                            await callback.answer("⏳ Оплата еще не поступила. Попробуйте через минуту.", show_alert=True)
+                    else:
+                        logger.error(f"Crypto Pay API Error in check: {res}")
+                        await callback.answer("❌ Ошибка при проверке статуса.", show_alert=True)
+        except Exception as e:
+            logger.error(f"Error checking Crypto Pay payment: {e}", exc_info=True)
+            await callback.answer("❌ Ошибка при проверке. Попробуйте позже.", show_alert=True)
+
+    @dp.callback_query(F.data.startswith("check_yookassa:"))
+    async def handle_check_yookassa_payment(callback: CallbackQuery):
+        """Ручная проверка оплаты YooKassa"""
+        payment_id = callback.data.split(":")[1]
+        
+        # Получаем данные планов и методов
+        subscription_plans = get_subscription_plans()
+        renewal_plans = get_renewal_plans()
+        
+        try:
+            # Получаем статус платежа
+            payment = yookassa_client.get_payment_info(payment_id)
+            status = payment.get("status")
+            
+            if status == "succeeded":
+                # Оплачено! Процессим.
+                from ..payments import process_webhook_payment
+                metadata = payment.get("metadata", {})
+                
+                success = await process_webhook_payment(
+                    payment_id=payment_id,
+                    payment_obj=payment,
+                    metadata=metadata,
+                    bot=bot,
+                    config=config,
+                    subscription_plans=subscription_plans,
+                    renewal_plans=renewal_plans,
+                    payment_methods=PAYMENT_METHODS
+                )
+                
+                if success:
+                    await callback.message.edit_reply_markup(reply_markup=None)
+                    await callback.answer("✅ Оплата подтверждена!", show_alert=True)
+                else:
+                    await callback.answer("✅ Оплата уже была обработана.", show_alert=True)
+            elif status == "pending" or status == "waiting_for_capture":
+                await callback.answer("⏳ Оплата еще не поступила. Попробуйте через минуту.", show_alert=True)
+            else:
+                await callback.answer(f"❌ Статус платежа: {status}", show_alert=True)
+        except Exception as e:
+            logger.error(f"Error checking YooKassa payment: {e}", exc_info=True)
+            await callback.answer("❌ Ошибка при проверке. Попробуйте позже.", show_alert=True)
+
     @dp.callback_query(F.data == "go_back_subscription")
     async def handle_go_back_subscription(callback: CallbackQuery, state: FSMContext):
         """Возврат на главное меню"""
