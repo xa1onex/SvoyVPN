@@ -6,7 +6,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from aiogram import Bot
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .database import get_connection
 from .subscriptions import set_new_subscription, extend_subscription, create_or_activate_keys_for_all_servers
@@ -140,7 +141,10 @@ async def process_telegram_stars_payment(
             f"ID транзакции: <code>{charge_id}</code>"
         )
         
-        await message.answer(receipt, parse_mode='HTML')
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"))
+        
+        await message.answer(receipt, parse_mode='HTML', reply_markup=builder.as_markup())
         
         # Уведомление админам
         username = message.from_user.username or "нет"
@@ -327,7 +331,7 @@ async def process_webhook_payment(
                         f"💳 <b>Детали платежа:</b>\n"
                         f"• Способ: <i>{method_data['title']}</i>\n"
                         f"• Сумма: <i>{formatted_price}</i>\n"
-                        f"• ID транзакции: <code>{payment_id}</i>\n\n"
+                        f"• ID транзакции: <code>{payment_id}</code>\n\n"
                         f"💎 <b>Подписка:</b>\n"
                         f"• План: <i>{plan_data['title']}</i>\n"
                         f"• Активна до: <b>{end_str}</b>\n\n"
