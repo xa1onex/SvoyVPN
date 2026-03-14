@@ -927,7 +927,7 @@ class WebhookServer:
                 icon_map = {
                     "stars": "⭐",
                     "yookassa": "💳",
-                    "cryptopay": "💎"
+                    "cryptopay": "🪙"
                 }
                 methods.append({
                     "id": method_id,

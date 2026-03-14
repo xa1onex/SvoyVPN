@@ -324,6 +324,8 @@
       const n = m.name ? m.name.toLowerCase() : '';
       if (m.id === 'stars' || n.includes('star')) {
         svgIcon = `<svg viewBox="0 0 24 24" class="icon-star"><path d="M12 2.3l2.4 7.4 7.6.6-5.8 4.7 1.8 7.3-6-4.3-6 4.3 1.8-7.3-5.8-4.7 7.6-.6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" class="star-shape"/><circle class="sparkle sp-1" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-2" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-3" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-4" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-5" cx="12" cy="12" r="1.5"/></svg>`;
+      } else if (m.id === 'cryptopay' || n.includes('crypto') || n.includes('крипто')) {
+        svgIcon = `<svg viewBox="0 0 32 32" class="icon-crypto" style="width:24px;height:24px;display:block;"><rect width="32" height="32" rx="7" fill="#25A3F2"/><path d="M7 10H12.5L16 19L19.5 10H25L16 24L7 10Z" fill="white"/></svg>`;
       } else if (m.id === 'yookassa' || n.includes('юkassa') || n.includes('юкасса') || n.includes('юк') || n.includes('yoo') || n.includes('yuk') || n.includes('карт') || n.includes('card')) {
         svgIcon = `<svg viewBox="0 0 24 24" class="icon-card"><rect x="2" y="5" width="20" height="14" rx="2" ry="2" fill="none" class="card-outline"></rect><line x1="2" y1="10" x2="22" y2="10" class="card-line"></line></svg>`;
       }
