@@ -876,8 +876,8 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         invoice_id = callback.data.split(":")[1]
         
         # Получаем данные планов и методов
-        subscription_plans = get_subscription_plans()
-        renewal_plans = get_renewal_plans()
+        subscription_plans = await get_subscription_plans()
+        renewal_plans = await get_renewal_plans()
         
         api_url = "https://testnet-pay.crypt.bot/api/getInvoices" if config.cryptopay.testnet else "https://pay.crypt.bot/api/getInvoices"
         
