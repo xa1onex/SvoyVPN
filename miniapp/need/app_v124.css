@@ -749,8 +749,9 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
+    width: 28px;
     height: 24px;
+    flex-shrink: 0;
 }
 
 .icon-card,

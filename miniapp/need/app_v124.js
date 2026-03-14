@@ -324,8 +324,11 @@
       const n = m.name ? m.name.toLowerCase() : '';
       if (m.id === 'stars' || n.includes('star')) {
         svgIcon = `<svg viewBox="0 0 24 24" class="icon-star"><path d="M12 2.3l2.4 7.4 7.6.6-5.8 4.7 1.8 7.3-6-4.3-6 4.3 1.8-7.3-5.8-4.7 7.6-.6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" class="star-shape"/><circle class="sparkle sp-1" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-2" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-3" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-4" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-5" cx="12" cy="12" r="1.5"/></svg>`;
-      } else if (m.id === 'cryptopay' || n.includes('crypto') || n.includes('крипто')) {
-        svgIcon = `<svg viewBox="0 0 32 32" class="icon-crypto" style="width:24px;height:24px;display:block;"><rect width="32" height="32" rx="7" fill="#25A3F2"/><path d="M7 10H12.5L16 19L19.5 10H25L16 24L7 10Z" fill="white"/></svg>`;
+      } else if (m.id === 'cryptopay' || n.includes('crypto')) {
+        svgIcon = `<svg viewBox="0 0 77 42" class="icon-crypto" style="width:32px;height:18px;display:block;">
+          <path d="M2.72194715,0 L26.6266393,0 C28.4220313,0 30.0735687,0.988569903 30.9307924,2.57636085 L52.2150034,42 L23.7342299,42 C21.9388379,42 20.2873006,41.0114301 19.4300769,39.4236391 L0.330751009,4.04694928 C-0.386869546,2.71773798 0.101959028,1.05466888 1.42258019,0.332380469 C1.82138733,0.114260557 2.26806337,0 2.72194715,0 Z" fill="#25A3F2"/>
+          <path d="M73.643684,0 C74.0975678,0 74.5442438,0.114260557 74.943051,0.332380469 C76.2236533,1.03278135 76.7221109,2.61780981 76.0968053,3.92522764 L76.0348801,4.04694928 L56.9355543,39.4236391 C56.1059829,40.960211 54.5325175,41.9355978 52.8046779,41.996927 L52.6314012,42 L24.5945392,42 L23.7342299,42 L45.4348388,2.57636085 C46.2644101,1.03978897 47.8378756,0.0644022425 49.5657151,0.00307299695 L49.7389918,0 L73.643684,0 Z" fill="#25A3F2" fill-opacity="0.85"/>
+        </svg>`;
       } else if (m.id === 'yookassa' || n.includes('юkassa') || n.includes('юкасса') || n.includes('юк') || n.includes('yoo') || n.includes('yuk') || n.includes('карт') || n.includes('card')) {
         svgIcon = `<svg viewBox="0 0 24 24" class="icon-card"><rect x="2" y="5" width="20" height="14" rx="2" ry="2" fill="none" class="card-outline"></rect><line x1="2" y1="10" x2="22" y2="10" class="card-line"></line></svg>`;
       }
@@ -992,7 +995,7 @@
       const container = document.querySelector('.screen-profile .container');
       if (container) container.appendChild(vBadge);
     }
-    vBadge.textContent = 'v123';
+    vBadge.textContent = 'v124';
 
     // Start auto-scroll
     startNewsAutoScroll();
