@@ -86,7 +86,7 @@ class XUIClient:
         """Создать VLESS-клиента с заданным сроком."""
         self.ensure_login()
 
-        client_uuid = str(uuid.uuid4())
+        client_uuid = uuid.uuid4().hex
         email = f"tg_{telegram_user_id}_{int(time.time())}@xui"
         total_gb_bytes = 0 if not traffic_gb else traffic_gb * 1073741824
 

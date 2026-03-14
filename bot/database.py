@@ -127,6 +127,19 @@ async def init_db() -> None:
             ON users(subscription_token)
             """
         )
+
+        # Миграция токенов подписки: удаляем токены со спецсимволами (- и _), 
+        # чтобы они пересоздались в чистом виде (Hex) при следующем запросе.
+        try:
+            result = await conn.execute(
+                "UPDATE users SET subscription_token = NULL WHERE subscription_token LIKE '%-%' OR subscription_token LIKE '%_%'"
+            )
+            if result and "UPDATE" in result:
+                count = int(result.split()[-1])
+                if count > 0:
+                    logging.info("Cleared %s subscription tokens containing special characters (- or _)", count)
+        except Exception as e:
+            logging.warning(f"Could not migrate subscription tokens: {e}")
         
         # announcements (объявления для пользователей)
         await conn.execute(
@@ -465,10 +478,10 @@ async def check_expired_subscriptions() -> None:
 
 def generate_subscription_token() -> str:
     """
-    Генерирует уникальный токен подписки (URL-safe).
-    Длина ~ 19 символов — достаточно для уникальности и не режется браузерами.
+    Генерирует уникальный токен подписки (Hex).
+    Hex-строка (0-9, a-f) гарантированно не содержит спецсимволов и стабильна в браузерах.
     """
-    return secrets.token_urlsafe(14)
+    return secrets.token_hex(12)
 
 
 async def ensure_subscription_token(user_id: int) -> str:

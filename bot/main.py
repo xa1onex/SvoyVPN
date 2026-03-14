@@ -152,6 +152,13 @@ async def main():
     await init_db()
     logger.info("Database initialized")
     
+    # Миграция конфигураций (удаление спецсимволов из ID для стабильности в браузерах)
+    try:
+        from .subscriptions import migrate_all_vless_configs
+        await migrate_all_vless_configs()
+    except Exception as e:
+        logger.error(f"Error during VLESS configuration migration: {e}")
+    
     # Настраиваем обработчики
     await start.setup_start_handler(dp, bot, config)
     await subscription.setup_subscription_handlers(dp, bot, config)

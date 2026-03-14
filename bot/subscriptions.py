@@ -742,3 +742,114 @@ async def get_user_subscription_url(user_id: int, config=None) -> str:
     logger.debug(f"Generated subscription URL for user {user_id}: {full_url}")
     return full_url
 
+
+async def migrate_all_vless_configs():
+    """
+    Миграция: удаляет дефисы из vless_client_id (UUID -> Hex) 
+    и обновляет их как в базе, так и на панелях x-ui.
+    Это исправляет проблему 'съедания' символов некоторыми браузерами.
+    """
+    import logging
+    import json
+    from .database import get_connection
+    from .xui_client import XUIClient
+    
+    logger = logging.getLogger(__name__)
+    logger.info("Starting VLESS config migration (removing dashes from IDs)...")
+    
+    try:
+        async with get_connection() as conn:
+            # Получаем все активные серверы
+            servers = await conn.fetch("SELECT * FROM servers WHERE is_active = TRUE")
+            total_migrated = 0
+            
+            for server in servers:
+                try:
+                    # Находим ключи с дефисами для этого сервера
+                    keys = await conn.fetch(
+                        "SELECT id, vless_client_id FROM vpn_keys WHERE server_id = $1 AND vless_client_id LIKE '%-%'",
+                        server['id']
+                    )
+                    if not keys:
+                        logger.info(f"Server {server['name']}: no keys with dashes found.")
+                        continue
+                        
+                    logger.info(f"Server {server['name']}: found {len(keys)} keys to migrate.")
+                    
+                    client = XUIClient(
+                        base_url=server["base_url"],
+                        username=server["username"],
+                        password=server["password"],
+                        inbound_id=server["inbound_id"]
+                    )
+                    client.ensure_login()
+                    
+                    # Получаем текущий inbound для обновления всех клиентов сразу
+                    inbounds_resp = client._client.get("panel/api/inbounds/list")
+                    if inbounds_resp.status_code != 200:
+                        logger.error(f"Failed to fetch inbounds for server {server['name']}")
+                        continue
+                        
+                    inbounds = inbounds_resp.json().get("obj", [])
+                    chosen = next((i for i in inbounds if i.get("id") == server["inbound_id"]), None)
+                    if not chosen:
+                        logger.error(f"Inbound {server['inbound_id']} not found on server {server['name']}")
+                        continue
+                        
+                    settings_str = chosen.get("settings", "{}")
+                    settings = json.loads(settings_str) if isinstance(settings_str, str) else settings_str
+                    panel_clients = settings.get("clients", [])
+                    
+                    migrated_ids_map = {}
+                    for key_row in keys:
+                        old_id = key_row['vless_client_id']
+                        new_id = old_id.replace('-', '') # Просто убираем дефисы (UUID -> Hex)
+                        migrated_ids_map[old_id] = new_id
+                    
+                    # Обновляем на панели
+                    updated_on_panel = 0
+                    for p_client in panel_clients:
+                        curr_id = p_client.get("id")
+                        if curr_id in migrated_ids_map:
+                            p_client["id"] = migrated_ids_map[curr_id]
+                            updated_on_panel += 1
+                    
+                    if updated_on_panel > 0:
+                        settings["clients"] = panel_clients
+                        chosen["settings"] = json.dumps(settings)
+                        
+                        # Сохраняем обратно на панель
+                        required_fields = ["id", "settings", "streamSettings", "sniffing", "protocol", "port", "listen", "remark", "enable", "expiryTime", "trafficReset", "lastTrafficResetTime", "tag"]
+                        payload = {k: chosen[k] for k in required_fields if k in chosen}
+                        
+                        resp = client._client.post(f"panel/api/inbounds/update/{server['inbound_id']}", json=payload)
+                        if resp.status_code == 200:
+                            logger.info(f"Successfully updated {updated_on_panel} clients on panel {server['name']}")
+                            
+                            # Теперь обновляем в БД
+                            updated_in_db = 0
+                            for old_id, new_id in migrated_ids_map.items():
+                                await conn.execute(
+                                    "UPDATE vpn_keys SET vless_client_id = $1 WHERE vless_client_id = $2 AND server_id = $3",
+                                    new_id, old_id, server['id']
+                                )
+                                updated_in_db += 1
+                            
+                            logger.info(f"Updated {updated_in_db} records in database for server {server['name']}")
+                            
+                            # Пересоздаем ссылки с новыми ID
+                            await update_vless_links_for_server(server['id'])
+                            total_migrated += updated_on_panel
+                        else:
+                            logger.error(f"Failed to update panel {server['name']}: {resp.status_code} {resp.text}")
+                    else:
+                        logger.info(f"Server {server['name']}: keys found in DB but not found on panel clients list.")
+                            
+                except Exception as e:
+                    logger.error(f"Error migrating server {server['name']}: {e}", exc_info=True)
+                    
+            logger.info(f"VLESS Migration finished. Total keys updated: {total_migrated}")
+            
+    except Exception as e:
+        logger.error(f"Global VLESS migration error: {e}", exc_info=True)
+
