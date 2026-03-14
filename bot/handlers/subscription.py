@@ -759,7 +759,6 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 # Отправляем пользователю ссылку на оплату
                 builder = InlineKeyboardBuilder()
                 builder.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=confirmation_url))
-                builder.row(InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_yookassa:{payment_id}"))
                 builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
                 
                 await callback.message.edit_text(
@@ -935,48 +934,6 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             logger.error(f"Error checking Crypto Pay payment: {e}", exc_info=True)
             await callback.answer("❌ Ошибка при проверке. Попробуйте позже.", show_alert=True)
 
-    @dp.callback_query(F.data.startswith("check_yookassa:"))
-    async def handle_check_yookassa_payment(callback: CallbackQuery):
-        """Ручная проверка оплаты YooKassa"""
-        payment_id = callback.data.split(":")[1]
-        
-        # Получаем данные планов и методов
-        subscription_plans = get_subscription_plans()
-        renewal_plans = get_renewal_plans()
-        
-        try:
-            # Получаем статус платежа
-            payment = yookassa_client.get_payment_info(payment_id)
-            status = payment.get("status")
-            
-            if status == "succeeded":
-                # Оплачено! Процессим.
-                from ..payments import process_webhook_payment
-                metadata = payment.get("metadata", {})
-                
-                success = await process_webhook_payment(
-                    payment_id=payment_id,
-                    payment_obj=payment,
-                    metadata=metadata,
-                    bot=bot,
-                    config=config,
-                    subscription_plans=subscription_plans,
-                    renewal_plans=renewal_plans,
-                    payment_methods=PAYMENT_METHODS
-                )
-                
-                if success:
-                    await callback.message.edit_reply_markup(reply_markup=None)
-                    await callback.answer("✅ Оплата подтверждена!", show_alert=True)
-                else:
-                    await callback.answer("✅ Оплата уже была обработана.", show_alert=True)
-            elif status == "pending" or status == "waiting_for_capture":
-                await callback.answer("⏳ Оплата еще не поступила. Попробуйте через минуту.", show_alert=True)
-            else:
-                await callback.answer(f"❌ Статус платежа: {status}", show_alert=True)
-        except Exception as e:
-            logger.error(f"Error checking YooKassa payment: {e}", exc_info=True)
-            await callback.answer("❌ Ошибка при проверке. Попробуйте позже.", show_alert=True)
 
     @dp.callback_query(F.data == "go_back_subscription")
     async def handle_go_back_subscription(callback: CallbackQuery, state: FSMContext):
