@@ -310,23 +310,20 @@ class WebhookServer:
                 
                 logger.info(f"Returning subscription for user {user_id}: {len(keys)} keys, active={is_active}")
                 
-                # Формируем объявление (Base64 для поддержки переносов строк и эмодзи)
-                import base64
+                # Формируем объявление (одной строкой для заголовка HTTP)
                 announce_text = (
-                    "При проблемах с интренетом используйте страны со значком 🆓 - обход белых списков, "
-                    "в остальных случаях используйте обычные сервера для максимальной скорости\n\n"
-                    "Если что то не работает или тормозит обновите подписку с помощью кнопки 🔄"
+                    "При проблемах с интернетом используйте страны со значком 🆓. "
+                    "Если что-то не работает или тормозит — обновите подписку кнопкой 🔄"
                 )
-                announce_b64 = base64.b64encode(announce_text.encode('utf-8')).decode('utf-8')
 
                 headers = {
                     "Cache-Control": "no-store",
                     "Content-Disposition": 'attachment; filename="SvoyVPN"',
-                    "profile-title": "Svoy VPN | Свой ВПН",
+                    "profile-title": "Svoy VPN",
                     "profile-update-interval": "4",
                     "support-url": "https://t.me/majorka_wy",
                     "profile-web-page-url": "https://t.me/SvoyVPN_robot",
-                    "announce": announce_b64,
+                    "announce": announce_text,
                     "subscription-userinfo": f"upload=0; download=0; total=0; expire={expire_ts}" if is_active else "Inactive"
                 }
                 
