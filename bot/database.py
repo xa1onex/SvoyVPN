@@ -167,11 +167,27 @@ async def init_db() -> None:
                 inbound_id INTEGER NOT NULL,
                 base_url TEXT NOT NULL,
                 is_active BOOLEAN DEFAULT TRUE,
+                display_order INTEGER DEFAULT 100,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP
             )
             """
         )
+        
+        # Миграция: добавляем display_order в servers, если его нет
+        try:
+            srv_columns = await conn.fetch("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'servers'
+            """)
+            srv_existing = {row['column_name'] for row in srv_columns}
+            
+            if 'display_order' not in srv_existing:
+                await conn.execute("ALTER TABLE servers ADD COLUMN display_order INTEGER DEFAULT 100")
+                logging.info("Added display_order column to servers table")
+        except Exception as e:
+            logging.warning(f"Could not migrate servers table (display_order): {e}")
 
         # vpn_keys
         await conn.execute(

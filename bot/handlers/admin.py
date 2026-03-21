@@ -75,6 +75,7 @@ class AddServerSteps(StatesGroup):
     WAITING_USERNAME = State()
     WAITING_PASSWORD = State()
     WAITING_INBOUND_ID = State()
+    WAITING_ORDER = State()
     CONFIRMING = State()
 
 
@@ -1046,15 +1047,62 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         await message.answer("Введите Inbound ID (число):")
         await state.set_state(AddServerSteps.WAITING_INBOUND_ID)
     
-    @dp.message(AddServerSteps.WAITING_INBOUND_ID)
-    async def process_server_inbound_id_cmd(message: Message, state: FSMContext):
-        """Обработка Inbound ID и сохранение сервера"""
-        try:
-            inbound_id = int(message.text.strip())
-        except ValueError:
-            await message.answer("❌ Inbound ID должен быть числом. Попробуйте снова:")
-            return
+        await state.update_data(inbound_id=inbound_id)
         
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔝 В начало", callback_data="order:start")
+        builder.button(text="🔙 В конец", callback_data="order:end")
+        builder.button(text="🔢 По числу (приоритет)", callback_data="order:number")
+        builder.adjust(1)
+        
+        await message.answer(
+            "📍 <b>Выберите порядок отображения сервера:</b>\n\n"
+            "Это определит, на каком месте будет сервер в списке подписки пользователя.",
+            parse_mode="HTML",
+            reply_markup=builder.as_markup()
+        )
+        await state.set_state(AddServerSteps.WAITING_ORDER)
+    
+    @dp.callback_query(AddServerSteps.WAITING_ORDER, F.data.startswith("order:"))
+    async def process_server_order_choice(callback: CallbackQuery, state: FSMContext):
+        """Выбор типа порядка"""
+        choice = callback.data.split(":")[1]
+        
+        if choice == "number":
+            await callback.message.edit_text("Введите число (чем меньше число, тем выше сервер в списке):")
+            # Мы остаемся в том же состоянии, но теперь ждем именно число в сообщении
+            await callback.answer()
+            return
+            
+        # Для "start" и "end" сразу вычисляем и сохраняем
+        display_order = 100
+        async with get_connection() as conn:
+            if choice == "start":
+                min_order = await conn.fetchval("SELECT MIN(display_order) FROM servers")
+                display_order = (min_order or 100) - 1
+            elif choice == "end":
+                max_order = await conn.fetchval("SELECT MAX(display_order) FROM servers")
+                display_order = (max_order or 100) + 1
+        
+        await state.update_data(display_order=display_order)
+        await callback.message.edit_text(f"✅ Установлен порядок: {display_order}. Теперь сохраняю сервер...")
+        await save_new_server(callback.message, state)
+        await callback.answer()
+
+    @dp.message(AddServerSteps.WAITING_ORDER)
+    async def process_server_order_number(message: Message, state: FSMContext):
+        """Обработка ручного ввода числа порядка"""
+        try:
+            display_order = int(message.text.strip())
+        except ValueError:
+            await message.answer("❌ Введите целое число:")
+            return
+            
+        await state.update_data(display_order=display_order)
+        await save_new_server(message, state)
+
+    async def save_new_server(message: Message, state: FSMContext):
+        """Финальное сохранение сервера после всех шагов"""
         data = await state.get_data()
         name = data.get('name')
         ip = data.get('ip')
@@ -1062,9 +1110,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         protocol = data.get('protocol', 'https')
         username = data.get('username')
         password = data.get('password')
+        inbound_id = data.get('inbound_id')
         base_url = data.get('base_url')
+        display_order = data.get('display_order', 100)
         
-        # Проверяем подключение к серверу
+        # Проверяем подключение к серверу перед сохранением если еще не проверяли
         try:
             test_client = XUIClient(
                 base_url=base_url,
@@ -1095,10 +1145,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 SELECT setval('servers_id_seq', COALESCE((SELECT MAX(id) FROM servers), 0) + 1, false)
             ''')
             server_id = await conn.fetchval('''
-                INSERT INTO servers (name, ip, port, protocol, username, password, inbound_id, base_url, is_active)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE)
+                INSERT INTO servers (name, ip, port, protocol, username, password, inbound_id, base_url, is_active, display_order)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9)
                 RETURNING id
-            ''', name, ip, port, protocol, username, password, inbound_id, base_url)
+            ''', name, ip, port, protocol, username, password, inbound_id, base_url, display_order)
             
             
         # Создаём ключи для активных пользователей (теперь через одну задачу, последовательно)
@@ -1128,9 +1178,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         async with get_connection() as conn:
             servers = await conn.fetch('''
-                SELECT id, name, ip, is_active 
+                SELECT id, name, ip, is_active, display_order 
                 FROM servers 
-                ORDER BY id
+                ORDER BY display_order, id
             ''')
         
         if not servers:
@@ -1143,8 +1193,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             name = server['name']
             ip = server['ip']
             is_active = server['is_active']
+            display_order = server['display_order']
             status = "✅ Активен" if is_active else "❌ Неактивен"
-            text += f"{server_id}. <b>{name}</b> ({ip})\n   {status}\n\n"
+            text += f"#{server_id} [Порядок: {display_order}] <b>{name}</b> ({ip})\n   {status}\n\n"
         
         await message.answer(text, parse_mode="HTML")
     
@@ -1838,7 +1889,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         try:
             async with get_connection() as conn:
-                servers = await conn.fetch('SELECT id, name, ip, is_active FROM servers ORDER BY id')
+                servers = await conn.fetch('SELECT id, name, ip, is_active, display_order FROM servers ORDER BY display_order, id')
             
             if not servers:
                 builder = InlineKeyboardBuilder()
@@ -2079,6 +2130,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         builder.row(InlineKeyboardButton(text="✏️ Username", callback_data=f"admin_server_edit_field:username:{server_id}"))
         builder.row(InlineKeyboardButton(text="✏️ Password", callback_data=f"admin_server_edit_field:password:{server_id}"))
         builder.row(InlineKeyboardButton(text="✏️ Inbound ID", callback_data=f"admin_server_edit_field:inbound_id:{server_id}"))
+        builder.row(InlineKeyboardButton(text="🔢 Порядок отображения", callback_data=f"admin_server_edit_field:display_order:{server_id}"))
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"admin_server_view:{server_id}"))
         
         await callback.message.edit_text(
@@ -2089,7 +2141,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             f"Порт: <i>{server['port']}</i>\n"
             f"Протокол: <i>{server['protocol'].upper()}</i>\n"
             f"Username: <i>{server['username']}</i>\n"
-            f"Inbound ID: <i>{server['inbound_id']}</i>\n\n"
+            f"Inbound ID: <i>{server['inbound_id']}</i>\n"
+            f"Порядок: <i>{server['display_order']}</i>\n\n"
             f"Выберите поле для редактирования:",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -2116,7 +2169,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             'protocol': 'протокол (http/https)',
             'username': 'username',
             'password': 'password',
-            'inbound_id': 'Inbound ID'
+            'inbound_id': 'Inbound ID',
+            'display_order': 'порядок отображения'
         }
         
         builder = InlineKeyboardBuilder()
@@ -2163,11 +2217,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             if new_value not in ['http', 'https']:
                 await message.answer("❌ Протокол должен быть http или https")
                 return
-        elif field == 'inbound_id':
+        elif field in ['inbound_id', 'display_order']:
             try:
                 new_value = int(new_value)
             except ValueError:
-                await message.answer("❌ Inbound ID должен быть числом")
+                await message.answer(f"❌ {'Inbound ID' if field == 'inbound_id' else 'Порядок'} должен быть числом")
                 return
         
         async with get_connection() as conn:

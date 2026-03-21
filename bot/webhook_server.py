@@ -236,9 +236,10 @@ class WebhookServer:
                     FROM users WHERE user_id = $1
                 ''', user_id)
                 
-                # Получаем ключи только для активных серверов (один на сервер благодаря уникальному индексу)
-                keys = await conn.fetch('''
-                    SELECT DISTINCT ON (k.server_id) k.vless_link, k.server_id
+                # Получаем ключи и информацию о сервере для сортировки
+                keys_data = await conn.fetch('''
+                    SELECT DISTINCT ON (k.server_id) 
+                        k.vless_link, k.server_id, s.display_order, s.id as sid
                     FROM vpn_keys k
                     INNER JOIN servers s ON k.server_id = s.id
                     WHERE k.user_id = $1 
@@ -247,6 +248,9 @@ class WebhookServer:
                       AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
                     ORDER BY k.server_id, k.id ASC
                 ''', user_id)
+                
+                # Сортируем ключи по display_order, затем по id сервера
+                keys = sorted(keys_data, key=lambda x: (x.get('display_order', 100), x.get('sid', 0)))
                 
                 # Формируем expire timestamp
                 subscription_end = user_row.get("subscription_end")
@@ -283,9 +287,10 @@ class WebhookServer:
                             # Создаём ключи вне транзакции (используем отдельное соединение)
                             from .subscriptions import create_or_activate_keys_for_all_servers
                             await create_or_activate_keys_for_all_servers(user_id)
-                            # Повторно запрашиваем ключи только для активных серверов
-                            keys = await conn.fetch('''
-                                SELECT DISTINCT ON (k.server_id) k.vless_link, k.server_id
+                            # Повторно запрашиваем ключи и информацию о сервере для сортировки
+                            keys_data = await conn.fetch('''
+                                SELECT DISTINCT ON (k.server_id) 
+                                    k.vless_link, k.server_id, s.display_order, s.id as sid
                                 FROM vpn_keys k
                                 INNER JOIN servers s ON k.server_id = s.id
                                 WHERE k.user_id = $1 
@@ -294,6 +299,9 @@ class WebhookServer:
                                   AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
                                 ORDER BY k.server_id, k.id ASC
                             ''', user_id)
+                            
+                            # Сортируем ключи по display_order, затем по id сервера
+                            keys = sorted(keys_data, key=lambda x: (x.get('display_order', 100), x.get('sid', 0)))
                         except Exception as e:
                             logger.error(f"Failed to auto-create keys for user {user_id}: {e}")
                 
@@ -1276,7 +1284,7 @@ class WebhookServer:
         try:
             async with get_connection() as conn:
                 rows = await conn.fetch(
-                    "SELECT id, name, ip, port, protocol, is_active FROM servers WHERE is_active = TRUE ORDER BY id DESC"
+                    "SELECT id, name, ip, port, protocol, is_active, display_order FROM servers WHERE is_active = TRUE ORDER BY display_order ASC, id"
                 )
                 servers = [{
                     "id": r["id"],
