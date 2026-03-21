@@ -494,6 +494,11 @@ async def handle_expired_subscriptions(bot=None):
                             )
                         builder.adjust(1)
                         
+                        builder.row(
+                            InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"),
+                            InlineKeyboardButton(text="🎁 Бесплатно", callback_data="open_invite")
+                        )
+                        
                         await bot.send_message(
                             user_id,
                             f"⏰ <b>Ваша подписка истекла</b>\n\n"
@@ -572,6 +577,11 @@ async def send_upcoming_subscription_reminders(bot, config):
                         callback_data=f"plan:{plan_id}"
                     )
                 builder.adjust(1)
+                
+                builder.row(
+                    InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"),
+                    InlineKeyboardButton(text="🎁 Бесплатно", callback_data="open_invite")
+                )
 
                 text = (
                     f"🎁 <b>{user['first_name'] or 'Пользователь'}, у нас для вас подарок!</b>\n\n"
@@ -602,6 +612,11 @@ async def send_upcoming_subscription_reminders(bot, config):
                         callback_data=f"plan:{plan_id}"
                     )
                 builder.adjust(1)
+                
+                builder.row(
+                    InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"),
+                    InlineKeyboardButton(text="🎁 Бесплатно", callback_data="open_invite")
+                )
 
                 text = (
                     f"⏰ <b>Внимание! Подписка почти закончилась</b>\n\n"
