@@ -1072,8 +1072,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 password=password,
                 inbound_id=inbound_id
             )
-            test_client.login()
+            await test_client.login()
+            await test_client.close()
         except Exception as e:
+            if 'test_client' in locals():
+                await test_client.close()
             error_msg = str(e)
             if "SSL" in error_msg or "WRONG_VERSION_NUMBER" in error_msg:
                 suggestion = "\n\n💡 <b>Совет:</b> Попробуйте использовать HTTP вместо HTTPS."
@@ -1097,26 +1100,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 RETURNING id
             ''', name, ip, port, protocol, username, password, inbound_id, base_url)
             
-            # Создаём ключи для активных пользователей
-            try:
-                active_users = await conn.fetch('''
-                    SELECT user_id
-                    FROM users
-                    WHERE pay_subscribed = TRUE 
-                      AND subscription_end IS NOT NULL
-                      AND DATE(subscription_end) >= CURRENT_DATE
-                ''')
-                
-                if active_users:
-                    logger.info(f"Creating keys for {len(active_users)} active users on new server {name} (ID: {server_id})")
-                    for user_row in active_users:
-                        user_id = user_row['user_id']
-                        try:
-                            asyncio.create_task(create_or_activate_keys_for_all_servers(user_id))
-                        except Exception as e:
-                            logger.error(f"Failed to create keys for user {user_id} on new server: {e}")
-            except Exception as e:
-                logger.error(f"Error creating keys for active users on new server: {e}")
+            
+        # Создаём ключи для активных пользователей (теперь через одну задачу, последовательно)
+        try:
+            from bot.subscriptions import create_keys_for_specific_server
+            asyncio.create_task(create_keys_for_specific_server(server_id))
+        except Exception as e:
+            logger.error(f"Error starting key creation for new server: {e}")
+
         
         await message.answer(
             f"✅ <b>Сервер успешно добавлен!</b>\n\n"
@@ -2328,8 +2319,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 password=password,
                 inbound_id=inbound_id
             )
-            test_client.login()
+            await test_client.login()
+            await test_client.close()
         except Exception as e:
+            if 'test_client' in locals():
+                await test_client.close()
             error_msg = str(e)
             await message.answer(
                 f"❌ <b>Ошибка подключения к серверу:</b>\n"

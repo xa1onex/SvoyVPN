@@ -37,7 +37,7 @@ class XUIClient:
             self.api_token = api_token
             self.inbound_id = inbound_id
 
-        self._client = httpx.Client(
+        self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=20.0,
             verify=False,  # TODO: включить verify и настроить сертификаты
@@ -50,14 +50,14 @@ class XUIClient:
             return {"Authorization": f"Bearer {self.api_token}"}
         return {}
 
-    def login(self) -> None:
+    async def login(self) -> None:
         if self.api_token:
             self._authorized = True
             return
         if not (self.username and self.password):
             raise RuntimeError("Either API_TOKEN or USERNAME/PASSWORD must be provided")
         try:
-            resp = self._client.post(
+            resp = await self._client.post(
                 "login",
                 data={"username": self.username, "password": self.password},
             )
@@ -71,11 +71,11 @@ class XUIClient:
         except Exception as e:  # noqa: BLE001
             raise RuntimeError(f"Login error: {e}") from e
 
-    def ensure_login(self) -> None:
+    async def ensure_login(self) -> None:
         if not self._authorized:
-            self.login()
+            await self.login()
 
-    def add_vless_client(
+    async def add_vless_client(
         self,
         telegram_user_id: int,
         display_name: str,
@@ -84,7 +84,7 @@ class XUIClient:
         public_ip: str | None = None,
     ) -> dict[str, Any]:
         """Создать VLESS-клиента с заданным сроком."""
-        self.ensure_login()
+        await self.ensure_login()
 
         client_uuid = uuid.uuid4().hex
         email = f"tg_{telegram_user_id}_{int(time.time())}@xui"
@@ -113,7 +113,7 @@ class XUIClient:
         }
         headers = {"Content-Type": "application/json", **self._auth_headers()}
 
-        resp = self._client.post("panel/api/inbounds/addClient", json=payload, headers=headers)
+        resp = await self._client.post("panel/api/inbounds/addClient", json=payload, headers=headers)
         if resp.status_code != 200:
             raise RuntimeError(f"addClient failed: {resp.status_code} {resp.text}")
 
@@ -122,7 +122,8 @@ class XUIClient:
             raise RuntimeError(f"addClient error: {data}")
 
         # Получаем inbound, чтобы построить ссылку
-        inbounds = self._client.get("panel/api/inbounds/list").json().get("obj", [])
+        inbounds_resp = await self._client.get("panel/api/inbounds/list")
+        inbounds = inbounds_resp.json().get("obj", [])
         chosen = next((i for i in inbounds if i.get("id") == inbound_id), None)
         if not chosen:
             raise RuntimeError("Inbound not found for link generation")
@@ -211,14 +212,15 @@ class XUIClient:
             "link": link,
         }
 
-    def update_client_expiry(self, client_id: str, expiry_time_unix_ms: int) -> None:
+    async def update_client_expiry(self, client_id: str, expiry_time_unix_ms: int) -> None:
         """Продлить срок клиента на панели."""
-        self.ensure_login()
+        await self.ensure_login()
         inbound_id = self.inbound_id
         if not inbound_id:
             raise RuntimeError("inbound_id is not set")
 
-        inbounds = self._client.get("panel/api/inbounds/list").json().get("obj", [])
+        inbounds_resp = await self._client.get("panel/api/inbounds/list")
+        inbounds = inbounds_resp.json().get("obj", [])
         chosen = next((i for i in inbounds if i.get("id") == inbound_id), None)
         if not chosen:
             raise RuntimeError(f"Inbound {inbound_id} not found")
@@ -267,11 +269,16 @@ class XUIClient:
                 payload[key] = updated_settings if key == "settings" else chosen[key]
 
         headers = {"Content-Type": "application/json", **self._auth_headers()}
-        resp = self._client.post(
+        resp = await self._client.post(
             f"panel/api/inbounds/update/{inbound_id}",
             json=payload,
             headers=headers,
         )
         if resp.status_code != 200:
             raise RuntimeError(f"Failed to update client expiry: {resp.status_code} {resp.text}")
+
+    async def close(self) -> None:
+        """Закрыть клиент."""
+        await self._client.aclose()
+
 

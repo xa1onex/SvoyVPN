@@ -90,6 +90,12 @@ class WebhookServer:
             self.app.router.add_get('/webhook/cryptopay', self.health_check_cryptopay)
             self.app.router.add_get('/webhook/cryptopay/', self.health_check_cryptopay)
         
+        # Deep link routes (for automatic app connection)
+        self.app.router.add_get('/apple/{app}/{token}', self.handle_app_connect)
+        self.app.router.add_get('/android/{app}/{token}', self.handle_app_connect)
+        self.app.router.add_get('/windows/{app}/{token}', self.handle_app_connect)
+        self.app.router.add_get('/mac/{app}/{token}', self.handle_app_connect)
+        
         # Miniapp routes
         self.app.router.add_get('/miniapp', self.serve_miniapp)
         self.app.router.add_get('/miniapp/', self.serve_miniapp)
@@ -317,6 +323,126 @@ class WebhookServer:
         except Exception as e:
             logger.error(f"Error in handle_subscription: {e}", exc_info=True)
             raise HTTPNotFound()
+    
+    async def handle_app_connect(self, request: web_request.Request) -> web.Response:
+        """
+        Обработчик диплинков для автоматического подключения приложения.
+        Принимает /{device}/{app}/{token} и редиректит в приложение.
+        """
+        app_id = request.match_info.get("app", "").lower()
+        token = request.match_info.get("token", "").strip()
+        
+        if not token or len(token) < 8:
+            logger.warning(f"App connect: Invalid token '{token}'")
+            raise HTTPNotFound()
+            
+        # Определяем базовый URL для подписки
+        # Используем значение из конфига или текущий хост
+        base_url = "https://xdoublegroup.online" # Дефолт
+        if hasattr(self.flyer_config, 'subscription_base_url') and self.flyer_config.subscription_base_url:
+            base_url = self.flyer_config.subscription_base_url.rstrip('/')
+        elif request.host:
+            protocol = "https" if request.secure else "http"
+            base_url = f"{protocol}://{request.host}"
+            
+        sub_url = f"{base_url}/sub/{token}"
+        
+        # Маппинг схем приложений
+        schemes = {
+            "happ": f"happ://import/{sub_url}",
+            "hiddify": f"hiddify://import/{sub_url}",
+            "v2raytun": f"v2raytun://import/{sub_url}",
+            "v2rayng": f"v2rayng://install-config?url={sub_url}",
+            "v2rayn": f"v2rayn://install-config?url={sub_url}",
+            "streisand": f"streisand://import/{sub_url}",
+            "shadowrocket": f"shadowrocket://add/{sub_url}",
+            "singbox": f"sing-box://import-remote?url={sub_url}",
+        }
+        
+        deep_link = schemes.get(app_id, f"{app_id}://import/{sub_url}")
+        
+        logger.info(f"Deep link redirect: app={app_id}, token={token[:8]}... -> {deep_link}")
+        
+        # Используем HTML-страницу для редиректа, так как прямые 302 на кастомные схемы
+        # часто блокируются мобильными браузерами.
+        html = f"""
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SvoyVPN — Подключение...</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #18222d;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }}
+        .logo-box {{
+            margin-bottom: 30px;
+        }}
+        .loader {{
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-left: 3px solid #3aa8fc;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }}
+        @keyframes spin {{
+            0% {{ transform: rotate(0deg); }}
+            100% {{ transform: rotate(360deg); }}
+        }}
+        h2 {{ font-weight: 600; margin-bottom: 10px; }}
+        p {{ color: #8e8e93; font-size: 15px; max-width: 280px; line-height: 1.4; }}
+        .btn {{
+            display: inline-block;
+            background-color: #3aa8fc;
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            margin-top: 30px;
+            text-decoration: none;
+            transition: transform 0.1s;
+            -webkit-tap-highlight-color: transparent;
+        }}
+        .btn:active {{ transform: scale(0.96); }}
+    </style>
+</head>
+<body>
+    <div class="logo-box">
+        <div class="loader"></div>
+    </div>
+    <h2>Открываем приложение...</h2>
+    <p>Если приложение не открылось автоматически, нажмите кнопку ниже:</p>
+    
+    <a href="{deep_link}" class="btn">ПОДКЛЮЧИТЬ VPN</a>
+    
+    <script>
+        // Пытаемся выполнить автоматический переход через небольшую паузу
+        setTimeout(function() {{
+            window.location.href = "{deep_link}";
+        }}, 500);
+        
+        // Для некоторых браузеров может потребоваться клик, поэтому кнопка обязательна
+    </script>
+</body>
+</html>
+        """
+        
+        return web.Response(text=html, content_type='text/html', charset='utf-8')
     
     @web.middleware
     async def handle_bad_requests_middleware(self, request: web_request.Request, handler):

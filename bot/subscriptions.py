@@ -109,6 +109,15 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                 logger.info(f"No active users for server {server_id}")
                 return
             
+            # Создаем ОДИН клиент на весь процесс
+            client = XUIClient(
+                base_url=server["base_url"],
+                username=server["username"],
+                password=server["password"],
+                inbound_id=server["inbound_id"]
+            )
+            await client.ensure_login()
+
             logger.info(f"Creating keys for {len(active_users)} active users on server {server['name']} (ID: {server_id})")
             
             for user_row in active_users:
@@ -144,14 +153,7 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                     
                     if existing:
                         # Ключ есть - активируем и продлеваем
-                        client = XUIClient(
-                            base_url=server["base_url"],
-                            username=server["username"],
-                            password=server["password"],
-                            inbound_id=server["inbound_id"]
-                        )
-                        
-                        client.update_client_expiry(existing["vless_client_id"], expiry_ms)
+                        await client.update_client_expiry(existing["vless_client_id"], expiry_ms)
                         
                         await conn.execute(
                             """
@@ -165,14 +167,7 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                         logger.debug(f"Reactivated key {existing['id']} for user {user_id} on server {server['name']}")
                     else:
                         # Ключа нет - создаём новый
-                        client = XUIClient(
-                            base_url=server["base_url"],
-                            username=server["username"],
-                            password=server["password"],
-                            inbound_id=server["inbound_id"]
-                        )
-                        
-                        result = client.add_vless_client(
+                        result = await client.add_vless_client(
                             telegram_user_id=user_id,
                             display_name=server["name"],
                             traffic_gb=None,
@@ -210,9 +205,16 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                                 key_id,
                             )
                             logger.debug(f"Created key {key_id} for user {user_id} on server {server['name']}")
-                            
+                    
+                    # Маленькая пауза, чтобы не повесить сервер
+                    import asyncio
+                    await asyncio.sleep(0.1)
+
                 except Exception as e:
                     logger.error(f"Failed to create key for user {user_id} on server {server['name']}: {e}")
+            
+            await client.close()
+
                     
     except Exception as e:
         logger.error(f"Error creating keys for server {server_id}: {e}", exc_info=True)
@@ -292,16 +294,16 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                         server_id,
                     )
 
+                    client = XUIClient(
+                        base_url=server["base_url"],
+                        username=server["username"],
+                        password=server["password"],
+                        inbound_id=server["inbound_id"]
+                    )
+
                     if existing:
                         # Ключ есть - активируем и продлеваем
-                        client = XUIClient(
-                            base_url=server["base_url"],
-                            username=server["username"],
-                            password=server["password"],
-                            inbound_id=server["inbound_id"]
-                        )
-                        
-                        client.update_client_expiry(existing["vless_client_id"], expiry_ms)
+                        await client.update_client_expiry(existing["vless_client_id"], expiry_ms)
                         
                         await conn.execute(
                             """
@@ -315,14 +317,7 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                         logger.info(f"Reactivated key {existing['id']} for user {user_id} on server {server['name']}")
                     else:
                         # Ключа нет - создаём новый
-                        client = XUIClient(
-                            base_url=server["base_url"],
-                            username=server["username"],
-                            password=server["password"],
-                            inbound_id=server["inbound_id"]
-                        )
-                        
-                        result = client.add_vless_client(
+                        result = await client.add_vless_client(
                             telegram_user_id=user_id,
                             display_name=server["name"],
                             traffic_gb=None,
@@ -331,6 +326,7 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                         )
                         
                         if not result.get("id") or not result.get("link"):
+                            await client.close()
                             continue
 
                         key_id = await conn.fetchval(
@@ -359,9 +355,12 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                                 key_id,
                             )
                             logger.info(f"Created key {key_id} for user {user_id} on server {server['name']}")
-                            
+                    
+                    await client.close()
+                    
                 except Exception as e:
                     logger.error(f"Failed to create/reactivate key for server {server['name']}: {e}")
+
                     
     except Exception as e:
         logger.error(f"Error creating keys for user {user_id}: {e}")
@@ -403,15 +402,14 @@ async def sync_user_keys(user_id: int) -> None:
             ''', user_id)
             
             for key in keys:
+                client = XUIClient(
+                    base_url=key['base_url'],
+                    username=key['username'],
+                    password=key['password'],
+                    inbound_id=key['inbound_id']
+                )
                 try:
-                    client = XUIClient(
-                        base_url=key['base_url'],
-                        username=key['username'],
-                        password=key['password'],
-                        inbound_id=key['inbound_id']
-                    )
-                    
-                    client.update_client_expiry(
+                    await client.update_client_expiry(
                         client_id=key['vless_client_id'],
                         expiry_time_unix_ms=expiry_time_unix_ms
                     )
@@ -422,6 +420,9 @@ async def sync_user_keys(user_id: int) -> None:
                     
                 except Exception as e:
                     logger.error(f"Failed to sync key {key['id']}: {e}")
+                finally:
+                    await client.close()
+
                     
     except Exception as e:
         logger.error(f"Error syncing keys for user {user_id}: {e}")
@@ -503,6 +504,9 @@ async def handle_expired_subscriptions(bot=None):
                             parse_mode="HTML"
                         )
                         notified_count += 1
+                        import asyncio
+                        await asyncio.sleep(0.05)
+
                 except Exception as e:
                     logger.error(f"Error processing expired subscription for user {user_id}: {e}")
             
@@ -596,8 +600,9 @@ async def update_vless_links_for_server(server_id: int) -> None:
             
             # Получаем актуальные данные из inbound
             try:
-                client.ensure_login()
-                inbounds = client._client.get("panel/api/inbounds/list").json().get("obj", [])
+                await client.ensure_login()
+                resp = await client._client.get("panel/api/inbounds/list")
+                inbounds = resp.json().get("obj", [])
                 chosen = next((i for i in inbounds if i.get("id") == server["inbound_id"]), None)
                 
                 if not chosen:
@@ -697,8 +702,11 @@ async def update_vless_links_for_server(server_id: int) -> None:
                 
                 logger.info(f"Updated {updated_count} VLESS links for server {server['name']} (ID: {server_id})")
                 
+                await client.close()
+                
             except Exception as e:
                 logger.error(f"Error updating VLESS links for server {server_id}: {e}", exc_info=True)
+                await client.close()
                 
     except Exception as e:
         logger.error(f"Error in update_vless_links_for_server for server {server_id}: {e}", exc_info=True)
@@ -782,18 +790,20 @@ async def migrate_all_vless_configs():
                         password=server["password"],
                         inbound_id=server["inbound_id"]
                     )
-                    client.ensure_login()
+                    await client.ensure_login()
                     
                     # Получаем текущий inbound для обновления всех клиентов сразу
-                    inbounds_resp = client._client.get("panel/api/inbounds/list")
+                    inbounds_resp = await client._client.get("panel/api/inbounds/list")
                     if inbounds_resp.status_code != 200:
                         logger.error(f"Failed to fetch inbounds for server {server['name']}")
+                        await client.close()
                         continue
                         
                     inbounds = inbounds_resp.json().get("obj", [])
                     chosen = next((i for i in inbounds if i.get("id") == server["inbound_id"]), None)
                     if not chosen:
                         logger.error(f"Inbound {server['inbound_id']} not found on server {server['name']}")
+                        await client.close()
                         continue
                         
                     settings_str = chosen.get("settings", "{}")
@@ -822,7 +832,7 @@ async def migrate_all_vless_configs():
                         required_fields = ["id", "settings", "streamSettings", "sniffing", "protocol", "port", "listen", "remark", "enable", "expiryTime", "trafficReset", "lastTrafficResetTime", "tag"]
                         payload = {k: chosen[k] for k in required_fields if k in chosen}
                         
-                        resp = client._client.post(f"panel/api/inbounds/update/{server['inbound_id']}", json=payload)
+                        resp = await client._client.post(f"panel/api/inbounds/update/{server['inbound_id']}", json=payload)
                         if resp.status_code == 200:
                             logger.info(f"Successfully updated {updated_on_panel} clients on panel {server['name']}")
                             
@@ -844,9 +854,14 @@ async def migrate_all_vless_configs():
                             logger.error(f"Failed to update panel {server['name']}: {resp.status_code} {resp.text}")
                     else:
                         logger.info(f"Server {server['name']}: keys found in DB but not found on panel clients list.")
+                    
+                    await client.close()
                             
                 except Exception as e:
                     logger.error(f"Error migrating server {server['name']}: {e}", exc_info=True)
+                    if 'client' in locals():
+                        await client.close()
+
                     
             logger.info(f"VLESS Migration finished. Total keys updated: {total_migrated}")
             
