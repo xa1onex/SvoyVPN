@@ -42,17 +42,19 @@ def setup_scheduler():
     
     # Проверка истекших подписок (каждый день в 00:05)
     scheduler.add_job(
-        lambda: handle_expired_subscriptions(bot),
+        handle_expired_subscriptions,
         'cron',
         hour=0,
-        minute=5
+        minute=5,
+        args=[bot]
     )
     
     # Проверка предстоящих окончаний подписки (каждые 6 часов)
     scheduler.add_job(
-        lambda: send_upcoming_subscription_reminders(bot, config),
+        send_upcoming_subscription_reminders,
         'interval',
-        hours=6
+        hours=6,
+        args=[bot, config]
     )
     
     # Также запускаем при старте
@@ -61,17 +63,19 @@ def setup_scheduler():
 
     # (через 30 секунд)
     scheduler.add_job(
-        lambda: handle_expired_subscriptions(bot),
+        handle_expired_subscriptions,
         'date',
         run_date=now_moscow + timedelta(seconds=30),
+        args=[bot],
         misfire_grace_time=3600
     )
     
     # (через 60 секунд)
     scheduler.add_job(
-        lambda: send_upcoming_subscription_reminders(bot, config),
+        send_upcoming_subscription_reminders,
         'date',
         run_date=now_moscow + timedelta(seconds=60),
+        args=[bot, config],
         misfire_grace_time=3600
     )
     
