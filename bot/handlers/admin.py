@@ -1047,6 +1047,15 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         await message.answer("Введите Inbound ID (число):")
         await state.set_state(AddServerSteps.WAITING_INBOUND_ID)
     
+    @dp.message(AddServerSteps.WAITING_INBOUND_ID)
+    async def process_server_inbound_id_cmd(message: Message, state: FSMContext):
+        """Обработка Inbound ID"""
+        try:
+            inbound_id = int(message.text.strip())
+        except ValueError:
+            await message.answer("❌ Inbound ID должен быть числом. Попробуйте снова:")
+            return
+
         await state.update_data(inbound_id=inbound_id)
         
         builder = InlineKeyboardBuilder()
