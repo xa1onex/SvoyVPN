@@ -1943,7 +1943,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         try:
             async with get_connection() as conn:
                 server = await conn.fetchrow('''
-                    SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url, is_active, created_at
+                    SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url, is_active, created_at, display_order
                     FROM servers WHERE id = $1
                 ''', server_id)
                 
@@ -1972,6 +1972,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 f"<b>Протокол:</b> {server['protocol'].upper()}\n"
                 f"<b>Base URL:</b> <code>{base_url}</code>\n"
                 f"<b>Inbound ID:</b> {server['inbound_id']}\n"
+                f"<b>Порядок в списке:</b> {server.get('display_order', 100)}\n"
                 f"<b>Статус:</b> {status}\n"
                 f"<b>Создан:</b> {created_at}\n\n"
                 f"<b>Статистика:</b>\n"
@@ -2112,7 +2113,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         async with get_connection() as conn:
             server = await conn.fetchrow('''
-                SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url
+                SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url, display_order
                 FROM servers WHERE id = $1
             ''', server_id)
             
