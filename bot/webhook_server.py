@@ -317,12 +317,11 @@ class WebhookServer:
                     charset="utf-8",
                     headers=headers
                 )
-        except HTTPNotFound:
-            # Пробрасываем HTTPNotFound дальше
+        except (HTTPNotFound, HTTPBadRequest):
             raise
         except Exception as e:
-            logger.error(f"Error in handle_subscription: {e}", exc_info=True)
-            raise HTTPNotFound()
+            logger.error(f"Internal error in handle_subscription for token {token[:8]}... : {e}", exc_info=True)
+            return web.json_response({"error": "Internal Server Error", "details": str(e)}, status=500)
     
     async def handle_app_connect(self, request: web_request.Request) -> web.Response:
         """

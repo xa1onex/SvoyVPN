@@ -128,18 +128,6 @@ async def init_db() -> None:
             """
         )
 
-        # Миграция токенов подписки: удаляем токены со спецсимволами (- и _), 
-        # чтобы они пересоздались в чистом виде (Hex) при следующем запросе.
-        try:
-            result = await conn.execute(
-                "UPDATE users SET subscription_token = NULL WHERE subscription_token LIKE '%-%' OR subscription_token LIKE '%_%'"
-            )
-            if result and "UPDATE" in result:
-                count = int(result.split()[-1])
-                if count > 0:
-                    logging.info("Cleared %s subscription tokens containing special characters (- or _)", count)
-        except Exception as e:
-            logging.warning(f"Could not migrate subscription tokens: {e}")
         
         # announcements (объявления для пользователей)
         await conn.execute(
