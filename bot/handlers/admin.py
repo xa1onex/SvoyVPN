@@ -135,7 +135,69 @@ def get_admin_panel_keyboard():
     return builder.as_markup()
 
 
+
+async def get_broadcast_constructor_menu(state_data: dict):
+    """Получить меню конструктора рассылки"""
+    text = state_data.get('broadcast_text', '')
+    media_type = state_data.get('media_type')
+    buttons = state_data.get('broadcast_buttons', [])
+    filter_type = state_data.get('broadcast_filter', 'all')
+    test_mode = state_data.get('broadcast_test', False)
+    
+    status_text = "📢 <b>Конструктор рассылки</b>\n\n"
+    status_text += "<b>Текущий состав:</b>\n"
+    
+    if text:
+        status_text += f"✅ Текст: {text[:50]}...\n"
+    else:
+        status_text += "❌ Текст не добавлен\n"
+    
+    if media_type:
+        media_name = "🖼️ Фото" if media_type == "photo" else "🎥 Видео" if media_type == "video" else "📄 Документ" if media_type == "document" else "🎬 GIF"
+        status_text += f"✅ Медиа: {media_name}\n"
+    else:
+        status_text += "❌ Медиа не добавлено\n"
+    
+    if buttons:
+        status_text += f"✅ Кнопки: {len(buttons)} шт.\n"
+    else:
+        status_text += "❌ Кнопки не добавлены\n"
+    
+    filter_names = {
+        'all': 'Все пользователи',
+        'active': 'С активной подпиской',
+        'inactive': 'Без подписки',
+        'active_7d': 'Активные за 7 дней',
+        'active_30d': 'Активные за 30 дней',
+        'with_referrals': 'С рефералами',
+        'trial_used': 'Использовали пробный период',
+        'trial_not_used': 'Не использовали пробный период'
+    }
+    filter_name = filter_names.get(filter_type, 'Не выбрано')
+    status_text += f"✅ Фильтр: {filter_name}\n"
+    
+    if test_mode:
+        status_text += "🧪 <b>ТЕСТОВЫЙ РЕЖИМ</b> (только админ)\n"
+    
+    status_text += "\n<b>Выберите действие:</b>"
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="➕ Добавить текст" if not text else "✏️ Изменить текст", callback_data="broadcast_add_text"))
+    builder.row(InlineKeyboardButton(text="🖼️ Добавить медиа" if not media_type else "🖼️ Изменить медиа", callback_data="broadcast_add_media"))
+    builder.row(InlineKeyboardButton(text="🔘 Добавить кнопки" if not buttons else f"🔘 Кнопки ({len(buttons)})", callback_data="broadcast_add_buttons"))
+    builder.row(InlineKeyboardButton(text="👥 Выбрать получателей", callback_data="broadcast_choose_filter"))
+    builder.row(InlineKeyboardButton(text="🧪 Тест (только админ)" if not test_mode else "✅ Тест включен", callback_data="broadcast_toggle_test"))
+    
+    if text or media_type:
+        builder.row(InlineKeyboardButton(text="✅ Отправить рассылку", callback_data="broadcast_confirm"))
+    
+    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back"))
+    
+    return status_text, builder.as_markup()
+
+
 async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
+
     """Настраивает все админ-обработчики"""
     
     @dp.message(Command("admin"))
@@ -754,19 +816,62 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     # Обработчик рассылки
     @dp.callback_query(F.data == "admin_broadcast")
     async def handle_admin_broadcast(callback: CallbackQuery, state: FSMContext):
-        """Начать рассылку"""
+        """Начать рассылку - конструктор"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        await state.update_data(
+            broadcast_text='',
+            media_type=None,
+            media_file_id=None,
+            broadcast_buttons=[],
+            broadcast_filter='all',
+            broadcast_test=False
+        )
+        
+        data = await state.get_data()
+        status_text, keyboard = await get_broadcast_constructor_menu(data)
+        
+        await callback.message.edit_text(
+            status_text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data == "broadcast_add_text")
+    async def handle_broadcast_add_text(callback: CallbackQuery, state: FSMContext):
+        """Добавление текста к рассылке"""
         if not is_admin(callback.from_user.id, config):
             await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
         
         await callback.message.edit_text(
-            "📢 <b>Рассылка сообщений</b>\n\n"
-            "Введите текст сообщения для рассылки:",
+            "📝 <b>Добавление текста</b>\n\n"
+            "Введите текст сообщения:\n\n"
+            "💡 <i>Если вы также добавите медиа, этот текст будет использован как подпись (caption)</i>",
             parse_mode="HTML"
         )
         await state.set_state(AdminStates.BROADCAST_MESSAGE)
         await safe_callback_answer(callback)
-    
+
+    @dp.callback_query(F.data == "broadcast_add_media")
+    async def handle_broadcast_add_media(callback: CallbackQuery, state: FSMContext):
+        """Добавление медиа к рассылке"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        await callback.message.edit_text(
+            "🖼️ <b>Добавление медиа</b>\n\n"
+            "Отправьте фото, видео, документ или GIF:\n\n"
+            "💡 <i>Можно добавить подпись (caption) к медиа, если текст не был добавлен отдельно</i>",
+            parse_mode="HTML"
+        )
+        await state.set_state(AdminStates.BROADCAST_MEDIA)
+        await safe_callback_answer(callback)
+
     @dp.message(AdminStates.BROADCAST_MESSAGE)
     async def process_broadcast_message(message: Message, state: FSMContext):
         """Обработка текста рассылки"""
@@ -782,70 +887,405 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         await state.update_data(broadcast_text=broadcast_text)
         
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="✅ Отправить всем", callback_data="broadcast_send_all"))
-        builder.row(InlineKeyboardButton(text="✅ Отправить активным", callback_data="broadcast_send_active"))
-        builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back"))
+        data = await state.get_data()
+        status_text, keyboard = await get_broadcast_constructor_menu(data)
         
         await message.answer(
-            f"✅ <b>Текст рассылки:</b>\n\n{broadcast_text}\n\n"
-            "Выберите получателей:",
-            reply_markup=builder.as_markup(),
+            "✅ <b>Текст добавлен!</b>\n\n" + status_text,
+            reply_markup=keyboard,
             parse_mode="HTML"
         )
-    
-    @dp.callback_query(F.data.startswith("broadcast_send_"))
-    async def handle_broadcast_send(callback: CallbackQuery, state: FSMContext):
-        """Отправка рассылки"""
+
+    @dp.message(AdminStates.BROADCAST_MEDIA)
+    async def process_broadcast_media(message: Message, state: FSMContext):
+        """Обработка медиа для рассылки"""
+        if not is_admin(message.from_user.id, config):
+            await message.answer("❌ Нет доступа")
+            await state.clear()
+            return
+        
+        media_type = None
+        file_id = None
+        caption = message.caption or ""
+        
+        if message.photo:
+            media_type = "photo"
+            file_id = message.photo[-1].file_id
+        elif message.video:
+            media_type = "video"
+            file_id = message.video.file_id
+        elif message.document:
+            media_type = "document"
+            file_id = message.document.file_id
+        elif message.animation:
+            media_type = "animation"
+            file_id = message.animation.file_id
+        else:
+            await message.answer("❌ Пожалуйста, отправьте фото, видео, документ или GIF")
+            return
+        
+        data = await state.get_data()
+        existing_text = data.get('broadcast_text', '')
+        if not existing_text and caption:
+            await state.update_data(broadcast_text=caption)
+        
+        await state.update_data(
+            media_type=media_type,
+            media_file_id=file_id
+        )
+        
+        data = await state.get_data()
+        status_text, keyboard = await get_broadcast_constructor_menu(data)
+        media_preview = "🖼️ Фото" if media_type == "photo" else "🎥 Видео" if media_type == "video" else "📄 Документ" if media_type == "document" else "🎬 GIF"
+        
+        await message.answer(
+            f"✅ <b>{media_preview} добавлено!</b>\n\n" + status_text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+    @dp.callback_query(F.data == "broadcast_add_buttons")
+    async def handle_broadcast_add_buttons(callback: CallbackQuery, state: FSMContext):
+        """Добавление кнопок к рассылке"""
         if not is_admin(callback.from_user.id, config):
             await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
         
-        filter_type = callback.data.split("_")[-1]  # "all" or "active"
         data = await state.get_data()
-        broadcast_text = data.get('broadcast_text', '')
+        existing_buttons = data.get('broadcast_buttons', [])
         
-        if not broadcast_text:
-            await safe_callback_answer(callback, "❌ Текст рассылки пуст", show_alert=True)
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔗 Получить VPN", callback_data="broadcast_add_menu_button:get_vpn"))
+        builder.row(InlineKeyboardButton(text="🎁 Подарок", callback_data="broadcast_add_menu_button:referral"))
+        builder.row(InlineKeyboardButton(text="💎 Подписка", callback_data="broadcast_add_menu_button:premium"))
+        builder.row(InlineKeyboardButton(text="🆘 Помощь", callback_data="broadcast_add_menu_button:help"))
+        builder.row(InlineKeyboardButton(text="🆓 Пробный период", callback_data="broadcast_add_menu_button:trial"))
+        builder.row(InlineKeyboardButton(text="➕ Добавить свою кнопку", callback_data="broadcast_add_custom_button"))
+        if existing_buttons:
+            builder.row(InlineKeyboardButton(text="✅ Готово", callback_data="broadcast_buttons_done"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_broadcast"))
+        
+        buttons_list = ""
+        if existing_buttons:
+            buttons_list = "\n\n<b>Текущие кнопки:</b>\n" + "\n".join([f"• {btn['text']}" for btn in existing_buttons])
+        
+        text = (
+            "🔘 <b>Добавление кнопок</b>\n\n"
+            "Выберите кнопку из главного меню или добавьте свою:"
+            f"{buttons_list}"
+        )
+        
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data.startswith("broadcast_add_menu_button:"))
+    async def handle_broadcast_add_menu_button(callback: CallbackQuery, state: FSMContext):
+        """Добавление кнопки главного меню в рассылку"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
         
-        await callback.message.edit_text("📢 <b>Отправка рассылки...</b>\n\nПожалуйста, подождите...", parse_mode="HTML")
+        button_type = callback.data.split(":")[1]
+        data = await state.get_data()
+        existing_buttons = data.get('broadcast_buttons', [])
+        
+        menu_buttons_map = {
+            "get_vpn": "🔗 Получить VPN",
+            "referral": "🎁 Подарок",
+            "premium": "💎 Подписка",
+            "help": "🆘 Помощь",
+            "trial": "🆓 Пробный период"
+        }
+        
+        button_text = menu_buttons_map.get(button_type)
+        if not button_text:
+            await safe_callback_answer(callback, "❌ Неизвестный тип кнопки", show_alert=True)
+            return
+        
+        for btn in existing_buttons:
+            if btn.get('callback_data') == f"menu:{button_type}":
+                await safe_callback_answer(callback, "⚠️ Эта кнопка уже добавлена", show_alert=True)
+                return
+        
+        new_button = {
+            'text': button_text,
+            'callback_data': f"menu:{button_type}"
+        }
+        existing_buttons.append(new_button)
+        await state.update_data(broadcast_buttons=existing_buttons)
+        await safe_callback_answer(callback, f"✅ Кнопка '{button_text}' добавлена", show_alert=True)
+        await handle_broadcast_add_buttons(callback, state)
+
+    @dp.callback_query(F.data == "broadcast_add_custom_button")
+    async def handle_broadcast_add_custom_button(callback: CallbackQuery, state: FSMContext):
+        """Добавление своей кнопки в рассылку"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        data = await state.get_data()
+        existing_buttons = data.get('broadcast_buttons', [])
+        
+        if existing_buttons:
+            buttons_list = "\n".join([f"• {btn['text']} → {btn.get('url', btn.get('callback_data', ''))}" for btn in existing_buttons])
+            text = (
+                "🔘 <b>Добавление своей кнопки</b>\n\n"
+                f"<b>Текущие кнопки ({len(existing_buttons)}):</b>\n{buttons_list}\n\n"
+                "Отправьте кнопку в формате:\n"
+                "<code>Текст кнопки | URL</code>\n\n"
+                "Пример:\n"
+                "<code>Открыть сайт | https://example.com</code>\n"
+                "Когда закончите, отправьте /done"
+            )
+        else:
+            text = (
+                "🔘 <b>Добавление своей кнопки</b>\n\n"
+                "Отправьте кнопку в формате:\n"
+                "<code>Текст кнопки | URL</code>\n\n"
+                "Пример:\n"
+                "<code>Открыть сайт | https://example.com</code>\n"
+                "Когда закончите, отправьте /done"
+            )
+        
+        await callback.message.edit_text(text, parse_mode="HTML")
+        await state.set_state(AdminStates.BROADCAST_BUTTONS)
         await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data == "broadcast_buttons_done")
+    async def handle_broadcast_buttons_done(callback: CallbackQuery, state: FSMContext):
+        """Завершение добавления кнопок"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
         
-        async with get_connection() as conn:
-            if filter_type == "all":
-                users = await conn.fetch('SELECT user_id FROM users WHERE blacklisted = FALSE')
-            else:  # active
-                users = await conn.fetch('''
-                    SELECT user_id FROM users 
-                    WHERE blacklisted = FALSE 
-                      AND last_activity >= CURRENT_DATE - INTERVAL '30 days'
-                ''')
+        data = await state.get_data()
+        status_text, keyboard = await get_broadcast_constructor_menu(data)
+        await callback.message.edit_text(
+            "✅ <b>Кнопки настроены!</b>\n\n" + status_text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await safe_callback_answer(callback)
+
+    @dp.message(AdminStates.BROADCAST_BUTTONS)
+    async def process_broadcast_buttons(message: Message, state: FSMContext):
+        """Обработка кнопок для рассылки"""
+        if not is_admin(message.from_user.id, config):
+            await message.answer("❌ Нет доступа")
+            await state.clear()
+            return
         
-        sent_count = 0
-        error_count = 0
+        if message.text and message.text.strip().lower() == "/done":
+            data = await state.get_data()
+            status_text, keyboard = await get_broadcast_constructor_menu(data)
+            buttons = data.get('broadcast_buttons', [])
+            if buttons:
+                await message.answer("✅ <b>Кнопки добавлены!</b>\n\n" + status_text, reply_markup=keyboard, parse_mode="HTML")
+            else:
+                await message.answer("⏭️ <b>Кнопки не добавлены</b>\n\n" + status_text, reply_markup=keyboard, parse_mode="HTML")
+            return
+        
+        text = message.text or ""
+        buttons = []
+        
+        for line in text.split('\n'):
+            line = line.strip()
+            if '|' in line:
+                parts = line.split('|', 1)
+                btn_text = parts[0].strip()
+                btn_url = parts[1].strip()
+                if btn_text and btn_url and (btn_url.startswith('http://') or btn_url.startswith('https://')):
+                    buttons.append({'text': btn_text, 'url': btn_url})
+        
+        if not buttons:
+            await message.answer("❌ Неверный формат. Используйте: <code>Текст кнопки | URL</code>", parse_mode="HTML")
+            return
+        
+        data = await state.get_data()
+        existing_buttons = data.get('broadcast_buttons', [])
+        existing_buttons.extend(buttons)
+        await state.update_data(broadcast_buttons=existing_buttons)
+        
+        buttons_list = "\n".join([f"• {btn['text']} → {btn['url']}" for btn in existing_buttons])
+        await message.answer(
+            f"✅ <b>Кнопки добавлены ({len(existing_buttons)}):</b>\n\n{buttons_list}\n\n"
+            f"Отправьте ещё кнопки или /done для возврата в конструктор",
+            parse_mode="HTML"
+        )
+
+    @dp.callback_query(F.data == "broadcast_choose_filter")
+    async def handle_broadcast_choose_filter(callback: CallbackQuery, state: FSMContext):
+        """Выбор фильтра для рассылки"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="👥 Все пользователи", callback_data="broadcast_filter:all"))
+        builder.row(InlineKeyboardButton(text="✅ С активной подпиской", callback_data="broadcast_filter:active"))
+        builder.row(InlineKeyboardButton(text="❌ Без подписки", callback_data="broadcast_filter:inactive"))
+        builder.row(InlineKeyboardButton(text="📅 Активные за 7 дней", callback_data="broadcast_filter:active_7d"))
+        builder.row(InlineKeyboardButton(text="📅 Активные за 30 дней", callback_data="broadcast_filter:active_30d"))
+        builder.row(InlineKeyboardButton(text="🎁 С рефералами", callback_data="broadcast_filter:with_referrals"))
+        builder.row(InlineKeyboardButton(text="🆓 Использовали пробный период", callback_data="broadcast_filter:trial_used"))
+        builder.row(InlineKeyboardButton(text="🧪 Не использовали пробный период", callback_data="broadcast_filter:trial_not_used"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад в конструктор", callback_data="admin_broadcast"))
+        
+        await callback.message.edit_text("🔍 <b>Выберите фильтр для рассылки:</b>", reply_markup=builder.as_markup(), parse_mode="HTML")
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data == "broadcast_toggle_test")
+    async def handle_broadcast_toggle_test(callback: CallbackQuery, state: FSMContext):
+        """Переключение тестового режима"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        data = await state.get_data()
+        current_test = data.get('broadcast_test', False)
+        await state.update_data(broadcast_test=not current_test)
+        
+        data = await state.get_data()
+        status_text, keyboard = await get_broadcast_constructor_menu(data)
+        await callback.message.edit_text(status_text, reply_markup=keyboard, parse_mode="HTML")
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data.startswith("broadcast_filter:"))
+    async def handle_broadcast_filter(callback: CallbackQuery, state: FSMContext):
+        """Обработка выбора фильтра"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        filter_type = callback.data.split(":")[1]
+        await state.update_data(broadcast_filter=filter_type)
+        
+        data = await state.get_data()
+        status_text, keyboard = await get_broadcast_constructor_menu(data)
+        await callback.message.edit_text(status_text, reply_markup=keyboard, parse_mode="HTML")
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data == "broadcast_confirm")
+    async def confirm_broadcast(callback: CallbackQuery, state: FSMContext):
+        """Подтверждение и отправка рассылки"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        data = await state.get_data()
+        broadcast_text = data.get('broadcast_text', '')
+        media_type = data.get('media_type')
+        media_file_id = data.get('media_file_id')
+        buttons = data.get('broadcast_buttons', [])
+        filter_type = data.get('broadcast_filter', 'all')
+        test_mode = data.get('broadcast_test', False)
+        
+        if not broadcast_text and not media_type:
+            await safe_callback_answer(callback, "❌ Добавьте текст или медиа", show_alert=True)
+            return
+        
+        # Формируем клавиатуру с кнопками
+        reply_markup = None
+        if buttons:
+            builder = InlineKeyboardBuilder()
+            for btn in buttons:
+                if 'url' in btn:
+                    builder.row(InlineKeyboardButton(text=btn['text'], url=btn['url']))
+                elif 'callback_data' in btn:
+                    callback_data = btn['callback_data']
+                    if callback_data.startswith('menu:'):
+                        menu_type = callback_data.split(':')[1]
+                        if menu_type == 'get_vpn':
+                            builder.row(InlineKeyboardButton(text=btn['text'], callback_data='get_vpn_link'))
+                        elif menu_type == 'referral':
+                            builder.row(InlineKeyboardButton(text=btn['text'], callback_data='open_invite'))
+                        elif menu_type == 'premium':
+                            builder.row(InlineKeyboardButton(text=btn['text'], callback_data='open_premium'))
+                        elif menu_type == 'help':
+                            builder.row(InlineKeyboardButton(text=btn['text'], callback_data='open_help'))
+                        elif menu_type == 'trial':
+                            builder.row(InlineKeyboardButton(text=btn['text'], callback_data='activate_trial'))
+            reply_markup = builder.as_markup()
+
+        if test_mode:
+            users = [{'user_id': callback.from_user.id}]
+            await callback.message.answer("🧪 <b>ТЕСТОВЫЙ РЕЖИМ:</b> Рассылка будет отправлена только вам", parse_mode="HTML")
+        else:
+            async with get_connection() as conn:
+                if filter_type == "all":
+                    users = await conn.fetch('SELECT user_id FROM users WHERE blacklisted = FALSE')
+                elif filter_type == "active":
+                    users = await conn.fetch('SELECT user_id FROM users WHERE blacklisted = FALSE AND pay_subscribed = TRUE AND subscription_end >= CURRENT_DATE')
+                elif filter_type == "inactive":
+                    users = await conn.fetch('SELECT user_id FROM users WHERE blacklisted = FALSE AND (pay_subscribed = FALSE OR subscription_end < CURRENT_DATE OR subscription_end IS NULL)')
+                elif filter_type == "active_7d":
+                    users = await conn.fetch("SELECT user_id FROM users WHERE blacklisted = FALSE AND last_activity >= CURRENT_DATE - INTERVAL '7 days'")
+                elif filter_type == "active_30d":
+                    users = await conn.fetch("SELECT user_id FROM users WHERE blacklisted = FALSE AND last_activity >= CURRENT_DATE - INTERVAL '30 days'")
+                elif filter_type == "with_referrals":
+                    users = await conn.fetch('SELECT user_id FROM users WHERE blacklisted = FALSE AND referral_count > 0')
+                elif filter_type == "trial_used":
+                    users = await conn.fetch('SELECT user_id FROM users WHERE blacklisted = FALSE AND trial_used = TRUE')
+                elif filter_type == "trial_not_used":
+                    users = await conn.fetch('SELECT user_id FROM users WHERE blacklisted = FALSE AND (trial_used = FALSE OR trial_used IS NULL) AND (pay_subscribed = FALSE OR subscription_end < CURRENT_DATE OR subscription_end IS NULL)')
+                else:
+                    users = []
+
+        sent = 0
+        failed = 0
+        test_text = " (тестовый режим)" if test_mode else ""
+        await callback.message.edit_text(f"📢 Рассылка начата{test_text}... Отправлено: {sent}, Ошибок: {failed}")
+        
+        has_trial_button = any(btn.get('callback_data') == 'menu:trial' for btn in buttons)
         
         for user_row in users:
             user_id = user_row['user_id']
+            user_reply_markup = reply_markup
+            
+            if has_trial_button:
+                async with get_connection() as conn:
+                    user_trial = await conn.fetchrow('SELECT trial_used FROM users WHERE user_id = $1', user_id)
+                    trial_used = user_trial.get('trial_used', False) if user_trial else False
+                    if trial_used:
+                        builder = InlineKeyboardBuilder()
+                        for btn in buttons:
+                            if btn.get('callback_data') != 'menu:trial':
+                                if 'url' in btn:
+                                    builder.row(InlineKeyboardButton(text=btn['text'], url=btn['url']))
+                                elif 'callback_data' in btn:
+                                    cd = btn['callback_data']
+                                    if cd.startswith('menu:'):
+                                        mt = cd.split(':')[1]
+                                        if mt == 'get_vpn': builder.row(InlineKeyboardButton(text=btn['text'], callback_data='get_vpn_link'))
+                                        elif mt == 'referral': builder.row(InlineKeyboardButton(text=btn['text'], callback_data='open_invite'))
+                                        elif mt == 'premium': builder.row(InlineKeyboardButton(text=btn['text'], callback_data='open_premium'))
+                                        elif mt == 'help': builder.row(InlineKeyboardButton(text=btn['text'], callback_data='open_help'))
+                        user_reply_markup = builder.as_markup() if builder.buttons else None
+
             try:
-                await bot.send_message(user_id, broadcast_text, parse_mode="HTML")
-                sent_count += 1
-                await asyncio.sleep(0.05)  # Защита от лимитов
+                if media_type and media_file_id:
+                    if media_type == "photo":
+                        await bot.send_photo(user_id, photo=media_file_id, caption=broadcast_text or None, reply_markup=user_reply_markup, parse_mode="HTML")
+                    elif media_type == "video":
+                        await bot.send_video(user_id, video=media_file_id, caption=broadcast_text or None, reply_markup=user_reply_markup, parse_mode="HTML")
+                    elif media_type == "document":
+                        await bot.send_document(user_id, document=media_file_id, caption=broadcast_text or None, reply_markup=user_reply_markup, parse_mode="HTML")
+                    elif media_type == "animation":
+                        await bot.send_animation(user_id, animation=media_file_id, caption=broadcast_text or None, reply_markup=user_reply_markup, parse_mode="HTML")
+                else:
+                    await bot.send_message(user_id, broadcast_text, reply_markup=user_reply_markup, parse_mode="HTML")
+                sent += 1
+                if sent % 10 == 0:
+                    await callback.message.edit_text(f"📢 Рассылка... Отправлено: {sent}, Ошибок: {failed}")
+                await asyncio.sleep(0.05)
             except Exception as e:
-                error_count += 1
-                logger.error(f"Failed to send broadcast to user {user_id}: {e}")
+                failed += 1
+                logger.error(f"Failed to send broadcast to {user_id}: {e}")
         
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад в админ панель", callback_data="admin_back"))
-        
-        await callback.message.edit_text(
-            f"✅ <b>Рассылка завершена</b>\n\n"
-            f"Отправлено: <b>{sent_count}</b>\n"
-            f"Ошибок: <b>{error_count}</b>",
-            reply_markup=builder.as_markup(),
-            parse_mode="HTML"
-        )
+        await callback.message.edit_text(f"✅ <b>Рассылка завершена{test_text}</b>\n\nОтправлено: <i>{sent}</i>\nОшибок: <i>{failed}</i>", parse_mode="HTML")
         await state.clear()
+        await safe_callback_answer(callback)
+
     
     # Обработчики ручной отправки напоминаний
     @dp.callback_query(F.data == "admin_manual_reminder")
