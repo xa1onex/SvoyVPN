@@ -55,18 +55,24 @@ def setup_scheduler():
         hours=6
     )
     
-    # Также запускаем при старте (через 30 секунд)
+    # Также запускаем при старте
+    moscow_tz = pytz.timezone("Europe/Moscow")
+    now_moscow = datetime.now(moscow_tz)
+
+    # (через 30 секунд)
     scheduler.add_job(
         lambda: handle_expired_subscriptions(bot),
         'date',
-        run_date=datetime.now() + timedelta(seconds=30)
+        run_date=now_moscow + timedelta(seconds=30),
+        misfire_grace_time=3600
     )
     
-    # Также запускаем при старте (через 60 секунд)
+    # (через 60 секунд)
     scheduler.add_job(
         lambda: send_upcoming_subscription_reminders(bot, config),
         'date',
-        run_date=datetime.now() + timedelta(seconds=60)
+        run_date=now_moscow + timedelta(seconds=60),
+        misfire_grace_time=3600
     )
     
     scheduler.start()

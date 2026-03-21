@@ -422,17 +422,20 @@ async def handle_expired_subscriptions(bot=None):
     """
     Обрабатывает истекшие подписки: деактивирует ключи и уведомляет пользователя
     """
+    import pytz
+    
     logger.info("Checking for expired subscriptions...")
     
     try:
+        now_moscow = datetime.now(pytz.timezone("Europe/Moscow")).date()
         async with get_connection() as conn:
             expired_users = await conn.fetch('''
                 SELECT user_id, subscription_end
                 FROM users
                 WHERE pay_subscribed = TRUE 
                   AND subscription_end IS NOT NULL
-                  AND DATE(subscription_end) < CURRENT_DATE
-            ''')
+                  AND DATE(subscription_end) < $1
+            ''', now_moscow)
             
             if not expired_users:
                 logger.info("No expired subscriptions found")
@@ -521,9 +524,15 @@ async def send_upcoming_subscription_reminders(bot, config):
     from aiogram.types import InlineKeyboardButton
     from .plans import get_renewal_plans, format_price_rub, format_price_stars
     
+    import pytz
+
     logger.info("Checking for upcoming subscription reminders...")
     
     try:
+        now_moscow = datetime.now(pytz.timezone("Europe/Moscow")).date()
+        target_3d = now_moscow + timedelta(days=3)
+        target_1d = now_moscow + timedelta(days=1)
+
         async with get_connection() as conn:
             # 1. Находим тех, у кого осталось ровно 3 дня и ЕЩЕ НЕ БЫЛО напоминания '3_days'
             users_3d = await conn.fetch('''
@@ -532,10 +541,10 @@ async def send_upcoming_subscription_reminders(bot, config):
                 LEFT JOIN subscription_reminders r ON u.user_id = r.user_id AND r.reminder_type = '3_days'
                 WHERE u.pay_subscribed = TRUE
                   AND u.subscription_end IS NOT NULL
-                  AND DATE(u.subscription_end) = CURRENT_DATE + INTERVAL '3 days'
+                  AND DATE(u.subscription_end) = $1
                   AND r.id IS NULL
                   AND u.blacklisted = FALSE
-            ''')
+            ''', target_3d)
             
             # 2. Находим тех, у кого осталось ровно 1 день и ЕЩЕ НЕ БЫЛО напоминания '1_day'
             users_1d = await conn.fetch('''
@@ -544,10 +553,10 @@ async def send_upcoming_subscription_reminders(bot, config):
                 LEFT JOIN subscription_reminders r ON u.user_id = r.user_id AND r.reminder_type = '1_day'
                 WHERE u.pay_subscribed = TRUE
                   AND u.subscription_end IS NOT NULL
-                  AND DATE(u.subscription_end) = CURRENT_DATE + INTERVAL '1 day'
+                  AND DATE(u.subscription_end) = $1
                   AND r.id IS NULL
                   AND u.blacklisted = FALSE
-            ''')
+            ''', target_1d)
             
             renewal_plans = await get_renewal_plans()
             
