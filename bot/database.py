@@ -367,6 +367,21 @@ async def init_db() -> None:
         except Exception as e:
             logging.warning(f"Could not create user_balances table: {e}")
         
+        # Таблица для отслеживания отправленных уведомлений о подписке
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS subscription_reminders (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    reminder_type TEXT NOT NULL,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id)
+                )
+            ''')
+            await conn.execute('CREATE INDEX IF NOT EXISTS idx_sub_rem_user_type ON subscription_reminders(user_id, reminder_type)')
+        except Exception as e:
+            logging.warning(f"Could not create subscription_reminders table: {e}")
+        
         # Таблица для приложений устройств
         try:
             await conn.execute('''
@@ -457,32 +472,6 @@ async def init_db() -> None:
             logging.warning(f"Could not create utm_visits table: {e}")
 
 
-async def check_expired_subscriptions() -> None:
-    """Сбрасывает статус подписки для истёкших пользователей (мягко)."""
-    current_time = datetime.now(pytz.timezone("Europe/Moscow")).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
-    async with get_connection() as conn:
-        try:
-            result = await conn.execute(
-                """
-                UPDATE users
-                SET
-                    pay_subscribed = FALSE,
-                    subscription_end = NULL
-                WHERE
-                    pay_subscribed = TRUE
-                    AND subscription_end < $1
-                """,
-                current_time,
-            )
-            if result and "UPDATE" in result:
-                count = int(result.split()[-1])
-                if count > 0:
-                    logging.info("Disabled %s expired subscriptions", count)
-        except Exception as e:
-            logging.error("Error in check_expired_subscriptions: %s", e)
-            raise
 
 
 def generate_subscription_token() -> str:

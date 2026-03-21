@@ -13,7 +13,7 @@ import pytz
 
 from .config import load_config
 from .database import init_db
-from .subscriptions import handle_expired_subscriptions
+from .subscriptions import handle_expired_subscriptions, send_upcoming_subscription_reminders
 from .webhook_server import WebhookServer
 from .yookassa_client import YooKassaClient
 from .flyer_client import FlyerClient
@@ -48,11 +48,25 @@ def setup_scheduler():
         minute=5
     )
     
+    # Проверка предстоящих окончаний подписки (каждые 6 часов)
+    scheduler.add_job(
+        lambda: send_upcoming_subscription_reminders(bot, config),
+        'interval',
+        hours=6
+    )
+    
     # Также запускаем при старте (через 30 секунд)
     scheduler.add_job(
         lambda: handle_expired_subscriptions(bot),
         'date',
         run_date=datetime.now() + timedelta(seconds=30)
+    )
+    
+    # Также запускаем при старте (через 60 секунд)
+    scheduler.add_job(
+        lambda: send_upcoming_subscription_reminders(bot, config),
+        'date',
+        run_date=datetime.now() + timedelta(seconds=60)
     )
     
     scheduler.start()

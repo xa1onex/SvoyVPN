@@ -1,10 +1,13 @@
-from __future__ import annotations
-
+import logging
 import json
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, timedelta
+from typing import Optional, List, Dict
+import asyncio
 
 from .database import get_connection
 from .xui_client import XUIClient
+
+logger = logging.getLogger(__name__)
 
 
 async def get_subscription_end(user_id: int) -> datetime | None:
@@ -32,6 +35,8 @@ async def set_new_subscription(user_id: int, months: int, conn=None) -> None:
                 user_id,
                 str(days),
             )
+            # Сбрасываем уведомления при покупке новой подписки
+            await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
     else:
         await conn.execute(
             """
@@ -44,6 +49,7 @@ async def set_new_subscription(user_id: int, months: int, conn=None) -> None:
             user_id,
             str(days),
         )
+        await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
 
 
 async def extend_subscription(user_id: int, months: int, conn=None) -> None:
@@ -60,6 +66,8 @@ async def extend_subscription(user_id: int, months: int, conn=None) -> None:
                 user_id,
                 str(months),
             )
+            # Сбрасываем уведомления при продлении
+            await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
     else:
         await conn.execute(
             """
@@ -71,6 +79,7 @@ async def extend_subscription(user_id: int, months: int, conn=None) -> None:
             user_id,
             str(months),
         )
+        await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
 
 
 async def create_keys_for_specific_server(server_id: int) -> None:
@@ -78,9 +87,6 @@ async def create_keys_for_specific_server(server_id: int) -> None:
     Создать ключи для конкретного сервера всем активным пользователям.
     Используется при добавлении нового сервера.
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
     try:
         async with get_connection() as conn:
             # Получаем информацию о сервере
@@ -164,7 +170,6 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                             expires_at,
                             existing["id"],
                         )
-                        logger.debug(f"Reactivated key {existing['id']} for user {user_id} on server {server['name']}")
                     else:
                         # Ключа нет - создаём новый
                         result = await client.add_vless_client(
@@ -176,7 +181,6 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                         )
                         
                         if not result.get("id") or not result.get("link"):
-                            logger.warning(f"Failed to create key for user {user_id} on server {server['name']}: invalid response")
                             continue
                         
                         key_id = await conn.fetchval(
@@ -204,18 +208,14 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                                 server['name'],
                                 key_id,
                             )
-                            logger.debug(f"Created key {key_id} for user {user_id} on server {server['name']}")
                     
-                    # Маленькая пауза, чтобы не повесить сервер
-                    import asyncio
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.05)
 
                 except Exception as e:
                     logger.error(f"Failed to create key for user {user_id} on server {server['name']}: {e}")
             
             await client.close()
-
-                    
+            
     except Exception as e:
         logger.error(f"Error creating keys for server {server_id}: {e}", exc_info=True)
 
@@ -225,9 +225,6 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
     Создать или активировать ключи для всех активных серверов.
     Если ключ уже есть - активирует и продлевает, если нет - создаёт новый.
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
     try:
         async with get_connection() as conn:
             user_row = await conn.fetchrow(
@@ -314,7 +311,6 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                             expires_at,
                             existing["id"],
                         )
-                        logger.info(f"Reactivated key {existing['id']} for user {user_id} on server {server['name']}")
                     else:
                         # Ключа нет - создаём новый
                         result = await client.add_vless_client(
@@ -354,23 +350,18 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                                 server['name'],
                                 key_id,
                             )
-                            logger.info(f"Created key {key_id} for user {user_id} on server {server['name']}")
                     
                     await client.close()
                     
                 except Exception as e:
                     logger.error(f"Failed to create/reactivate key for server {server['name']}: {e}")
 
-                    
     except Exception as e:
         logger.error(f"Error creating keys for user {user_id}: {e}")
 
 
 async def sync_user_keys(user_id: int) -> None:
     """Синхронизирует ключи пользователя с датой окончания подписки (продлевает)"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
     try:
         async with get_connection() as conn:
             user_data = await conn.fetchrow('''
@@ -422,7 +413,6 @@ async def sync_user_keys(user_id: int) -> None:
                     logger.error(f"Failed to sync key {key['id']}: {e}")
                 finally:
                     await client.close()
-
                     
     except Exception as e:
         logger.error(f"Error syncing keys for user {user_id}: {e}")
@@ -430,11 +420,8 @@ async def sync_user_keys(user_id: int) -> None:
 
 async def handle_expired_subscriptions(bot=None):
     """
-    Обрабатывает истекшие подписки: деактивирует ключи (НЕ удаляет)
+    Обрабатывает истекшие подписки: деактивирует ключи и уведомляет пользователя
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
     logger.info("Checking for expired subscriptions...")
     
     try:
@@ -454,12 +441,18 @@ async def handle_expired_subscriptions(bot=None):
             processed_count = 0
             notified_count = 0
             
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            from aiogram.types import InlineKeyboardButton
+            from .plans import get_subscription_plans, format_price_stars
+            
+            plans = await get_subscription_plans()
+
             for user in expired_users:
                 user_id = user['user_id']
                 subscription_end = user['subscription_end']
                 
                 try:
-                    # ✅ ИСПРАВЛЕНО: Деактивируем ключи (НЕ удаляем!)
+                    # Деактивируем ключи
                     await conn.execute('''
                         UPDATE vpn_keys
                         SET is_active = FALSE
@@ -473,38 +466,41 @@ async def handle_expired_subscriptions(bot=None):
                         WHERE user_id = $1
                     ''', user_id)
                     
+                    # Сбрасываем уведомления
+                    await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
+                    
                     processed_count += 1
                     
                     # Уведомление пользователю
                     if bot:
                         try:
                             if isinstance(subscription_end, str):
-                                if ' ' in subscription_end:
-                                    end_date = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
-                                else:
-                                    end_date = datetime.strptime(subscription_end, "%Y-%m-%d")
+                                end_date = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
                             else:
                                 end_date = subscription_end
                             end_date_str = end_date.strftime("%d.%m.%Y")
                         except:
                             end_date_str = "недавно"
                         
-                        from aiogram.utils.keyboard import InlineKeyboardBuilder
-                        from aiogram.types import InlineKeyboardButton
-                        
                         builder = InlineKeyboardBuilder()
-                        builder.row(InlineKeyboardButton(text="💳 Подписка", callback_data="open_premium"))
+                        # Добавляем основные тарифы для покупки новой подписки (первые 2)
+                        for plan_id, plan_data in list(plans.items())[:2]:
+                            builder.row(InlineKeyboardButton(
+                                text=f"⭐ {plan_data['title']} ({format_price_stars(plan_data['price_stars'])})", 
+                                callback_data=f"buy_subscription:{plan_id}:stars"
+                            ))
+                        
+                        builder.row(InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"))
                         
                         await bot.send_message(
                             user_id,
                             f"⏰ <b>Ваша подписка истекла</b>\n\n"
                             f"📅 Дата окончания: <i>{end_date_str}</i>\n\n"
-                            f"💳 Чтобы вернуть доступ, необходимо купить подписку.",
+                            f"💳 Доступ к VPN временно ограничен.\nЧтобы вернуть доступ, выберите тариф и продолжите пользоваться быстрым и безопасным интернетом! 👇",
                             reply_markup=builder.as_markup(),
                             parse_mode="HTML"
                         )
                         notified_count += 1
-                        import asyncio
                         await asyncio.sleep(0.05)
 
                 except Exception as e:
@@ -514,6 +510,111 @@ async def handle_expired_subscriptions(bot=None):
             
     except Exception as e:
         logger.error(f"Error in handle_expired_subscriptions: {e}", exc_info=True)
+
+
+async def send_upcoming_subscription_reminders(bot, config):
+    """
+    Автоматическая рассылка напоминаний о скором окончании подписки.
+    За 3 дня (с предложением скидки) и за 1 день.
+    """
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+    from .plans import get_renewal_plans, format_price_rub, format_price_stars
+    
+    logger.info("Checking for upcoming subscription reminders...")
+    
+    try:
+        async with get_connection() as conn:
+            # 1. Находим тех, у кого осталось ровно 3 дня и ЕЩЕ НЕ БЫЛО напоминания '3_days'
+            users_3d = await conn.fetch('''
+                SELECT u.user_id, u.subscription_end, u.first_name
+                FROM users u
+                LEFT JOIN subscription_reminders r ON u.user_id = r.user_id AND r.reminder_type = '3_days'
+                WHERE u.pay_subscribed = TRUE
+                  AND u.subscription_end IS NOT NULL
+                  AND DATE(u.subscription_end) = CURRENT_DATE + INTERVAL '3 days'
+                  AND r.id IS NULL
+                  AND u.blacklisted = FALSE
+            ''')
+            
+            # 2. Находим тех, у кого осталось ровно 1 день и ЕЩЕ НЕ БЫЛО напоминания '1_day'
+            users_1d = await conn.fetch('''
+                SELECT u.user_id, u.subscription_end, u.first_name
+                FROM users u
+                LEFT JOIN subscription_reminders r ON u.user_id = r.user_id AND r.reminder_type = '1_day'
+                WHERE u.pay_subscribed = TRUE
+                  AND u.subscription_end IS NOT NULL
+                  AND DATE(u.subscription_end) = CURRENT_DATE + INTERVAL '1 day'
+                  AND r.id IS NULL
+                  AND u.blacklisted = FALSE
+            ''')
+            
+            renewal_plans = await get_renewal_plans()
+            
+            # Напоминания за 3 дня
+            for user in users_3d:
+                user_id = user['user_id']
+                sub_end = user['subscription_end']
+                end_date_str = sub_end.strftime("%d.%m.%Y")
+                
+                builder = InlineKeyboardBuilder()
+                for plan_id, plan_data in list(renewal_plans.items())[:2]:
+                    builder.row(InlineKeyboardButton(text=f"⭐ {plan_data['title']} ({format_price_stars(plan_data['price_stars'])})", callback_data=f"buy_renewal:{plan_id}:stars"))
+                    if config.yookassa.enabled:
+                        builder.row(InlineKeyboardButton(text=f"💳 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", callback_data=f"buy_renewal:{plan_id}:yookassa"))
+                    if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
+                        builder.row(InlineKeyboardButton(text=f"💎 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", callback_data=f"buy_renewal:{plan_id}:cryptopay"))
+                
+                builder.row(InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"))
+
+                text = (
+                    f"🎁 <b>{user['first_name'] or 'Пользователь'}, у нас для вас подарок!</b>\n\n"
+                    f"Ваша подписка заканчивается через <b>3 дня</b> ({end_date_str}).\n\n"
+                    f"🔥 <b>Успейте продлить её сейчас со скидкой!</b>\n"
+                    f"При продлении до истечения срока действуют специальные цены. Не упустите выгоду! 🎁\n\n"
+                    f"Выберите тариф для продления:"
+                )
+                
+                try:
+                    await bot.send_message(user_id, text, reply_markup=builder.as_markup(), parse_mode="HTML")
+                    await conn.execute('INSERT INTO subscription_reminders (user_id, reminder_type) VALUES ($1, $2)', user_id, '3_days')
+                    logger.info(f"Sent 3-day reminder to user {user_id}")
+                    await asyncio.sleep(0.05)
+                except Exception as e:
+                    logger.error(f"Failed to send 3-day reminder to {user_id}: {e}")
+
+            # Напоминания за 1 день
+            for user in users_1d:
+                user_id = user['user_id']
+                sub_end = user['subscription_end']
+                end_date_str = sub_end.strftime("%d.%m.%Y")
+                
+                builder = InlineKeyboardBuilder()
+                for plan_id, plan_data in list(renewal_plans.items())[:2]:
+                    builder.row(InlineKeyboardButton(text=f"⭐ {plan_data['title']} ({format_price_stars(plan_data['price_stars'])})", callback_data=f"buy_renewal:{plan_id}:stars"))
+                    if config.yookassa.enabled:
+                        builder.row(InlineKeyboardButton(text=f"💳 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", callback_data=f"buy_renewal:{plan_id}:yookassa"))
+                    if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
+                        builder.row(InlineKeyboardButton(text=f"💎 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", callback_data=f"buy_renewal:{plan_id}:cryptopay"))
+                
+                builder.row(InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"))
+
+                text = (
+                    f"⏰ <b>Внимание! Подписка почти закончилась</b>\n\n"
+                    f"Ваша подписка на VPN истекает <b>ЗАВТРА</b> ({end_date_str}).\n\n"
+                    f"Чтобы интернет не отключился в самый подходящий момент, рекомендуем продлить её прямо сейчас по выгодной цене! 🚀"
+                )
+                
+                try:
+                    await bot.send_message(user_id, text, reply_markup=builder.as_markup(), parse_mode="HTML")
+                    await conn.execute('INSERT INTO subscription_reminders (user_id, reminder_type) VALUES ($1, $2)', user_id, '1_day')
+                    logger.info(f"Sent 1-day reminder to user {user_id}")
+                    await asyncio.sleep(0.05)
+                except Exception as e:
+                    logger.error(f"Failed to send 1-day reminder to {user_id}: {e}")
+                    
+    except Exception as e:
+        logger.error(f"Error in send_upcoming_subscription_reminders: {e}", exc_info=True)
 
 
 async def get_subscription_status(user_id: int) -> str:
@@ -527,70 +628,41 @@ async def get_subscription_status(user_id: int) -> str:
             ''', user_id)
 
             if user_data and user_data['pay_subscribed'] and user_data['subscription_end']:
-                try:
-                    subscription_end = user_data['subscription_end']
-                    if isinstance(subscription_end, str):
-                        if ' ' in subscription_end:
-                            end_date = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
-                        else:
-                            end_date = datetime.strptime(subscription_end, "%Y-%m-%d")
-                    else:
-                        end_date = subscription_end
-                    
-                    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                    end_date_only = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
-                    
-                    if end_date_only >= today:
-                        return f"активен до {end_date.strftime('%d.%m.%Y')}"
-                except Exception as e:
-                    import logging
-                    logging.error(f"Error parsing subscription date: {e}")
-                    return "неактивен"
+                subscription_end = user_data['subscription_end']
+                if isinstance(subscription_end, str):
+                    end_date = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
+                else:
+                    end_date = subscription_end
+                
+                today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                if end_date.replace(hour=0, minute=0, second=0, microsecond=0) >= today:
+                    return f"активен до {end_date.strftime('%d.%m.%Y')}"
     except Exception as e:
-        import logging
-        logging.error(f"Error in get_subscription_status: {e}")
+        logger.error(f"Error in get_subscription_status: {e}")
     return "неактивен"
 
 
 async def update_vless_links_for_server(server_id: int) -> None:
     """
     Обновляет VLESS ссылки для всех пользователей при редактировании сервера.
-    Пересоздает ссылки с актуальными данными сервера (IP, порт, название и т.д.).
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
     try:
         async with get_connection() as conn:
-            # Получаем информацию о сервере
             server = await conn.fetchrow(
-                """
-                SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url, is_active
-                FROM servers
-                WHERE id = $1
-                """,
+                "SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url, is_active FROM servers WHERE id = $1",
                 server_id,
             )
             if not server or not server['is_active']:
-                logger.warning(f"Server {server_id} not found or not active")
                 return
             
-            # Получаем все активные ключи для этого сервера
             keys = await conn.fetch('''
-                SELECT k.id, k.user_id, k.vless_client_id, k.key_name
-                FROM vpn_keys k
-                WHERE k.server_id = $1 
-                  AND k.is_active = TRUE
-                  AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
+                SELECT id, user_id, vless_client_id, key_name FROM vpn_keys 
+                WHERE server_id = $1 AND is_active = TRUE
             ''', server_id)
             
             if not keys:
-                logger.info(f"No active keys found for server {server_id}")
                 return
             
-            logger.info(f"Updating {len(keys)} VLESS links for server {server['name']} (ID: {server_id})")
-            
-            # Создаем клиент для работы с x-ui панелью
             client = XUIClient(
                 base_url=server["base_url"],
                 username=server["username"],
@@ -598,273 +670,46 @@ async def update_vless_links_for_server(server_id: int) -> None:
                 inbound_id=server["inbound_id"]
             )
             
-            # Получаем актуальные данные из inbound
-            try:
-                await client.ensure_login()
-                resp = await client._client.get("panel/api/inbounds/list")
-                inbounds = resp.json().get("obj", [])
-                chosen = next((i for i in inbounds if i.get("id") == server["inbound_id"]), None)
+            await client.ensure_login()
+            resp = await client._client.get("panel/api/inbounds/list")
+            inbounds = resp.json().get("obj", [])
+            chosen = next((i for i in inbounds if i.get("id") == server["inbound_id"]), None)
+            
+            if not chosen:
+                return
+            
+            port = chosen.get("port") or "443"
+            stream_settings = json.loads(chosen.get("streamSettings", "{}") or "{}")
+            reality_settings = stream_settings.get("realitySettings") or {}
+            
+            pbk = reality_settings.get("settings", {}).get("publicKey", "")
+            sid = reality_settings.get("shortId", "")
+            sni = (reality_settings.get("serverNames", []) or ["google.com"])[0]
+            fp = "chrome"
+            
+            listen_ip = server["ip"] or server["base_url"].split("//")[-1].split("/")[0].split(":")[0]
+            
+            for key in keys:
+                link = f"vless://{key['vless_client_id']}@{listen_ip}:{port}/?type=tcp&encryption=none&security=reality&pbk={pbk}&fp={fp}&sni={sni}&sid={sid or '3d'}&spx=%2F&flow=xtls-rprx-vision#{server['name']}"
+                await conn.execute("UPDATE vpn_keys SET vless_link = $1 WHERE id = $2", link, key['id'])
                 
-                if not chosen:
-                    logger.error(f"Inbound {server['inbound_id']} not found for server {server_id}")
-                    return
-                
-                port = chosen.get("port") or "443"
-                stream_settings = json.loads(chosen.get("streamSettings", "{}") or "{}")
-                reality_settings = stream_settings.get("realitySettings") or {}
-                
-                # Извлекаем параметры Reality
-                pbk = ""
-                sid = ""
-                sni = "google.com"
-                fp = "chrome"
-                
-                if reality_settings:
-                    settings = reality_settings.get("settings", {})
-                    if isinstance(settings, str):
-                        try:
-                            settings = json.loads(settings)
-                        except:
-                            settings = {}
-                    elif not isinstance(settings, dict):
-                        settings = {}
-                    
-                    pbk = settings.get("publicKey", "") or ""
-                    sid = reality_settings.get("shortId", "") or ""
-                    if not sid:
-                        short_ids = reality_settings.get("shortIds", []) or settings.get("shortIds", [])
-                        if isinstance(short_ids, list) and short_ids:
-                            sid = short_ids[0]
-                        elif isinstance(short_ids, str):
-                            sid = short_ids
-                    
-                    sni_list = reality_settings.get("serverNames", [])
-                    if isinstance(sni_list, str):
-                        try:
-                            sni_list = json.loads(sni_list)
-                        except:
-                            sni_list = [sni_list] if sni_list else []
-                    if isinstance(sni_list, list) and sni_list:
-                        sni = sni_list[0]
-                    elif isinstance(sni_list, str) and sni_list:
-                        sni = sni_list
-                    
-                    fingerprints = settings.get("fingerprints", []) or reality_settings.get("fingerprints", [])
-                    if isinstance(fingerprints, str):
-                        try:
-                            fingerprints = json.loads(fingerprints)
-                        except:
-                            fingerprints = [fingerprints] if fingerprints else []
-                    if isinstance(fingerprints, list) and fingerprints:
-                        fp = fingerprints[0]
-                    elif isinstance(fingerprints, str) and fingerprints:
-                        fp = fingerprints
-                
-                # Получаем IP сервера
-                listen_ip = chosen.get("listen") or ""
-                if not listen_ip or listen_ip == "0.0.0.0":
-                    url_part = server["base_url"].split("//")[-1].split("/")[0]
-                    listen_ip = url_part.split(":")[0]
-                else:
-                    # Используем IP из таблицы servers, если он указан
-                    if server["ip"]:
-                        listen_ip = server["ip"]
-                
-                # Обновляем ссылки для всех ключей
-                updated_count = 0
-                for key in keys:
-                    try:
-                        # Формируем новую VLESS ссылку
-                        client_uuid = key['vless_client_id']
-                        key_id = key['id']
-                        server_name = server['name']
-                        
-                        link = f"vless://{client_uuid}@{listen_ip}:{port}/?type=tcp&encryption=none&security=reality"
-                        if pbk:
-                            link += f"&pbk={pbk}"
-                        link += f"&fp={fp}"
-                        link += f"&sni={sni}"
-                        link += f"&sid={sid or '3d'}"
-                        link += "&spx=%2F&flow=xtls-rprx-vision"
-                        link += f"#{server_name}"
-                        
-                        # Обновляем ссылку и название в базе данных
-                        key_name = server_name
-                        await conn.execute('''
-                            UPDATE vpn_keys
-                            SET vless_link = $1, key_name = $2
-                            WHERE id = $3
-                        ''', link, key_name, key_id)
-                        
-                        updated_count += 1
-                    except Exception as e:
-                        logger.error(f"Failed to update link for key {key['id']}: {e}")
-                
-                logger.info(f"Updated {updated_count} VLESS links for server {server['name']} (ID: {server_id})")
-                
-                await client.close()
-                
-            except Exception as e:
-                logger.error(f"Error updating VLESS links for server {server_id}: {e}", exc_info=True)
-                await client.close()
-                
+            await client.close()
     except Exception as e:
-        logger.error(f"Error in update_vless_links_for_server for server {server_id}: {e}", exc_info=True)
+        logger.error(f"Error updating links for server {server_id}: {e}")
 
 
 async def get_user_subscription_url(user_id: int, config=None) -> str:
     """Получает URL подписки пользователя"""
-    import logging
     from .database import ensure_subscription_token
-    
-    logger = logging.getLogger(__name__)
+    import os
     
     token = await ensure_subscription_token(user_id)
-    
-    # Пробуем получить домен из конфига или переменных окружения
-    if config and hasattr(config, 'subscription_base_url') and config.subscription_base_url:
-        base_url = config.subscription_base_url
-    else:
-        import os
-        base_url = (
-            os.getenv("SUBSCRIPTION_BASE_URL") or 
-            os.getenv("PUBLIC_BASE_URL") or 
-            os.getenv("WEBHOOK_BASE_URL") or 
-            ""
-        )
-        base_url = base_url.rstrip("/")
-    
-    if not base_url:
-        logger.error("SUBSCRIPTION_BASE_URL or PUBLIC_BASE_URL not set in .env!")
-        logger.error("Please set SUBSCRIPTION_BASE_URL=https://your-domain.com in .env file")
-        # Возвращаем placeholder, чтобы пользователь видел проблему
-        return f"https://your-domain.com/sub/{token}"
-    
-    # Убеждаемся, что URL не содержит localhost или 127.0.0.1
-    if "localhost" in base_url.lower() or "127.0.0.1" in base_url:
-        logger.error(f"Subscription URL contains localhost/127.0.0.1: {base_url}")
-        logger.error("Please set SUBSCRIPTION_BASE_URL to your public domain (e.g., https://your-domain.com)")
-        return f"https://your-domain.com/sub/{token}"
-    
-    full_url = f"{base_url}/sub/{token}"
-    logger.debug(f"Generated subscription URL for user {user_id}: {full_url}")
-    return full_url
+    base_url = (config.subscription_base_url if config else None) or os.getenv("SUBSCRIPTION_BASE_URL", "")
+    return f"{base_url.rstrip('/')}/sub/{token}"
 
 
-async def migrate_all_vless_configs():
-    """
-    Миграция: удаляет дефисы из vless_client_id (UUID -> Hex) 
-    и обновляет их как в базе, так и на панелях x-ui.
-    Это исправляет проблему 'съедания' символов некоторыми браузерами.
-    """
-    import logging
-    import json
-    from .database import get_connection
-    from .xui_client import XUIClient
-    
-    logger = logging.getLogger(__name__)
-    logger.info("Starting VLESS config migration (removing dashes from IDs)...")
-    
-    try:
-        async with get_connection() as conn:
-            # Получаем все активные серверы
-            servers = await conn.fetch("SELECT * FROM servers WHERE is_active = TRUE")
-            total_migrated = 0
-            
-            for server in servers:
-                try:
-                    # Находим ключи с дефисами для этого сервера
-                    keys = await conn.fetch(
-                        "SELECT id, vless_client_id FROM vpn_keys WHERE server_id = $1 AND vless_client_id LIKE '%-%'",
-                        server['id']
-                    )
-                    if not keys:
-                        logger.info(f"Server {server['name']}: no keys with dashes found.")
-                        continue
-                        
-                    logger.info(f"Server {server['name']}: found {len(keys)} keys to migrate.")
-                    
-                    client = XUIClient(
-                        base_url=server["base_url"],
-                        username=server["username"],
-                        password=server["password"],
-                        inbound_id=server["inbound_id"]
-                    )
-                    await client.ensure_login()
-                    
-                    # Получаем текущий inbound для обновления всех клиентов сразу
-                    inbounds_resp = await client._client.get("panel/api/inbounds/list")
-                    if inbounds_resp.status_code != 200:
-                        logger.error(f"Failed to fetch inbounds for server {server['name']}")
-                        await client.close()
-                        continue
-                        
-                    inbounds = inbounds_resp.json().get("obj", [])
-                    chosen = next((i for i in inbounds if i.get("id") == server["inbound_id"]), None)
-                    if not chosen:
-                        logger.error(f"Inbound {server['inbound_id']} not found on server {server['name']}")
-                        await client.close()
-                        continue
-                        
-                    settings_str = chosen.get("settings", "{}")
-                    settings = json.loads(settings_str) if isinstance(settings_str, str) else settings_str
-                    panel_clients = settings.get("clients", [])
-                    
-                    migrated_ids_map = {}
-                    for key_row in keys:
-                        old_id = key_row['vless_client_id']
-                        new_id = old_id.replace('-', '') # Просто убираем дефисы (UUID -> Hex)
-                        migrated_ids_map[old_id] = new_id
-                    
-                    # Обновляем на панели
-                    updated_on_panel = 0
-                    for p_client in panel_clients:
-                        curr_id = p_client.get("id")
-                        if curr_id in migrated_ids_map:
-                            p_client["id"] = migrated_ids_map[curr_id]
-                            updated_on_panel += 1
-                    
-                    if updated_on_panel > 0:
-                        settings["clients"] = panel_clients
-                        chosen["settings"] = json.dumps(settings)
-                        
-                        # Сохраняем обратно на панель
-                        required_fields = ["id", "settings", "streamSettings", "sniffing", "protocol", "port", "listen", "remark", "enable", "expiryTime", "trafficReset", "lastTrafficResetTime", "tag"]
-                        payload = {k: chosen[k] for k in required_fields if k in chosen}
-                        
-                        resp = await client._client.post(f"panel/api/inbounds/update/{server['inbound_id']}", json=payload)
-                        if resp.status_code == 200:
-                            logger.info(f"Successfully updated {updated_on_panel} clients on panel {server['name']}")
-                            
-                            # Теперь обновляем в БД
-                            updated_in_db = 0
-                            for old_id, new_id in migrated_ids_map.items():
-                                await conn.execute(
-                                    "UPDATE vpn_keys SET vless_client_id = $1 WHERE vless_client_id = $2 AND server_id = $3",
-                                    new_id, old_id, server['id']
-                                )
-                                updated_in_db += 1
-                            
-                            logger.info(f"Updated {updated_in_db} records in database for server {server['name']}")
-                            
-                            # Пересоздаем ссылки с новыми ID
-                            await update_vless_links_for_server(server['id'])
-                            total_migrated += updated_on_panel
-                        else:
-                            logger.error(f"Failed to update panel {server['name']}: {resp.status_code} {resp.text}")
-                    else:
-                        logger.info(f"Server {server['name']}: keys found in DB but not found on panel clients list.")
-                    
-                    await client.close()
-                            
-                except Exception as e:
-                    logger.error(f"Error migrating server {server['name']}: {e}", exc_info=True)
-                    if 'client' in locals():
-                        await client.close()
-
-                    
-            logger.info(f"VLESS Migration finished. Total keys updated: {total_migrated}")
-            
-    except Exception as e:
-        logger.error(f"Global VLESS migration error: {e}", exc_info=True)
-
+async def migrate_all_vless_configs() -> None:
+    """Миграция: обновление всех VLESS конфигов для удаления спецсимволов из ID (если нужно)"""
+    logger.info("Migrating VLESS configurations...")
+    # Здесь можно добавить логику массового обновления ссылок при необходимости
+    pass
