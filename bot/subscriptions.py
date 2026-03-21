@@ -446,7 +446,7 @@ async def handle_expired_subscriptions(bot=None):
             
             from aiogram.utils.keyboard import InlineKeyboardBuilder
             from aiogram.types import InlineKeyboardButton
-            from .plans import get_subscription_plans, format_price_stars
+            from .plans import get_subscription_plans, format_price_both
             
             plans = await get_subscription_plans()
 
@@ -486,14 +486,13 @@ async def handle_expired_subscriptions(bot=None):
                             end_date_str = "недавно"
                         
                         builder = InlineKeyboardBuilder()
-                        # Добавляем основные тарифы для покупки новой подписки (первые 2)
-                        for plan_id, plan_data in list(plans.items())[:2]:
-                            builder.row(InlineKeyboardButton(
-                                text=f"⭐ {plan_data['title']} ({format_price_stars(plan_data['price_stars'])})", 
-                                callback_data=f"buy_subscription:{plan_id}:stars"
-                            ))
                         
-                        builder.row(InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"))
+                        for plan_id, plan_data in plans.items():
+                            builder.button(
+                                text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
+                                callback_data=f"plan:{plan_id}"
+                            )
+                        builder.adjust(1)
                         
                         await bot.send_message(
                             user_id,
@@ -522,7 +521,7 @@ async def send_upcoming_subscription_reminders(bot, config):
     """
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     from aiogram.types import InlineKeyboardButton
-    from .plans import get_renewal_plans, format_price_rub, format_price_stars
+    from .plans import get_renewal_plans, format_price_both
     
     import pytz
 
@@ -567,14 +566,12 @@ async def send_upcoming_subscription_reminders(bot, config):
                 end_date_str = sub_end.strftime("%d.%m.%Y")
                 
                 builder = InlineKeyboardBuilder()
-                for plan_id, plan_data in list(renewal_plans.items())[:2]:
-                    builder.row(InlineKeyboardButton(text=f"⭐ {plan_data['title']} ({format_price_stars(plan_data['price_stars'])})", callback_data=f"buy_renewal:{plan_id}:stars"))
-                    if config.yookassa.enabled:
-                        builder.row(InlineKeyboardButton(text=f"💳 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", callback_data=f"buy_renewal:{plan_id}:yookassa"))
-                    if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
-                        builder.row(InlineKeyboardButton(text=f"💎 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", callback_data=f"buy_renewal:{plan_id}:cryptopay"))
-                
-                builder.row(InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"))
+                for plan_id, plan_data in renewal_plans.items():
+                    builder.button(
+                        text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
+                        callback_data=f"plan:{plan_id}"
+                    )
+                builder.adjust(1)
 
                 text = (
                     f"🎁 <b>{user['first_name'] or 'Пользователь'}, у нас для вас подарок!</b>\n\n"
@@ -599,14 +596,12 @@ async def send_upcoming_subscription_reminders(bot, config):
                 end_date_str = sub_end.strftime("%d.%m.%Y")
                 
                 builder = InlineKeyboardBuilder()
-                for plan_id, plan_data in list(renewal_plans.items())[:2]:
-                    builder.row(InlineKeyboardButton(text=f"⭐ {plan_data['title']} ({format_price_stars(plan_data['price_stars'])})", callback_data=f"buy_renewal:{plan_id}:stars"))
-                    if config.yookassa.enabled:
-                        builder.row(InlineKeyboardButton(text=f"💳 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", callback_data=f"buy_renewal:{plan_id}:yookassa"))
-                    if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
-                        builder.row(InlineKeyboardButton(text=f"💎 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", callback_data=f"buy_renewal:{plan_id}:cryptopay"))
-                
-                builder.row(InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"))
+                for plan_id, plan_data in renewal_plans.items():
+                    builder.button(
+                        text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
+                        callback_data=f"plan:{plan_id}"
+                    )
+                builder.adjust(1)
 
                 text = (
                     f"⏰ <b>Внимание! Подписка почти закончилась</b>\n\n"
