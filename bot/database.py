@@ -168,6 +168,7 @@ async def init_db() -> None:
                 base_url TEXT NOT NULL,
                 is_active BOOLEAN DEFAULT TRUE,
                 display_order INTEGER DEFAULT 100,
+                is_system BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP
             )
@@ -186,8 +187,12 @@ async def init_db() -> None:
             if 'display_order' not in srv_existing:
                 await conn.execute("ALTER TABLE servers ADD COLUMN display_order INTEGER DEFAULT 100")
                 logging.info("Added display_order column to servers table")
+            
+            if 'is_system' not in srv_existing:
+                await conn.execute("ALTER TABLE servers ADD COLUMN is_system BOOLEAN DEFAULT FALSE")
+                logging.info("Added is_system column to servers table")
         except Exception as e:
-            logging.warning(f"Could not migrate servers table (display_order): {e}")
+            logging.warning(f"Could not migrate servers table (display_order/is_system): {e}")
 
         # vpn_keys
         await conn.execute(

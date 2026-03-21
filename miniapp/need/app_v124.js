@@ -75,21 +75,7 @@
   };
 
   function getFlag(name) {
-    const n = (name || '').toLowerCase();
-
-    // 1. Сначала полные названия
-    for (const [emoji, keywords] of Object.entries(FLAGS_LONG)) {
-      if (keywords.some(kw => n.includes(kw))) return emoji;
-    }
-
-    // 2. Затем короткие коды (только как отдельные элементы)
-    for (const [emoji, codes] of Object.entries(FLAGS_SHORT)) {
-      for (const code of codes) {
-        const regex = new RegExp(`(^|[^a-z])${code}([^a-z]|$)`, 'i');
-        if (regex.test(n)) return emoji;
-      }
-    }
-
+    // Автоматическое подставление флагов отключено по просьбе
     return '🌍';
   }
 

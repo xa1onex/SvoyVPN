@@ -76,6 +76,7 @@ class AddServerSteps(StatesGroup):
     WAITING_PASSWORD = State()
     WAITING_INBOUND_ID = State()
     WAITING_ORDER = State()
+    WAITING_SYSTEM = State()
     CONFIRMING = State()
 
 
@@ -1094,8 +1095,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 display_order = (max_order or 100) + 1
         
         await state.update_data(display_order=display_order)
-        await callback.message.edit_text(f"✅ Установлен порядок: {display_order}. Теперь сохраняю сервер...")
-        await save_new_server(callback.message, state)
+        await callback.message.edit_text(f"✅ Установлен порядок: {display_order}.")
+        await ask_is_system(callback.message, state)
         await callback.answer()
 
     @dp.message(AddServerSteps.WAITING_ORDER)
@@ -1108,7 +1109,32 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             return
             
         await state.update_data(display_order=display_order)
-        await save_new_server(message, state)
+        await ask_is_system(message, state)
+
+    async def ask_is_system(message: Message, state: FSMContext):
+        """Спрашиваем, является ли сервер системным"""
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🌍 Публичный (Обычный)", callback_data="system:no")
+        builder.button(text="⚙️ Системный (Скрытый)", callback_data="system:yes")
+        builder.adjust(1)
+        
+        await message.answer(
+            "📍 <b>Тип сервера:</b>\n\n"
+            "Системные серверы скрыты в MiniApp, но доступны по подписке.",
+            parse_mode="HTML",
+            reply_markup=builder.as_markup()
+        )
+        await state.set_state(AddServerSteps.WAITING_SYSTEM)
+
+    @dp.callback_query(AddServerSteps.WAITING_SYSTEM, F.data.startswith("system:"))
+    async def process_is_system_choice(callback: CallbackQuery, state: FSMContext):
+        """Обработка выбора типа сервера"""
+        is_system = (callback.data == "system:yes")
+        await state.update_data(is_system=is_system)
+        
+        await callback.message.edit_text(f"✅ Тип сервера: {'Системный' if is_system else 'Публичный'}. Сохраняю...")
+        await save_new_server(callback.message, state)
+        await callback.answer()
 
     async def save_new_server(message: Message, state: FSMContext):
         """Финальное сохранение сервера после всех шагов"""
@@ -1122,6 +1148,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         inbound_id = data.get('inbound_id')
         base_url = data.get('base_url')
         display_order = data.get('display_order', 100)
+        is_system = data.get('is_system', False)
         
         # Проверяем подключение к серверу перед сохранением если еще не проверяли
         try:
@@ -1154,10 +1181,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 SELECT setval('servers_id_seq', COALESCE((SELECT MAX(id) FROM servers), 0) + 1, false)
             ''')
             server_id = await conn.fetchval('''
-                INSERT INTO servers (name, ip, port, protocol, username, password, inbound_id, base_url, is_active, display_order)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9)
+                INSERT INTO servers (name, ip, port, protocol, username, password, inbound_id, base_url, is_active, display_order, is_system)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10)
                 RETURNING id
-            ''', name, ip, port, protocol, username, password, inbound_id, base_url, display_order)
+            ''', name, ip, port, protocol, username, password, inbound_id, base_url, display_order, is_system)
             
             
         # Создаём ключи для активных пользователей (теперь через одну задачу, последовательно)
@@ -1203,8 +1230,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             ip = server['ip']
             is_active = server['is_active']
             display_order = server['display_order']
+            is_system = server.get('is_system', False)
             status = "✅ Активен" if is_active else "❌ Неактивен"
-            text += f"#{server_id} [Порядок: {display_order}] <b>{name}</b> ({ip})\n   {status}\n\n"
+            type_label = " (⚙️ СИСТЕМНЫЙ)" if is_system else ""
+            text += f"#{server_id} [Порядок: {display_order}] <b>{name}</b> ({ip}){type_label}\n   {status}\n\n"
         
         await message.answer(text, parse_mode="HTML")
     
@@ -1982,6 +2011,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 f"<b>Base URL:</b> <code>{base_url}</code>\n"
                 f"<b>Inbound ID:</b> {server['inbound_id']}\n"
                 f"<b>Порядок в списке:</b> {server.get('display_order', 100)}\n"
+                f"<b>Тип:</b> {'⚙️ Системный (скрыт)' if server.get('is_system') else '🌍 Публичный'}\n"
                 f"<b>Статус:</b> {status}\n"
                 f"<b>Создан:</b> {created_at}\n\n"
                 f"<b>Статистика:</b>\n"
@@ -2141,6 +2171,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         builder.row(InlineKeyboardButton(text="✏️ Password", callback_data=f"admin_server_edit_field:password:{server_id}"))
         builder.row(InlineKeyboardButton(text="✏️ Inbound ID", callback_data=f"admin_server_edit_field:inbound_id:{server_id}"))
         builder.row(InlineKeyboardButton(text="🔢 Порядок отображения", callback_data=f"admin_server_edit_field:display_order:{server_id}"))
+        builder.row(InlineKeyboardButton(text="⚙️ Сделать системным/обычным", callback_data=f"admin_server_edit_field:is_system:{server_id}"))
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"admin_server_view:{server_id}"))
         
         await callback.message.edit_text(
@@ -2152,7 +2183,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             f"Протокол: <i>{server['protocol'].upper()}</i>\n"
             f"Username: <i>{server['username']}</i>\n"
             f"Inbound ID: <i>{server['inbound_id']}</i>\n"
-            f"Порядок: <i>{server['display_order']}</i>\n\n"
+            f"Порядок: <i>{server['display_order']}</i>\n"
+            f"Тип: <i>{'Системный' if server.get('is_system') else 'Обычный'}</i>\n\n"
             f"Выберите поле для редактирования:",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -2170,6 +2202,16 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         field = parts[1]
         server_id = int(parts[2])
         
+        # Если это переключение типа сервера (is_system), делаем это сразу
+        if field == 'is_system':
+            async with get_connection() as conn:
+                await conn.execute('UPDATE servers SET is_system = NOT is_system, updated_at = CURRENT_TIMESTAMP WHERE id = $1', server_id)
+            await safe_callback_answer(callback, "✅ Тип сервера изменен")
+            # Возвращаемся в меню редактирования
+            new_callback = callback.model_copy(update={'data': f"admin_server_edit:{server_id}"})
+            await handle_admin_server_edit(new_callback)
+            return
+
         await state.update_data(server_id=server_id, edit_field=field)
         
         field_names = {
@@ -2180,7 +2222,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             'username': 'username',
             'password': 'password',
             'inbound_id': 'Inbound ID',
-            'display_order': 'порядок отображения'
+            'display_order': 'порядок отображения',
+            'is_system': 'тип сервера'
         }
         
         builder = InlineKeyboardBuilder()

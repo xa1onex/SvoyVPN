@@ -139,54 +139,9 @@ class WebhookServer:
     
     @staticmethod
     def get_emoji_for_server(name: str) -> str:
-        """Определяет эмодзи (флаг) на основе названия сервера"""
-        import re
-        name_lower = name.lower()
-        
-        # Сначала проверяем полные названия и города (длинные ключевые слова)
-        long_mapping = {
-            "🇳🇱": ["netherland", "nederland", "нидерланды", "амстердам", "amsterdam"],
-            "🇩🇪": ["germany", "deutchland", "германия", "frankfurt", "франкфурт"],
-            "🇫🇷": ["france", "франция", "paris", "париж"],
-            "🇺🇸": ["usa", "сша", "america", "united states", "new york", "нью йорк"],
-            "🇬🇧": ["united kingdom", "англия", "london", "лондон"],
-            "🇵🇱": ["poland", "польша", "warsaw", "варшава"],
-            "🇹🇷": ["turkey", "турция", "istanbul", "стамбул"],
-            "🇰🇿": ["kazakhstan", "казахстан", "astana", "almaty", "астана", "алматы"],
-            "🇷🇺": ["russia", "россия", "moscow", "москва"],
-            "🇫🇮": ["finland", "финляндия", "helsinki", "хельсинки"],
-            "🇸🇪": ["sweden", "швеция", "stockholm", "стокгольм"],
-            "🇦🇹": ["austria", "австрия", "vienna", "вена"]
-        }
-        
-        for emoji, keywords in long_mapping.items():
-            if any(kw in name_lower for kw in keywords):
-                return emoji
+        """Определяет эмодзи (флаг) на основе названия сервера (автоматика отключена)"""
+        return "🌍"
 
-        # Затем проверяем короткие коды стран (2 буквы) с границами слов/знаков
-        short_mapping = {
-            "🇳🇱": ["nl"],
-            "🇩🇪": ["de"],
-            "🇫🇷": ["fr"],
-            "🇺🇸": ["us"],
-            "🇬🇧": ["uk", "gb"],
-            "🇵🇱": ["pl"],
-            "🇹🇷": ["tr"],
-            "🇰🇿": ["kz"],
-            "🇷🇺": ["ru"],
-            "🇫🇮": ["fi"],
-            "🇸🇪": ["se"],
-            "🇦🇹": ["at"]
-        }
-
-        for emoji, codes in short_mapping.items():
-            for code in codes:
-                # Ищем код как отдельное "слово" (может быть окружен пробелами, тире, цифрами или в начале/конце)
-                pattern = rf"(^|[^a-z]){code}([^a-z]|$)"
-                if re.search(pattern, name_lower):
-                    return emoji
-                
-        return "🌐" # Дефолтный эмодзи
 
     async def root_handler(self, request: web_request.Request) -> web.Response:
         """Обработчик корневого пути"""
@@ -1293,7 +1248,7 @@ class WebhookServer:
         try:
             async with get_connection() as conn:
                 rows = await conn.fetch(
-                    "SELECT id, name, ip, port, protocol, is_active, display_order FROM servers WHERE is_active = TRUE ORDER BY display_order ASC, id"
+                    "SELECT id, name, ip, port, protocol, is_active, display_order, is_system FROM servers WHERE is_active = TRUE AND is_system = FALSE ORDER BY display_order ASC, id"
                 )
                 servers = [{
                     "id": r["id"],
