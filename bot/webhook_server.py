@@ -138,9 +138,24 @@ class WebhookServer:
         logger.info(f"WebhookServer initialized with routes (GET): /, /sub/{{token}}, /api/*, /webhook/cryptopay")
     
     @staticmethod
-    def get_emoji_for_server(name: str) -> str:
-        """Определяет эмодзи (флаг) на основе названия сервера (автоматика отключена)"""
-        return "🌍"
+    def extract_emoji_and_name(full_name: str) -> tuple:
+        """Извлекает эмодзи из начала строки и возвращает (эмодзи, чистое_название)"""
+        name = (full_name or "").strip()
+        if not name:
+            return "🌍", ""
+            
+        # Херистика для флагов (2 региональные буквы) и обычных эмодзи
+        first_code = ord(name[0])
+        
+        # Региональные индикаторы (флаги) — это 2 символа в UTF-16/32
+        if 0x1F1E6 <= first_code <= 0x1F1FF and len(name) >= 2:
+            return name[0:2], name[2:].strip()
+            
+        # Другие эмодзи (обычно начинаются за пределами базовой латиницы)
+        if first_code > 127:
+            return name[0], name[1:].strip()
+            
+        return "🌍", name
 
 
     async def root_handler(self, request: web_request.Request) -> web.Response:
@@ -1250,14 +1265,17 @@ class WebhookServer:
                 rows = await conn.fetch(
                     "SELECT id, name, ip, port, protocol, is_active, display_order, is_system FROM servers WHERE is_active = TRUE AND is_system = FALSE ORDER BY display_order ASC, id"
                 )
-                servers = [{
-                    "id": r["id"],
-                    "name": r["name"],
-                    "emoji": self.get_emoji_for_server(r["name"]),
-                    "ip": r["ip"],
-                    "port": r["port"],
-                    "protocol": r["protocol"],
-                } for r in rows]
+                servers = []
+                for r in rows:
+                    emoji, cleaned_name = self.extract_emoji_and_name(r["name"])
+                    servers.append({
+                        "id": r["id"],
+                        "name": cleaned_name,
+                        "emoji": emoji,
+                        "ip": r["ip"],
+                        "port": r["port"],
+                        "protocol": r["protocol"],
+                    })
             logger.info(f"api_get_servers: found {len(servers)} active servers in DB")
             return web.json_response(servers)
         except Exception as e:
