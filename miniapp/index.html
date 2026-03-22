@@ -20,10 +20,9 @@
   <script>
     /* Early theme sync — force Telegram header color */
     (function () {
+      var urlParams = new URLSearchParams(window.location.search);
       var tg = window.Telegram && window.Telegram.WebApp;
-      if (!tg) return;
-
-      var scheme = tg.colorScheme || 'dark';
+      var scheme = urlParams.get('theme') || (tg && tg.colorScheme) || 'dark';
       var bg = scheme === 'dark' ? '#18222d' : '#ffffff';
 
       /* Meta tag for WebView */
@@ -31,8 +30,13 @@
       if (meta) meta.setAttribute('content', bg);
 
       /* Force header color with hex — works on Bot API >= 6.9 */
-      try { tg.setHeaderColor(bg); } catch (_) { }
-      try { tg.setBackgroundColor(bg); } catch (_) { }
+      if (tg) {
+        try { tg.setHeaderColor(bg); } catch (_) { }
+        try { tg.setBackgroundColor(bg); } catch (_) { }
+      }
+      
+      /* Apply theme to html/body early */
+      document.documentElement.setAttribute('data-theme', scheme);
     })();
   </script>
 

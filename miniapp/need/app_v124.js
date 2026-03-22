@@ -5,8 +5,10 @@
   'use strict';
 
   /* ── Android WebView bridge ── */
-  const ANDROID_JWT = window.__androidJwt || null;
+  const urlParams = new URLSearchParams(window.location.search);
+  const ANDROID_JWT = window.__androidJwt || urlParams.get('jwt') || null;
   const IS_ANDROID = !!ANDROID_JWT;
+  const URL_THEME = urlParams.get('theme');
 
   const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
@@ -99,7 +101,7 @@
   }
 
   function applyTheme() {
-    const scheme = (tg && tg.colorScheme) ||
+    const scheme = URL_THEME || (tg && tg.colorScheme) ||
       (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', scheme);
     document.body.setAttribute('data-theme', scheme);
