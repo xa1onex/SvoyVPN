@@ -1660,7 +1660,7 @@ class WebhookServer:
     # ─── POST /api/auth/register ──────────────────────────────────────────────
 
     async def api_auth_register(self, request: web_request.Request) -> web.Response:
-        """Email registration — hashes password with bcrypt."""
+        """Email registration — creates user + app_account, returns JWT immediately."""
         try:
             data = await request.json()
             email = (data.get("email") or "").strip().lower()
@@ -1674,7 +1674,7 @@ class WebhookServer:
             pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
             async with get_connection() as conn:
-                # Ensure table exists
+                # Ensure app_accounts table exists
                 await conn.execute("""
                     CREATE TABLE IF NOT EXISTS app_accounts (
                         id SERIAL PRIMARY KEY,
@@ -1685,17 +1685,33 @@ class WebhookServer:
                     )
                 """)
 
-                existing = await conn.fetchval("SELECT id FROM app_accounts WHERE email = $1", email)
+                existing = await conn.fetchrow(
+                    "SELECT id, user_id FROM app_accounts WHERE email = $1", email)
                 if existing:
                     return web.json_response({"error": "Email already registered"}, status=409)
 
+                # Create a new user row with a negative unique ID (email users)
+                import hashlib
+                fake_user_id = -(abs(int(hashlib.md5(email.encode()).hexdigest(), 16)) % (10**15))
+                # Ensure unique – shift if collision
+                while await conn.fetchval("SELECT user_id FROM users WHERE user_id = $1", fake_user_id):
+                    fake_user_id -= 1
+
                 await conn.execute(
-                    "INSERT INTO app_accounts (email, password_hash) VALUES ($1, $2)",
-                    email, pw_hash
+                    """INSERT INTO users (user_id, username, first_name, registration_date)
+                       VALUES ($1, $2, $3, NOW())
+                       ON CONFLICT (user_id) DO NOTHING""",
+                    fake_user_id, email.split('@')[0], email.split('@')[0]
                 )
 
-            logger.info(f"Email registration: {email}")
-            return web.json_response({"status": "ok"})
+                await conn.execute(
+                    "INSERT INTO app_accounts (email, password_hash, user_id) VALUES ($1, $2, $3)",
+                    email, pw_hash, fake_user_id
+                )
+
+            token = self._generate_jwt(fake_user_id)
+            logger.info(f"Email registration: {email} → user_id={fake_user_id}")
+            return web.json_response({"status": "ok", "token": token, "userId": fake_user_id})
 
         except Exception as e:
             logger.error(f"Error in api_auth_register: {e}", exc_info=True)
@@ -1720,8 +1736,25 @@ class WebhookServer:
             if not bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
                 return web.json_response({"error": "Invalid credentials"}, status=401)
 
-            # Use linked user_id or use account id as surrogate
-            user_id = row["user_id"] or row["id"]
+            user_id = row["user_id"]
+            if not user_id:
+                # Legacy account without user_id — create user row now
+                import hashlib
+                fake_user_id = -(abs(int(hashlib.md5(email.encode()).hexdigest(), 16)) % (10**15))
+                async with get_connection() as conn:
+                    while await conn.fetchval("SELECT user_id FROM users WHERE user_id = $1", fake_user_id):
+                        fake_user_id -= 1
+                    await conn.execute(
+                        """INSERT INTO users (user_id, username, first_name, registration_date)
+                           VALUES ($1, $2, $3, NOW()) ON CONFLICT (user_id) DO NOTHING""",
+                        fake_user_id, email.split('@')[0], email.split('@')[0]
+                    )
+                    await conn.execute(
+                        "UPDATE app_accounts SET user_id = $1 WHERE email = $2",
+                        fake_user_id, email
+                    )
+                user_id = fake_user_id
+
             token = self._generate_jwt(user_id)
             logger.info(f"Email login: {email} → user_id={user_id}")
             return web.json_response({"token": token, "userId": user_id})
@@ -1744,7 +1777,7 @@ class WebhookServer:
         try:
             async with get_connection() as conn:
                 user = await conn.fetchrow(
-                    "SELECT user_id, pay_subscribed, subscription_end, subscription_token, trial_used FROM users WHERE user_id = $1",
+                    "SELECT user_id, username, first_name, pay_subscribed, subscription_end, subscription_token, trial_used FROM users WHERE user_id = $1",
                     user_id
                 )
                 if not user:
@@ -1775,9 +1808,9 @@ class WebhookServer:
                 return web.json_response({
                     "user": {
                         "id": user_id,
-                        "firstName": "",
+                        "firstName": user.get("first_name") or "",
                         "lastName": "",
-                        "username": "",
+                        "username": user.get("username") or "",
                         "photoUrl": None,
                         "trialAvailable": trial_available,
                         "trialDays": trial_days,
