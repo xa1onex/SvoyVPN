@@ -119,12 +119,13 @@ class WebhookServer:
             ('/api/news', self.api_get_news, 'GET'),
             ('/api/news/add', self.api_add_news, 'POST'),
             ('/api/news/delete', self.api_delete_news, 'POST'),
-            # ── Android auth endpoints ──────────────────────────────
             ('/api/auth/tg-init', self.api_auth_tg_init, 'POST'),
             ('/api/auth/tg-poll', self.api_auth_tg_poll, 'GET'),
             ('/api/auth/email-otp', self.api_auth_email_otp, 'POST'),
             ('/api/auth/register', self.api_auth_register, 'POST'),
             ('/api/auth/login', self.api_auth_login, 'POST'),
+            ('/api/auth/reset-otp', self.api_auth_reset_otp, 'POST'),
+            ('/api/auth/reset-password', self.api_auth_reset_password, 'POST'),
         ]
         
         for path, handler, method in api_routes:
@@ -1584,6 +1585,8 @@ class WebhookServer:
     _auth_nonces: dict = {}
     # In-memory email OTP store: {email: {"code": str, "expires": datetime, "password_hash": str}}
     _email_otps: dict = {}
+    # In-memory reset password store: {email: {"code": str, "expires": datetime}}
+    _reset_otps: dict = {}
     JWT_SECRET = "svoyvpn_jwt_secret_change_in_production"
     JWT_ALGORITHM = "HS256"
     JWT_EXPIRY_DAYS = 365
@@ -1683,9 +1686,12 @@ class WebhookServer:
           <td align="center" style="padding-bottom:32px;">
             <table cellpadding="0" cellspacing="0">
               <tr>
-                <td style="background:#3aa8fc;border-radius:50%;width:56px;height:56px;text-align:center;vertical-align:middle;">
-                  <!-- S letter as logo placeholder — swap for your real SVG if needed -->
-                  <span style="color:#ffffff;font-size:28px;font-weight:800;line-height:56px;display:block;">S</span>
+                <td style="background:#3aa8fc;border-radius:18px;width:64px;height:64px;text-align:center;vertical-align:middle;">
+                  <svg width="40" height="40" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:auto;">
+                    <g transform="translate(0,1024) scale(0.1,-0.1)" fill="#ffffff">
+                      <path d="M3033 7920 c-212 -22 -363 -95 -495 -240 -73 -79 -117 -161 -150 -276 -29 -103 -31 -305 -4 -434 54 -255 174 -534 386 -895 48 -82 100 -170 114 -195 57 -98 95 -179 122 -260 23 -73 28 -102 28 -200 0 -104 -3 -124 -32 -209 -32 -92 -84 -197 -149 -298 -18 -29 -33 -54 -33 -56 0 -2 -31 -56 -68 -118 -233 -387 -382 -727 -449 -1024 -24 -104 -24 -369 0 -455 72 -260 273 -452 555 -527 87 -23 115 -26 277 -26 164 -1 193 2 333 31 341 71 733 234 1167 483 224 129 350 210 580 375 402 289 582 443 985 840 315 310 347 334 453 334 129 0 207 -72 367 -340 213 -357 353 -774 320 -950 -22 -117 -80 -161 -221 -168 -104 -5 -185 7 -340 53 -265 78 -526 201 -772 362 -85 56 -132 82 -140 76 -7 -5 -52 -41 -102 -80 -105 -82 -448 -329 -467 -336 -16 -5 -16 -5 57 -54 260 -174 631 -360 955 -481 166 -61 203 -73 355 -111 197 -49 257 -56 465 -56 214 0 258 8 395 67 97 43 169 94 246 175 111 118 169 245 190 417 17 141 -6 336 -62 531 -34 116 -137 361 -219 520 -79 154 -96 183 -288 509 -61 104 -126 228 -144 275 -31 82 -32 93 -33 226 0 197 12 228 250 633 6 10 43 73 84 141 162 271 279 555 327 790 22 109 25 144 22 266 -4 121 -8 152 -33 224 -78 228 -251 382 -498 441 -170 41 -376 37 -657 -11 -247 -43 -676 -193 -985 -346 -91 -45 -395 -217 -395 -223 0 -3 56 -43 124 -89 68 -46 188 -132 267 -191 l144 -107 50 32 c268 171 612 316 895 375 125 27 292 32 363 11 57 -17 101 -63 118 -123 42 -155 -74 -531 -259 -843 -109 -184 -196 -291 -266 -327 -30 -16 -60 -22 -111 -22 -61 -1 -77 3 -126 31 -56 33 -82 55 -374 321 -747 679 -1516 1161 -2230 1397 -340 113 -652 160 -892 135z m369 -575 c108 -17 147 -26 322 -81 320 -100 663 -275 1071 -547 392 -262 846 -639 1000 -830 238 -295 263 -543 86 -845 -107 -184 -362 -435 -736 -728 -712 -557 -1562 -980 -1981 -987 -82 -2 -96 1 -149 28 -137 70 -146 207 -35 528 84 245 240 551 369 724 89 121 155 164 251 164 107 1 129 -15 400 -291 135 -137 286 -284 335 -326 50 -43 93 -81 96 -86 5 -8 106 57 194 125 117 90 295 241 293 247 -2 4 -52 50 -113 102 -149 129 -358 347 -423 440 -118 172 -167 335 -145 487 36 246 208 472 605 792 l97 78 -92 74 c-51 40 -163 122 -249 181 l-157 106 -58 -46 c-108 -88 -217 -188 -410 -376 -200 -195 -252 -233 -338 -245 -92 -12 -174 33 -265 147 -130 161 -314 542 -370 765 -42 164 -27 311 37 367 54 49 183 60 365 33z"/>
+                    </g>
+                  </svg>
                 </td>
                 <td style="padding-left:12px;vertical-align:middle;">
                   <span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">SvoyVPN</span>
@@ -1843,6 +1849,65 @@ class WebhookServer:
 
         except Exception as e:
             logger.error(f"Error in api_auth_email_otp: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_auth_reset_otp(self, request: web_request.Request) -> web.Response:
+        """Send OTP code for password reset."""
+        try:
+            data = await request.json()
+            email = (data.get("email") or "").strip().lower()
+            if not email or "@" not in email:
+                return web.json_response({"error": "Invalid email"}, status=400)
+
+            async with get_connection() as conn:
+                existing = await conn.fetchval("SELECT id FROM app_accounts WHERE email = $1", email)
+                if not existing:
+                    return web.json_response({"error": "Аккаунт с таким email не найден"}, status=404)
+
+            code = str(secrets.randbelow(900000) + 100000)
+            self._reset_otps[email] = {
+                "code": code,
+                "expires": datetime.utcnow() + timedelta(minutes=10)
+            }
+
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                html_body = self._build_otp_html(code, email)
+                await loop.run_in_executor(None, self._send_email, email, "Восстановление пароля SvoyVPN", html_body)
+            except Exception as mail_err:
+                logger.error(f"Failed to send reset OTP to {email}: {mail_err}")
+                return web.json_response({"error": "Не удалось отправить письмо"}, status=500)
+
+            return web.json_response({"status": "sent"})
+        except Exception as e:
+            logger.error(f"Error in api_auth_reset_otp: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_auth_reset_password(self, request: web_request.Request) -> web.Response:
+        """Reset password using OTP."""
+        try:
+            data = await request.json()
+            email = (data.get("email") or "").strip().lower()
+            otp = (data.get("otp") or "").strip()
+            new_password = data.get("password") or ""
+
+            if not email or not otp or len(new_password) < 6:
+                return web.json_response({"error": "Некорректные данные"}, status=400)
+
+            entry = self._reset_otps.get(email)
+            if not entry or entry["code"] != otp or datetime.utcnow() > entry["expires"]:
+                return web.json_response({"error": "Неверный или истекший код"}, status=400)
+
+            pw_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+            async with get_connection() as conn:
+                await conn.execute("UPDATE app_accounts SET password_hash = $1 WHERE email = $2", pw_hash, email)
+
+            del self._reset_otps[email]
+            logger.info(f"Password reset for {email}")
+            return web.json_response({"status": "ok"})
+        except Exception as e:
+            logger.error(f"Error in api_auth_reset_password: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     # ─── POST /api/auth/register ──────────────────────────────────────────────
