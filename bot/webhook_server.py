@@ -15,6 +15,7 @@ import hashlib
 import bcrypt
 import jwt as pyjwt
 from aiohttp import web, web_request
+from email.utils import formatdate, make_msgid
 from aiohttp.web_exceptions import HTTPBadRequest, HTTPNotFound, HTTPMethodNotAllowed
 from aiohttp.http_exceptions import BadStatusLine, BadHttpMessage
 from aiogram.types import LabeledPrice, InlineKeyboardButton
@@ -1755,12 +1756,13 @@ class WebhookServer:
 </html>"""
 
     def _send_email(self, to_email: str, subject: str, html_body: str) -> None:
-        """Send HTML email via SMTP (configured via env vars)."""
+        """Send HTML email via SMTP (supports port 465 SSL and 587 STARTTLS)."""
         import smtplib
+        import ssl
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
         smtp_host = os.environ.get("SMTP_HOST", "")
-        smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+        smtp_port = int(os.environ.get("SMTP_PORT", "465"))
         smtp_user = os.environ.get("SMTP_USER", "")
         smtp_pass = os.environ.get("SMTP_PASSWORD", "")
         smtp_from = os.environ.get("SMTP_FROM", smtp_user)
@@ -1768,17 +1770,28 @@ class WebhookServer:
             raise RuntimeError("SMTP not configured (set SMTP_HOST, SMTP_USER, SMTP_PASSWORD env vars)")
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"SvoyVPN <{smtp_from}>"
+        msg["From"] = f"SvoyVPN <{smtp_user}>"  # Standardize From to match SMTP user for better delivery
         msg["To"] = to_email
-        # Plain text fallback
-        plain = f"Ваш код подтверждения SvoyVPN: {html_body[:6] if len(html_body) < 10 else ''}\n\nКод действителен 10 минут."
-        msg.attach(MIMEText(plain, "plain", "utf-8"))
+        msg["Date"] = formatdate(localtime=True)
+        msg["Message-ID"] = make_msgid(domain=smtp_host.split('.')[-2] + '.' + smtp_host.split('.')[-1] if '.' in smtp_host else "svoyvpn.online")
+        msg.attach(MIMEText(
+            f"Ваш код подтверждения SvoyVPN.\nКод действителен 10 минут.\nНикому не сообщайте этот код.",
+            "plain", "utf-8"
+        ))
         msg.attach(MIMEText(html_body, "html", "utf-8"))
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as s:
-            s.ehlo()
-            s.starttls()
-            s.login(smtp_user, smtp_pass)
-            s.sendmail(smtp_from, [to_email], msg.as_string())
+        ctx = ssl.create_default_context()
+        if smtp_port == 465:
+            # SSL from the start (smtplib.SMTP_SSL)
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, context=ctx, timeout=15) as s:
+                s.login(smtp_user, smtp_pass)
+                s.sendmail(smtp_from, [to_email], msg.as_string())
+        else:
+            # STARTTLS (port 587 or any other)
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as s:
+                s.ehlo()
+                s.starttls(context=ctx)
+                s.login(smtp_user, smtp_pass)
+                s.sendmail(smtp_from, [to_email], msg.as_string())
 
     async def api_auth_email_otp(self, request: web_request.Request) -> web.Response:
         """Send OTP code to email for registration verification."""
