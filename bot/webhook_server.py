@@ -7,9 +7,13 @@ import os
 import mimetypes
 import hashlib
 import hmac
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import parse_qs, unquote
+import secrets
+import hashlib
+import bcrypt
+import jwt as pyjwt
 from aiohttp import web, web_request
 from aiohttp.web_exceptions import HTTPBadRequest, HTTPNotFound, HTTPMethodNotAllowed
 from aiohttp.http_exceptions import BadStatusLine, BadHttpMessage
@@ -103,6 +107,7 @@ class WebhookServer:
         # API routes
         api_routes = [
             ('/api/user', self.api_get_user, 'POST'),
+            ('/api/user', self.api_get_user_jwt, 'GET'),          # JWT auth (Android)
             ('/api/tariffs', self.api_get_tariffs, 'GET'),
             ('/api/payment-methods', self.api_get_payment_methods, 'GET'),
             ('/api/payment/create', self.api_create_payment, 'POST'),
@@ -113,6 +118,11 @@ class WebhookServer:
             ('/api/news', self.api_get_news, 'GET'),
             ('/api/news/add', self.api_add_news, 'POST'),
             ('/api/news/delete', self.api_delete_news, 'POST'),
+            # ── Android auth endpoints ──────────────────────────────
+            ('/api/auth/tg-init', self.api_auth_tg_init, 'POST'),
+            ('/api/auth/tg-poll', self.api_auth_tg_poll, 'GET'),
+            ('/api/auth/register', self.api_auth_register, 'POST'),
+            ('/api/auth/login', self.api_auth_login, 'POST'),
         ]
         
         for path, handler, method in api_routes:
@@ -1564,6 +1574,224 @@ class WebhookServer:
             return web.json_response({"status": "ok"})
         except Exception as e:
             logger.error(f"Error deleting news: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    # ═══ Android Auth Helpers ══════════════════════════════════════════════════
+
+    # In-memory pending auth nonces: {nonce: {"user_id": int|None, "expires": datetime}}
+    _auth_nonces: dict = {}
+    JWT_SECRET = "svoyvpn_jwt_secret_change_in_production"
+    JWT_ALGORITHM = "HS256"
+    JWT_EXPIRY_DAYS = 365
+
+    def _generate_jwt(self, user_id: int) -> str:
+        payload = {
+            "user_id": user_id,
+            "exp": datetime.utcnow() + timedelta(days=self.JWT_EXPIRY_DAYS),
+            "iat": datetime.utcnow(),
+        }
+        return pyjwt.encode(payload, self.JWT_SECRET, algorithm=self.JWT_ALGORITHM)
+
+    def _verify_jwt(self, token: str) -> int | None:
+        """Verify JWT and return user_id or None."""
+        try:
+            payload = pyjwt.decode(token, self.JWT_SECRET, algorithms=[self.JWT_ALGORITHM])
+            return int(payload["user_id"])
+        except Exception:
+            return None
+
+    def _get_jwt_user_id(self, request: web_request.Request) -> int | None:
+        """Extract and verify Bearer JWT from Authorization header."""
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            return self._verify_jwt(auth[7:])
+        return None
+
+    # ─── POST /api/auth/tg-init ───────────────────────────────────────────────
+
+    async def api_auth_tg_init(self, request: web_request.Request) -> web.Response:
+        """
+        Android Telegram Login step 1: generate nonce, return bot deep link.
+        The bot starts listening for /start auth_{nonce} from any user.
+        """
+        nonce = secrets.token_urlsafe(16)
+        self._auth_nonces[nonce] = {
+            "user_id": None,
+            "expires": datetime.utcnow() + timedelta(minutes=10)
+        }
+        bot_url = f"https://t.me/{self.flyer_config.bot_username or 'SvoyVPN_robot'}?start=auth_{nonce}"
+        logger.info(f"Telegram auth init: nonce={nonce[:8]}…")
+        return web.json_response({"nonce": nonce, "botUrl": bot_url})
+
+    # ─── GET /api/auth/tg-poll?nonce=X ────────────────────────────────────────
+
+    async def api_auth_tg_poll(self, request: web_request.Request) -> web.Response:
+        """
+        Android Telegram Login step 2: poll until bot confirms identity.
+        Returns JWT when confirmed, "pending" while waiting, "expired" on timeout.
+        """
+        nonce = request.query.get("nonce", "")
+        if not nonce or nonce not in self._auth_nonces:
+            return web.json_response({"status": "expired"})
+
+        entry = self._auth_nonces[nonce]
+        if datetime.utcnow() > entry["expires"]:
+            del self._auth_nonces[nonce]
+            return web.json_response({"status": "expired"})
+
+        user_id = entry.get("user_id")
+        if user_id is None:
+            return web.json_response({"status": "pending"})
+
+        # Confirmed — generate JWT and clean up
+        token = self._generate_jwt(user_id)
+        del self._auth_nonces[nonce]
+        logger.info(f"Telegram auth confirmed: user_id={user_id}")
+        return web.json_response({"status": "ok", "token": token})
+
+    def confirm_telegram_auth(self, nonce: str, user_id: int):
+        """Called by the bot handler when user sends /start auth_{nonce}."""
+        if nonce in self._auth_nonces:
+            self._auth_nonces[nonce]["user_id"] = user_id
+            logger.info(f"Auth nonce {nonce[:8]}… confirmed for user_id={user_id}")
+
+    # ─── POST /api/auth/register ──────────────────────────────────────────────
+
+    async def api_auth_register(self, request: web_request.Request) -> web.Response:
+        """Email registration — hashes password with bcrypt."""
+        try:
+            data = await request.json()
+            email = (data.get("email") or "").strip().lower()
+            password = data.get("password") or ""
+
+            if not email or "@" not in email:
+                return web.json_response({"error": "Invalid email"}, status=400)
+            if len(password) < 6:
+                return web.json_response({"error": "Password too short"}, status=400)
+
+            pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+            async with get_connection() as conn:
+                # Ensure table exists
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS app_accounts (
+                        id SERIAL PRIMARY KEY,
+                        email TEXT UNIQUE NOT NULL,
+                        password_hash TEXT NOT NULL,
+                        user_id BIGINT REFERENCES users(user_id),
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """)
+
+                existing = await conn.fetchval("SELECT id FROM app_accounts WHERE email = $1", email)
+                if existing:
+                    return web.json_response({"error": "Email already registered"}, status=409)
+
+                await conn.execute(
+                    "INSERT INTO app_accounts (email, password_hash) VALUES ($1, $2)",
+                    email, pw_hash
+                )
+
+            logger.info(f"Email registration: {email}")
+            return web.json_response({"status": "ok"})
+
+        except Exception as e:
+            logger.error(f"Error in api_auth_register: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    # ─── POST /api/auth/login ─────────────────────────────────────────────────
+
+    async def api_auth_login(self, request: web_request.Request) -> web.Response:
+        """Email login — verifies bcrypt hash and returns JWT."""
+        try:
+            data = await request.json()
+            email = (data.get("email") or "").strip().lower()
+            password = data.get("password") or ""
+
+            async with get_connection() as conn:
+                row = await conn.fetchrow(
+                    "SELECT id, password_hash, user_id FROM app_accounts WHERE email = $1", email
+                )
+            if not row:
+                return web.json_response({"error": "Invalid credentials"}, status=401)
+
+            if not bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
+                return web.json_response({"error": "Invalid credentials"}, status=401)
+
+            # Use linked user_id or use account id as surrogate
+            user_id = row["user_id"] or row["id"]
+            token = self._generate_jwt(user_id)
+            logger.info(f"Email login: {email} → user_id={user_id}")
+            return web.json_response({"token": token, "userId": user_id})
+
+        except Exception as e:
+            logger.error(f"Error in api_auth_login: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    # ─── GET /api/user (JWT version for Android) ──────────────────────────────
+
+    async def api_get_user_jwt(self, request: web_request.Request) -> web.Response:
+        """
+        GET /api/user with Bearer JWT — Android-app version of api_get_user.
+        Returns the same JSON structure so the Android client reuses the same model.
+        """
+        user_id = self._get_jwt_user_id(request)
+        if not user_id:
+            return web.json_response({"error": "Unauthorized"}, status=401)
+
+        try:
+            async with get_connection() as conn:
+                user = await conn.fetchrow(
+                    "SELECT user_id, pay_subscribed, subscription_end, subscription_token, trial_used FROM users WHERE user_id = $1",
+                    user_id
+                )
+                if not user:
+                    return web.json_response({"error": "User not found"}, status=404)
+
+                is_active = False
+                end_date = None
+                if user["pay_subscribed"] and user["subscription_end"]:
+                    end_date = user["subscription_end"]
+                    if hasattr(end_date, "date"):
+                        end_date = end_date.date()
+                    is_active = end_date >= datetime.now().date()
+
+                from .subscriptions import get_user_subscription_url
+                subscription_url = await get_user_subscription_url(user_id, None)
+
+                end_date_str = end_date.isoformat() if end_date and hasattr(end_date, "isoformat") else None
+
+                trial_settings = await conn.fetchrow("SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1")
+                trial_days = trial_settings["days"] if trial_settings else 0
+                trial_available = (user["trial_used"] is False) and (trial_days > 0) and (not is_active)
+
+                is_admin = user_id in self.admin_ids
+
+                from .database import get_support_link
+                support_link = await get_support_link() or "https://t.me/SvoyVPN_support"
+
+                return web.json_response({
+                    "user": {
+                        "id": user_id,
+                        "firstName": "",
+                        "lastName": "",
+                        "username": "",
+                        "photoUrl": None,
+                        "trialAvailable": trial_available,
+                        "trialDays": trial_days,
+                        "isAdmin": is_admin,
+                        "supportLink": support_link,
+                    },
+                    "subscription": {
+                        "isActive": is_active,
+                        "endDate": end_date_str,
+                        "subscriptionUrl": subscription_url,
+                        "token": user["subscription_token"],
+                    }
+                })
+
+        except Exception as e:
+            logger.error(f"Error in api_get_user_jwt: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def run(self, host: str, port: int):
