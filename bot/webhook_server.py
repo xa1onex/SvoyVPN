@@ -121,6 +121,7 @@ class WebhookServer:
             # ── Android auth endpoints ──────────────────────────────
             ('/api/auth/tg-init', self.api_auth_tg_init, 'POST'),
             ('/api/auth/tg-poll', self.api_auth_tg_poll, 'GET'),
+            ('/api/auth/email-otp', self.api_auth_email_otp, 'POST'),
             ('/api/auth/register', self.api_auth_register, 'POST'),
             ('/api/auth/login', self.api_auth_login, 'POST'),
         ]
@@ -1580,6 +1581,8 @@ class WebhookServer:
 
     # In-memory pending auth nonces: {nonce: {"user_id": int|None, "expires": datetime}}
     _auth_nonces: dict = {}
+    # In-memory email OTP store: {email: {"code": str, "expires": datetime, "password_hash": str}}
+    _email_otps: dict = {}
     JWT_SECRET = "svoyvpn_jwt_secret_change_in_production"
     JWT_ALGORITHM = "HS256"
     JWT_EXPIRY_DAYS = 365
@@ -1657,10 +1660,128 @@ class WebhookServer:
             cls._auth_nonces[nonce]["user_id"] = user_id
             logger.info(f"Auth nonce {nonce[:8]}… confirmed for user_id={user_id}")
 
-    # ─── POST /api/auth/register ──────────────────────────────────────────────
+    # ─── POST /api/auth/email-otp ─────────────────────────────────────────────
 
-    async def api_auth_register(self, request: web_request.Request) -> web.Response:
-        """Email registration — creates user + app_account, returns JWT immediately."""
+    def _build_otp_html(self, code: str, email: str) -> str:
+        """Build a branded HTML email body for OTP verification."""
+        return f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Код подтверждения SvoyVPN</title>
+</head>
+<body style="margin:0;padding:0;background:#0f1923;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f1923;min-height:100vh;">
+    <tr><td align="center" style="padding:40px 16px;">
+
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;">
+
+        <!-- HEADER / LOGO -->
+        <tr>
+          <td align="center" style="padding-bottom:32px;">
+            <table cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="background:#3aa8fc;border-radius:50%;width:56px;height:56px;text-align:center;vertical-align:middle;">
+                  <!-- S letter as logo placeholder — swap for your real SVG if needed -->
+                  <span style="color:#ffffff;font-size:28px;font-weight:800;line-height:56px;display:block;">S</span>
+                </td>
+                <td style="padding-left:12px;vertical-align:middle;">
+                  <span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">SvoyVPN</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- CARD -->
+        <tr>
+          <td style="background:#18222d;border-radius:20px;padding:36px 32px;border:1px solid rgba(255,255,255,0.06);">
+
+            <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#ffffff;text-align:center;">
+              Подтвердите email
+            </p>
+            <p style="margin:0 0 32px;font-size:14px;color:#8e9db0;text-align:center;line-height:1.5;">
+              Для завершения регистрации в&nbsp;SvoyVPN<br>введите этот код в&nbsp;приложении:
+            </p>
+
+            <!-- OTP CODE BOX -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="center" style="padding-bottom:32px;">
+                  <div style="display:inline-block;background:#21303f;border:2px solid #3aa8fc;border-radius:16px;padding:20px 40px;">
+                    <span style="font-size:40px;font-weight:800;color:#3aa8fc;letter-spacing:10px;font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace;">{code}</span>
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <!-- EXPIRY NOTICE -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="center" style="background:rgba(58,168,252,0.08);border-radius:10px;padding:12px 16px;margin-bottom:24px;">
+                  <p style="margin:0;font-size:13px;color:#8e9db0;text-align:center;">
+                    ⏱ Код действителен&nbsp;<strong style="color:#3aa8fc;">10&nbsp;минут</strong>
+                  </p>
+                </td>
+              </tr>
+            </table>
+
+            <div style="height:24px;"></div>
+
+            <!-- SECURITY NOTE -->
+            <p style="margin:0;font-size:12px;color:#8e9db0;text-align:center;line-height:1.6;border-top:1px solid rgba(255,255,255,0.06);padding-top:24px;">
+              Если вы не регистрировались в&nbsp;SvoyVPN&nbsp;— просто проигнорируйте это&nbsp;письмо.<br>
+              Никому не&nbsp;сообщайте этот код.
+            </p>
+
+          </td>
+        </tr>
+
+        <!-- FOOTER -->
+        <tr>
+          <td align="center" style="padding-top:28px;">
+            <p style="margin:0;font-size:12px;color:#4a5a6a;line-height:1.6;">
+              © 2025 SvoyVPN &nbsp;·&nbsp;
+              <a href="https://xdoublegroup.online" style="color:#3aa8fc;text-decoration:none;">xdoublegroup.online</a>
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+    def _send_email(self, to_email: str, subject: str, html_body: str) -> None:
+        """Send HTML email via SMTP (configured via env vars)."""
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        smtp_host = os.environ.get("SMTP_HOST", "")
+        smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+        smtp_user = os.environ.get("SMTP_USER", "")
+        smtp_pass = os.environ.get("SMTP_PASSWORD", "")
+        smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+        if not smtp_host or not smtp_user:
+            raise RuntimeError("SMTP not configured (set SMTP_HOST, SMTP_USER, SMTP_PASSWORD env vars)")
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"SvoyVPN <{smtp_from}>"
+        msg["To"] = to_email
+        # Plain text fallback
+        plain = f"Ваш код подтверждения SvoyVPN: {html_body[:6] if len(html_body) < 10 else ''}\n\nКод действителен 10 минут."
+        msg.attach(MIMEText(plain, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as s:
+            s.ehlo()
+            s.starttls()
+            s.login(smtp_user, smtp_pass)
+            s.sendmail(smtp_from, [to_email], msg.as_string())
+
+    async def api_auth_email_otp(self, request: web_request.Request) -> web.Response:
+        """Send OTP code to email for registration verification."""
         try:
             data = await request.json()
             email = (data.get("email") or "").strip().lower()
@@ -1671,10 +1792,71 @@ class WebhookServer:
             if len(password) < 6:
                 return web.json_response({"error": "Password too short"}, status=400)
 
+            async with get_connection() as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS app_accounts (
+                        id SERIAL PRIMARY KEY,
+                        email TEXT UNIQUE NOT NULL,
+                        password_hash TEXT NOT NULL,
+                        user_id BIGINT REFERENCES users(user_id),
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """)
+                existing = await conn.fetchval("SELECT id FROM app_accounts WHERE email = $1", email)
+                if existing:
+                    return web.json_response({"error": "Email already registered"}, status=409)
+
             pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+            code = str(secrets.randbelow(900000) + 100000)  # 6-digit code
+            self._email_otps[email] = {
+                "code": code,
+                "expires": datetime.utcnow() + timedelta(minutes=10),
+                "password_hash": pw_hash,
+            }
+
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                html_body = self._build_otp_html(code, email)
+                await loop.run_in_executor(None, self._send_email, email,
+                    "Ваш код подтверждения SvoyVPN",
+                    html_body)
+            except Exception as mail_err:
+                logger.error(f"Failed to send OTP email to {email}: {mail_err}")
+                return web.json_response({"error": "Не удалось отправить письмо. Проверьте email или попробуйте позже."}, status=500)
+
+            logger.info(f"OTP sent to {email}")
+            return web.json_response({"status": "sent"})
+
+        except Exception as e:
+            logger.error(f"Error in api_auth_email_otp: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    # ─── POST /api/auth/register ──────────────────────────────────────────────
+
+    async def api_auth_register(self, request: web_request.Request) -> web.Response:
+        """Email registration — verifies OTP, creates user + app_account, returns JWT."""
+        try:
+            data = await request.json()
+            email = (data.get("email") or "").strip().lower()
+            otp = (data.get("otp") or "").strip()
+
+            if not email or not otp:
+                return web.json_response({"error": "email and otp required"}, status=400)
+
+            entry = self._email_otps.get(email)
+            if not entry:
+                return web.json_response({"error": "Код не найден. Запросите новый."}, status=400)
+            if datetime.utcnow() > entry["expires"]:
+                del self._email_otps[email]
+                return web.json_response({"error": "Код истёк. Запросите новый."}, status=400)
+            if entry["code"] != otp:
+                return web.json_response({"error": "Неверный код"}, status=400)
+
+            pw_hash = entry["password_hash"]
+            del self._email_otps[email]  # consume OTP
 
             async with get_connection() as conn:
-                # Ensure app_accounts table exists
                 await conn.execute("""
                     CREATE TABLE IF NOT EXISTS app_accounts (
                         id SERIAL PRIMARY KEY,
@@ -1690,10 +1872,8 @@ class WebhookServer:
                 if existing:
                     return web.json_response({"error": "Email already registered"}, status=409)
 
-                # Create a new user row with a negative unique ID (email users)
                 import hashlib
                 fake_user_id = -(abs(int(hashlib.md5(email.encode()).hexdigest(), 16)) % (10**15))
-                # Ensure unique – shift if collision
                 while await conn.fetchval("SELECT user_id FROM users WHERE user_id = $1", fake_user_id):
                     fake_user_id -= 1
 
@@ -1703,14 +1883,13 @@ class WebhookServer:
                        ON CONFLICT (user_id) DO NOTHING""",
                     fake_user_id, email.split('@')[0], email.split('@')[0]
                 )
-
                 await conn.execute(
                     "INSERT INTO app_accounts (email, password_hash, user_id) VALUES ($1, $2, $3)",
                     email, pw_hash, fake_user_id
                 )
 
             token = self._generate_jwt(fake_user_id)
-            logger.info(f"Email registration: {email} → user_id={fake_user_id}")
+            logger.info(f"Email registration confirmed: {email} → user_id={fake_user_id}")
             return web.json_response({"status": "ok", "token": token, "userId": fake_user_id})
 
         except Exception as e:
