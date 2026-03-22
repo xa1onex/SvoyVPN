@@ -1421,6 +1421,16 @@
         : window.open(link, '_blank');
     });
 
+    /* ── Android Logout ── */
+    const lgBtn = document.getElementById('btnAndroidLogout');
+    if (lgBtn && IS_ANDROID) {
+      lgBtn.style.display = 'flex';
+      lgBtn.onclick = () => {
+        haptic('medium');
+        if (window.AndroidBridge) AndroidBridge.logout();
+      };
+    }
+
     // Load data
     loadData();
     loadUser();
