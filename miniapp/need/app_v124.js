@@ -4,6 +4,10 @@
 (function () {
   'use strict';
 
+  /* ── Android WebView bridge ── */
+  const ANDROID_JWT = window.__androidJwt || null;
+  const IS_ANDROID = !!ANDROID_JWT;
+
   const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
   window.onerror = function (msg, url, line, col, error) {
@@ -865,6 +869,33 @@
   }
 
   async function loadUser(silent = false) {
+    // Android WebView mode: use JWT instead of tg.initData
+    if (IS_ANDROID) {
+      const wasActive = S.subscription && S.subscription.isActive;
+      const oldEnd = S.subscription && S.subscription.endDate;
+      const d = await api('/api/user', {
+        method: 'GET',
+        headers: { 'Authorization': 'Bearer ' + ANDROID_JWT }
+      });
+      if (d && d.user) {
+        S.user = d.user;
+        S.subscription = d.subscription;
+        renderUser();
+        renderNews();
+        const isActive = S.subscription && S.subscription.isActive;
+        const newEnd = S.subscription && S.subscription.endDate;
+        const pendingTime = localStorage.getItem('pending_payment_time');
+        if (pendingTime && (Date.now() - parseInt(pendingTime)) < 20 * 60 * 1000) {
+          if ((!wasActive && isActive) || (oldEnd && newEnd && oldEnd !== newEnd)) {
+            localStorage.removeItem('pending_payment_time');
+            stopPaymentPolling();
+            showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.<br>Детальный чек отправлен вам в бот.');
+            hideModal('modalPlan');
+          }
+        }
+      }
+      return;
+    }
     if (!tg || !tg.initData) return;
 
     // Remember state before update
@@ -1160,19 +1191,20 @@
   /* ═══════ Payment ═══════ */
   async function handlePay() {
     if (!S.selectedTariff || !S.selectedPM) return;
-    if (!tg || !tg.initData) {
+    if (!IS_ANDROID && (!tg || !tg.initData)) {
       showToast('Оплата доступна только в Telegram');
       return;
     }
+    const payBody = IS_ANDROID
+      ? { tariffId: S.selectedTariff.id, paymentMethod: S.selectedPM.id, deviceCount: 1 }
+      : { initData: tg.initData, tariffId: S.selectedTariff.id, paymentMethod: S.selectedPM.id, deviceCount: 1 };
+    const payHeaders = IS_ANDROID
+      ? { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ANDROID_JWT }
+      : { 'Content-Type': 'application/json' };
     const d = await api('/miniapp/api/payment/create', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        initData: tg.initData,
-        tariffId: S.selectedTariff.id,
-        paymentMethod: S.selectedPM.id,
-        deviceCount: 1,
-      }),
+      headers: payHeaders,
+      body: JSON.stringify(payBody),
     });
 
     if (d && (d.paymentUrl || d.invoiceUrl)) {
