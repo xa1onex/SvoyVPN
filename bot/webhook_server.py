@@ -1619,7 +1619,8 @@ class WebhookServer:
             "user_id": None,
             "expires": datetime.utcnow() + timedelta(minutes=10)
         }
-        bot_url = f"https://t.me/{self.flyer_config.bot_username or 'SvoyVPN_robot'}?start=auth_{nonce}"
+        bot_username = os.getenv("BOT_USERNAME") or "SvoyVPN_robot"
+        bot_url = f"https://t.me/{bot_username}?start=auth_{nonce}"
         logger.info(f"Telegram auth init: nonce={nonce[:8]}…")
         return web.json_response({"nonce": nonce, "botUrl": bot_url})
 
@@ -1649,10 +1650,11 @@ class WebhookServer:
         logger.info(f"Telegram auth confirmed: user_id={user_id}")
         return web.json_response({"status": "ok", "token": token})
 
-    def confirm_telegram_auth(self, nonce: str, user_id: int):
+    @classmethod
+    def confirm_telegram_auth(cls, nonce: str, user_id: int):
         """Called by the bot handler when user sends /start auth_{nonce}."""
-        if nonce in self._auth_nonces:
-            self._auth_nonces[nonce]["user_id"] = user_id
+        if nonce in cls._auth_nonces:
+            cls._auth_nonces[nonce]["user_id"] = user_id
             logger.info(f"Auth nonce {nonce[:8]}… confirmed for user_id={user_id}")
 
     # ─── POST /api/auth/register ──────────────────────────────────────────────

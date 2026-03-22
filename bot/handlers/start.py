@@ -27,6 +27,19 @@ async def setup_start_handler(dp, bot: Bot, config):
         
         # Парсим deep link аргумент
         deep_link_arg = args[1] if len(args) > 1 else None
+        
+        # ── Android Auth Confirmation ──
+        if deep_link_arg and deep_link_arg.startswith('auth_'):
+            nonce = deep_link_arg[5:]
+            from ..webhook_server import WebhookServer
+            WebhookServer.confirm_telegram_auth(nonce, user_id)
+            await message.answer(
+                f"✅ <b>Личность подтверждена!</b>\n\n"
+                "Вы успешно вошли в приложение SvoyVPN. Теперь можете вернуться в приложение.",
+                parse_mode="HTML"
+            )
+            return
+
         referral_code = deep_link_arg[4:] if deep_link_arg and deep_link_arg.startswith('ref_') else None
         utm_tag = deep_link_arg if deep_link_arg and not deep_link_arg.startswith('ref_') else None
         
