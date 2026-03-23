@@ -57,3 +57,9 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+.gradle/
+node_modules/
+.DS_Store
+*.xcworkspace/
+/SvoyVPN-Android/app/build/
+.broken_xcode_projects/

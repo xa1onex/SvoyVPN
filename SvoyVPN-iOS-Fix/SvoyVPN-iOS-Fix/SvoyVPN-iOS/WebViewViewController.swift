@@ -4,6 +4,8 @@ import WebKit
 final class WebViewViewController: UIViewController {
 
     private var webView: WKWebView!
+    private var loadingView: UIView!
+    private var bottomSafeView: UIView!
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -12,6 +14,7 @@ final class WebViewViewController: UIViewController {
         view.backgroundColor = isDark ? UIColor(hex: "#18222d") : .white
         
         setupWebView()
+        setupLoadingView()
         loadMiniApp()
     }
     
@@ -19,8 +22,12 @@ final class WebViewViewController: UIViewController {
         super.traitCollectionDidChange(previousTraitCollection)
         if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
             let isDark = traitCollection.userInterfaceStyle == .dark
-            view.backgroundColor = isDark ? UIColor(hex: "#18222d") : .white
-            webView.backgroundColor = view.backgroundColor
+            let viewBgColor = isDark ? UIColor(hex: "#18222d") : .white
+            let tabBarColor = isDark ? UIColor(hex: "#21303f") : UIColor(hex: "#f7f9fb")
+            
+            view.backgroundColor = viewBgColor
+            webView.backgroundColor = viewBgColor
+            bottomSafeView?.backgroundColor = tabBarColor
             
             // Re-inject theme dynamically if needed
             let colorScheme = isDark ? "dark" : "light"
@@ -74,11 +81,51 @@ final class WebViewViewController: UIViewController {
         webView.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(webView)
+        
+        let tabBarColor = isDark ? UIColor(hex: "#21303f") : UIColor(hex: "#f7f9fb")
+        bottomSafeView = UIView()
+        bottomSafeView.backgroundColor = tabBarColor
+        bottomSafeView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(bottomSafeView)
+        
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            webView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            
+            bottomSafeView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            bottomSafeView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bottomSafeView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottomSafeView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+
+    private func setupLoadingView() {
+        let isDark = traitCollection.userInterfaceStyle == .dark
+        
+        loadingView = UIView()
+        loadingView.backgroundColor = isDark ? UIColor(hex: "#18222d") : .white
+        loadingView.translatesAutoresizingMaskIntoConstraints = false
+        
+        let logoImage = UIImage(named: "SvoyVPN_Logo")
+        let logoImageView = UIImageView(image: logoImage)
+        logoImageView.contentMode = .scaleAspectFit
+        logoImageView.translatesAutoresizingMaskIntoConstraints = false
+        
+        loadingView.addSubview(logoImageView)
+        view.addSubview(loadingView)
+        
+        NSLayoutConstraint.activate([
+            loadingView.topAnchor.constraint(equalTo: view.topAnchor),
+            loadingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            loadingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            loadingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            logoImageView.centerXAnchor.constraint(equalTo: loadingView.centerXAnchor),
+            logoImageView.centerYAnchor.constraint(equalTo: loadingView.centerYAnchor),
+            logoImageView.widthAnchor.constraint(equalToConstant: 120),
+            logoImageView.heightAnchor.constraint(equalToConstant: 120)
         ])
     }
 
@@ -155,30 +202,47 @@ final class WebViewViewController: UIViewController {
                 window.__androidLogout = function() {
                     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSBridge) {
                         window.webkit.messageHandlers.iOSBridge.postMessage({action: 'logout'});
-                    } else if (window.AndroidBridge) {
-                        AndroidBridge.logout();
                     }
                 };
+
+                window.haptic = function(style) {
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSBridge) {
+                        window.webkit.messageHandlers.iOSBridge.postMessage({action: 'haptic', style: style});
+                    }
+                };
+                
+                // FORCE BIND LOGOUT BUTTON (Overrides remote server JS)
+                setTimeout(function() {
+                    var btn = document.getElementById('btnAndroidLogout');
+                    if (btn) {
+                        btn.style.display = 'flex';
+                        btn.onclick = function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            window.haptic('medium');
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSBridge) {
+                                window.webkit.messageHandlers.iOSBridge.postMessage({action: 'logout'});
+                            }
+                        };
+                    }
+                }, 1500);
+
+                // GLOBAL INTERFACE HAPTICS
+                document.addEventListener('click', function(e) {
+                    var clickable = e.target.closest('button, a, .tab, .nav-icon, .link-card, .server-card, .plan-card, [onclick]');
+                    if (clickable) {
+                        window.haptic('light');
+                    }
+                }, true);
+                
             })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
     func logout() {
+        // App automatically swaps screens via TokenStorage @StateObject
         TokenStorage.shared.clearToken()
-        DispatchQueue.main.async {
-            let vc = AuthViewController()
-            vc.modalPresentationStyle = .fullScreen
-            
-            // Allow presenting Auth from root
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let window = windowScene.windows.first {
-                window.rootViewController = vc
-                window.makeKeyAndVisible()
-            } else {
-                self.present(vc, animated: true)
-            }
-        }
     }
     
     func share(text: String) {
@@ -209,6 +273,15 @@ extension WebViewViewController: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         // Inject JWT and theme AFTER page has loaded
         injectBridge()
+        
+        // Скрыть экран загрузки
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            UIView.animate(withDuration: 0.3, animations: {
+                self.loadingView.alpha = 0
+            }) { _ in
+                self.loadingView.isHidden = true
+            }
+        }
     }
 }
 
@@ -218,7 +291,7 @@ private final class NativeBridgeHandler: NSObject, WKScriptMessageHandler {
     init(owner: WebViewViewController) { self.owner = owner }
 
     func userContentController(_ userContentController: WKUserContentController,
-                               didReceive message: WKScriptMessage) {
+                                didReceive message: WKScriptMessage) {
         guard message.name == "iOSBridge",
               let body = message.body as? [String: Any],
               let action = body["action"] as? String else { return }
@@ -230,13 +303,45 @@ private final class NativeBridgeHandler: NSObject, WKScriptMessageHandler {
                     self.owner?.logout()
                 }))
                 alert.addAction(UIAlertAction(title: "Отмена", style: .cancel, handler: nil))
-                self.owner?.present(alert, animated: true, completion: nil)
+                
+                // Найти самый верхний экран, чтобы диалог 100% отобразился в SwiftUI
+                if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene ?? UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let window = windowScene.windows.first(where: { $0.isKeyWindow }),
+                   var topController = window.rootViewController {
+                    while let presented = topController.presentedViewController {
+                        topController = presented
+                    }
+                    topController.present(alert, animated: true)
+                }
+            }
+        } else if action == "haptic" {
+            let style = body["style"] as? String ?? "light"
+            DispatchQueue.main.async {
+                switch style {
+                case "light":
+                    let gen = UISelectionFeedbackGenerator()
+                    gen.prepare()
+                    gen.selectionChanged()
+                case "medium":
+                    let gen = UIImpactFeedbackGenerator(style: .medium)
+                    gen.prepare()
+                    gen.impactOccurred()
+                case "success":
+                    let gen = UINotificationFeedbackGenerator()
+                    gen.prepare()
+                    gen.notificationOccurred(.success)
+                case "error":
+                    let gen = UINotificationFeedbackGenerator()
+                    gen.prepare()
+                    gen.notificationOccurred(.error)
+                default:
+                    let gen = UISelectionFeedbackGenerator()
+                    gen.prepare()
+                    gen.selectionChanged()
+                }
             }
         } else if action == "share", let text = body["text"] as? String {
             owner?.share(text: text)
-        } else if action == "getToken" {
-            // Note: synchronous return to JS is not natively supported in WKScriptMessageHandler.
-            // But JS in the mini-app likely uses window.__androidJwt directly.
         }
     }
 }

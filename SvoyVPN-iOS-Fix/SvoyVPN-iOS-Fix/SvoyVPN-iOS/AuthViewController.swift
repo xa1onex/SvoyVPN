@@ -1,7 +1,7 @@
 import UIKit
 import WebKit
 
-/// AuthViewController — экран авторизации.
+/// AuthViewController — экран авторизаци
 /// Полный аналог Android-шного AuthActivity: тот же HTML/JS загружается в WKWebView,
 /// JavaScript-мост называется «iOSAuth» (вместо «AndroidAuth»), методы идентичны.
 final class AuthViewController: UIViewController {
@@ -19,7 +19,7 @@ final class AuthViewController: UIViewController {
 
     private func setupWebView() {
         let controller = WKUserContentController()
-        controller.add(AuthBridgeHandler(owner: self), name: "iOSAuth")
+        controller.add(AuthBridgeHandler(owner: self), name: "iOSBridge")
 
         let config = WKWebViewConfiguration()
         config.userContentController = controller
@@ -52,11 +52,8 @@ final class AuthViewController: UIViewController {
     // MARK: – Navigation to main screen
 
     func launchWebView() {
-        DispatchQueue.main.async {
-            let vc = WebViewViewController()
-            vc.modalPresentationStyle = .fullScreen
-            self.present(vc, animated: false)
-        }
+        // App automatically rebuilds via TokenStorage @StateObject
+        // Token is already saved before this is called
     }
 
     // MARK: – HTML Auth Page (identical to Android)
@@ -97,8 +94,8 @@ final class AuthViewController: UIViewController {
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 24px 20px 40px;
+      justify-content: flex-start; /* Pin to top */
+      padding: 60px 20px 40px; /* More top padding */
     }
     .logo-anim {
       position: relative; width: 176px; height: 176px;
@@ -127,7 +124,7 @@ final class AuthViewController: UIViewController {
     .logo-anim .logo-core svg { width:75px;height:75px;fill:currentColor;color:#fff; }
     .app-name { font-size:22px;font-weight:700;line-height:1.2;text-align:center;margin-bottom:4px; }
     .app-tagline { font-size:14px;font-weight:400;line-height:1.4;color:var(--muted);text-align:center;margin-bottom:24px; }
-    .card { width:100%;max-width:360px;background:var(--section_bg_color);border-radius:14px;padding:14px 16px; }
+    .card { width:100%;max-width:360px;background:var(--section_bg_color);border-radius:14px;padding:20px 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
     .tabs { display:flex;background:var(--input-bg);border-radius:12px;padding:4px;margin-bottom:24px; }
     .tab { flex:1;text-align:center;padding:10px;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent; }
     .tab.active { background:var(--accent);color:#fff; }
@@ -281,16 +278,29 @@ final class AuthViewController: UIViewController {
   let currentNonce = null;
   let _pendingRegEmail = '';
 
-  function notifyNative(token, userId) {
-    // iOS WKWebView bridge
+  function haptic(style) {
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSAuth) {
-      window.webkit.messageHandlers.iOSAuth.postMessage({ action: 'loginSuccess', token: token, userId: userId || '' });
+      window.webkit.messageHandlers.iOSAuth.postMessage({ action: 'haptic', style: style });
+    }
+  }
+
+  function haptic(style) {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSBridge) {
+      window.webkit.messageHandlers.iOSBridge.postMessage({ action: 'haptic', style: style });
+    }
+  }
+
+  function notifyNative(token, userId) {
+    haptic('success');
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSBridge) {
+      window.webkit.messageHandlers.iOSBridge.postMessage({ action: 'loginSuccess', token: token, userId: userId || '' });
     }
   }
 
   function switchTab(tab) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    haptic('light');
     if (tab === 'tg') {
       document.querySelectorAll('.tab')[0].classList.add('active');
       document.getElementById('panelTg').classList.add('active');
@@ -305,6 +315,7 @@ final class AuthViewController: UIViewController {
     document.getElementById('loginForm').style.display = 'none';
     document.getElementById('registerForm').style.display = 'none';
     document.getElementById('resetForm').style.display = 'none';
+    haptic('light');
     if (t === 'login') {
       document.querySelectorAll('.sub-tabs .sub-tab')[0].classList.add('active');
       document.getElementById('loginForm').style.display = 'block';
@@ -483,6 +494,13 @@ final class AuthViewController: UIViewController {
   function hideError(id) {
     document.getElementById(id).classList.remove('visible');
   }
+  
+  // Общая вибрация на любой клик по кнопке/вкладке
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('button, .tab, .sub-tab, a, [onclick]')) {
+      haptic('light');
+    }
+  }, true);
 </script>
 </body>
 </html>
@@ -518,18 +536,45 @@ private final class AuthBridgeHandler: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
-        guard message.name == "iOSAuth",
+        guard message.name == "iOSBridge",
               let body = message.body as? [String: Any],
-              let action = body["action"] as? String,
-              action == "loginSuccess",
-              let token = body["token"] as? String, !token.isEmpty else { return }
-
-        let userIdStr = body["userId"] as? String ?? ""
-        TokenStorage.shared.saveToken(token)
-        if let uid = Int64(userIdStr) {
-            TokenStorage.shared.saveUserId(uid)
+              let action = body["action"] as? String else { return }
+        
+        if (action == "loginSuccess") {
+            guard let token = body["token"] as? String, !token.isEmpty else { return }
+            let userIdStr = body["userId"] as? String ?? ""
+            TokenStorage.shared.saveToken(token)
+            if let uid = Int64(userIdStr) {
+                TokenStorage.shared.saveUserId(uid)
+            }
+            owner?.launchWebView()
+        } else if action == "haptic" {
+            let style = body["style"] as? String ?? "light"
+            DispatchQueue.main.async {
+                switch style {
+                case "light":
+                    let gen = UISelectionFeedbackGenerator()
+                    gen.prepare()
+                    gen.selectionChanged()
+                case "medium":
+                    let gen = UIImpactFeedbackGenerator(style: .medium)
+                    gen.prepare()
+                    gen.impactOccurred()
+                case "success":
+                    let gen = UINotificationFeedbackGenerator()
+                    gen.prepare()
+                    gen.notificationOccurred(.success)
+                case "error":
+                    let gen = UINotificationFeedbackGenerator()
+                    gen.prepare()
+                    gen.notificationOccurred(.error)
+                default:
+                    let gen = UISelectionFeedbackGenerator()
+                    gen.prepare()
+                    gen.selectionChanged()
+                }
+            }
         }
-        owner?.launchWebView()
     }
 }
 

@@ -1,12 +1,19 @@
 import Foundation
 import Security
+import Combine
 
 /// Securely stores JWT token and auth state in iOS Keychain.
 /// Mirrors Android's TokenStorage using EncryptedSharedPreferences.
-final class TokenStorage {
+final class TokenStorage: ObservableObject {
 
+    @Published var loggedInStatus: Bool
+    
     static let shared = TokenStorage()
-    private init() {}
+    private init() {
+        self.loggedInStatus = false
+        // Initialize loggedInStatus at startup
+        self.loggedInStatus = self.isLoggedIn
+    }
 
     private let service = "com.svoyvpn.app"
     private let tokenAccount = "jwt_token"
@@ -16,6 +23,10 @@ final class TokenStorage {
 
     func saveToken(_ token: String) {
         save(value: token, account: tokenAccount)
+        DispatchQueue.main.async {
+            self.loggedInStatus = true
+            self.objectWillChange.send()
+        }
     }
 
     func getToken() -> String? {
@@ -25,6 +36,10 @@ final class TokenStorage {
     func clearToken() {
         delete(account: tokenAccount)
         delete(account: userIdAccount)
+        DispatchQueue.main.async {
+            self.loggedInStatus = false
+            self.objectWillChange.send()
+        }
     }
 
     var isLoggedIn: Bool {
