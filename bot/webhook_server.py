@@ -59,6 +59,25 @@ class BadStatusLineFilter(logging.Filter):
         return True
 
 
+@web.middleware
+async def cors_middleware(request, handler):
+    if request.method == "OPTIONS":
+        return web.Response(
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+                "Access-Control-Max-Age": "86400"
+            }
+        )
+    try:
+        response = await handler(request)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        return response
+    except web.HTTPException as ex:
+        ex.headers["Access-Control-Allow-Origin"] = "*"
+        raise
+
 class WebhookServer:
     """HTTP сервер для вебхуков и subscription endpoint"""
     
@@ -79,7 +98,7 @@ class WebhookServer:
         self.yookassa_client = yookassa_client
         self.payment_processor = payment_processor
         self.admin_ids = admin_ids or []
-        self.app = web.Application()
+        self.app = web.Application(middlewares=[cors_middleware])
         
         # Core routes
         self.app.router.add_get('/', self.root_handler)
@@ -947,9 +966,8 @@ class WebhookServer:
     async def api_get_tariffs(self, request: web_request.Request) -> web.Response:
         """API: Получить список тарифов (обычные или со скидкой для продления)"""
         try:
-            # Check initData to determine if we should send renewal prices
             init_data = request.query.get('initData', '')
-            is_renew = False
+            user_id = 0
 
             if init_data and self.bot:
                 try:
@@ -958,35 +976,20 @@ class WebhookServer:
                         user_str = parsed_data.get('user', '{}')
                         user_data = json.loads(user_str) if user_str else {}
                         user_id = int(user_data.get('id', 0))
-                        
-                        if user_id:
-                            async with get_connection() as conn:
-                                row = await conn.fetchrow(
-                                    "SELECT pay_subscribed, subscription_end FROM users WHERE user_id = $1", 
-                                    user_id
-                                )
-                                if row and row['pay_subscribed'] and row['subscription_end']:
-                                    end_date = row['subscription_end']
-                                    if isinstance(end_date, str):
-                                        end_date = datetime.strptime(end_date.split()[0], "%Y-%m-%d").date()
-                                    elif hasattr(end_date, 'date'):
-                                        end_date = end_date.date()
-                                    
-                                    if end_date >= datetime.now().date():
-                                        is_renew = True
                 except Exception:
-                    pass  # if something goes wrong, fallback to normal prices
+                    pass  # fallback to normal prices
             
-            from .plans import get_subscription_plans, get_renewal_plans
+            from .plans import get_user_tariffs, get_subscription_plans
             
-            # Предварительно загружаем ОБА набора планов, чтобы сравнивать цены
+            # Получаем актуальные тарифы для пользователя, учитывая все скидки
+            current_tariffs, is_renew, show_discount = await get_user_tariffs(user_id)
+            
+            # Предварительно загружаем базовые планы для расчета выгоды (зачеркнутых цен)
             regular_plans = await get_subscription_plans()
-            renewal_plans = await get_renewal_plans()
             
-            current_tariffs = renewal_plans if is_renew else regular_plans
             tariffs = []
             
-            # Получаем текущую цену за 1 месяц (для расчета выгоды оптом)
+            # Получаем текущую базовую цену за 1 месяц (для расчета выгоды оптом)
             m1_reg = regular_plans.get('1_month', {})
             m1_rub = m1_reg.get('price_rub', 19900) / 100.0
             m1_stars = m1_reg.get('price_stars', 199)
@@ -999,29 +1002,22 @@ class WebhookServer:
                 old_price = None
                 old_price_stars = None
                 
-                # Логика для планов продления (сравниваем с обычными ценами)
-                if is_renew:
-                    # '1_month_renew' -> '1_month'
-                    base_id = plan_id.replace("_renew", "")
-                    base_plan = regular_plans.get(base_id)
-                    if base_plan:
-                        base_rub = base_plan.get('price_rub', 0) / 100.0
-                        base_stars = base_plan.get('price_stars', 0)
-                        if price_rub < base_rub:
-                            old_price = base_rub
-                        if price_stars < base_stars:
-                            old_price_stars = base_stars
+                base_id = plan_id.replace("_renew", "")
+                base_plan = regular_plans.get(base_id)
+                if base_plan:
+                    base_rub = base_plan.get('price_rub', 0) / 100.0
+                    base_stars = base_plan.get('price_stars', 0)
+                    if price_rub < base_rub:
+                        old_price = base_rub
+                    if price_stars < base_stars:
+                        old_price_stars = base_stars
                 
-                # Логика "Оптом дешевле" или "Скидка от админа" для всех планов
+                # Логика "Оптом дешевле" для всех планов
                 if months > 1:
-                    # Если цена за план меньше, чем (цена 1 мес * кол-во месяцев)
                     if not old_price and price_rub < (m1_rub * months):
                         old_price = m1_rub * months
                     if not old_price_stars and price_stars < (m1_stars * months):
-                        old_price_stars = m1_stars_base = m1_stars * months
-                
-                # Если админ просто снизил цену ниже дефолта (проверка против SUBSCRIPTION_PLANS_BASE не нужна здесь, 
-                # так как мы ориентируемся на то, что админ видит в "Управлении ценами")
+                        old_price_stars = m1_stars * months
                 
                 tariffs.append({
                     "id": plan_id,
@@ -1031,7 +1027,7 @@ class WebhookServer:
                     "pricePerMonth": price_rub / months,
                     "priceStars": price_stars,
                     "oldPriceStars": old_price_stars,
-                    "pricePerMonthStars": round(price_stars / months),
+                    "pricePerMonthStars": round(price_stars / months) if months > 0 else price_stars,
                     "popular": months == 12,
                     "isRenew": is_renew
                 })
@@ -1098,15 +1094,13 @@ class WebhookServer:
                 return web.json_response({"error": "User ID not found"}, status=400)
             
             # Получаем данные тарифа
-            from .plans import get_subscription_plans, get_renewal_plans
-            subscription_plans = await get_subscription_plans()
-            renewal_plans = await get_renewal_plans()
+            from .plans import get_user_tariffs
+            current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
             
-            # Ищем в обоих наборах
-            plan_data = subscription_plans.get(tariff_id) or renewal_plans.get(tariff_id)
+            plan_data = current_tariffs.get(tariff_id)
             
             if not plan_data:
-                logger.warning(f"Plan not found: {tariff_id}")
+                logger.warning(f"Plan not found or not available: {tariff_id} for user {user_id}")
                 return web.json_response({"error": "Tariff not found"}, status=404)
             
             # Получаем данные способа оплаты

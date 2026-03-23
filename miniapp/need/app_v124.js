@@ -8,6 +8,8 @@
   const urlParams = new URLSearchParams(window.location.search);
   const ANDROID_JWT = window.__androidJwt || urlParams.get('jwt') || null;
   const IS_ANDROID = !!ANDROID_JWT;
+  const IS_IOS = !!window.webkit && !!window.webkit.messageHandlers && !!window.webkit.messageHandlers.iOSBridge;
+  const IS_MOBILE_APP = IS_ANDROID || IS_IOS;
   const URL_THEME = urlParams.get('theme');
 
   const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
@@ -86,7 +88,17 @@
   }
 
   function haptic(style) {
-    try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(style); } catch (_) { }
+    try {
+      if (tg && tg.HapticFeedback) {
+        tg.HapticFeedback.impactOccurred(style);
+      } else if (window.haptic && typeof window.haptic === 'function') {
+        window.haptic(style);
+      } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSBridge) {
+        window.webkit.messageHandlers.iOSBridge.postMessage({ action: 'haptic', style: style });
+      } else if (window.AndroidBridge && window.AndroidBridge.vibrate) {
+        window.AndroidBridge.vibrate(style);
+      }
+    } catch (_) { }
   }
 
   /* ═══════ Theme ═══════ */
@@ -1421,13 +1433,19 @@
         : window.open(link, '_blank');
     });
 
-    /* ── Android Logout ── */
+    /* ── Mobile App Logout ── */
     const lgBtn = document.getElementById('btnAndroidLogout');
-    if (lgBtn && IS_ANDROID) {
+    if (lgBtn && IS_MOBILE_APP) {
       lgBtn.style.display = 'flex';
       lgBtn.onclick = () => {
         haptic('medium');
-        if (window.AndroidBridge) AndroidBridge.logout();
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSBridge) {
+          window.webkit.messageHandlers.iOSBridge.postMessage({ action: 'logout' });
+        } else if (window.AndroidBridge && window.AndroidBridge.logout) {
+          window.AndroidBridge.logout();
+        } else if (window.__androidLogout) {
+          window.__androidLogout();
+        }
       };
     }
 
@@ -1501,9 +1519,7 @@
       }
 
       currentSlide = idx;
-      const subActive = S.subscription && S.subscription.isActive;
-      const shift = subActive ? 1 : 0;
-      track.style.transform = `translateX(-${(idx - shift) * 100}%)`;
+      track.style.transform = `translateX(-${idx * 100}%)`;
 
       dots.forEach((d, i) => {
         if (d) d.classList.toggle('active', i === idx);
@@ -1671,6 +1687,7 @@
     });
 
     btnNext.addEventListener('click', () => {
+      haptic('light');
       if (currentSlide === 0) {
         if (S.subscription && S.subscription.isActive) {
           goToSlide(1, 'forward');

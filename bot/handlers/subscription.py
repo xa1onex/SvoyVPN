@@ -321,101 +321,37 @@ async def get_subscription_info(user_id: int) -> dict:
         }
 
 
-async def build_subscription_message(info: dict, state: FSMContext, config=None) -> tuple[str, InlineKeyboardBuilder]:
-    """Строит сообщение и клавиатуру для подписки"""
+async def build_subscription_message(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
+    """Формирует сообщение и клавиатуру для подписки/продления"""
+    from bot.plans import get_user_tariffs, get_subscription_plans
+    
+    current_tariffs, is_renew, show_discount = await get_user_tariffs(user_id)
+    regular_plans = await get_subscription_plans()
+    
     builder = InlineKeyboardBuilder()
-    is_active = info['is_active']
-    days_remaining = info['days_remaining']
-    end_date_str = info['end_date_str']
-    user_id = info['user_id']
     
-    subscription_url = await get_user_subscription_url(user_id, config)
-    
-    if is_active:
-        if days_remaining < 1:
-            days_display = "СЕГОДНЯ"
-        else:
-            days_display = f"{days_remaining} {'день' if days_remaining == 1 else 'дня' if 2 <= days_remaining <= 4 else 'дней'}"
-        
-        text = (
-            "✅ Ваш <b>VPN</b> <b>активен</b>!\n\n"
-            f"📅 Дата окончания: <i>{end_date_str}</i>\n"
-            f"⏰ Осталось: <i>{days_display}</i>\n\n"
-            "🔗 <b>Ваша ссылка VPN (подписка):</b>\n"
-            f"<code>{subscription_url}</code>\n\n"
-            "📱 <b>Как использовать:</b>\n"
-            "1. Скопируйте ссылку выше\n"
-            "2. Откройте приложение (v2rayNG, v2rayN, sing-box и т.п.)\n"
-            "3. Добавьте ссылку как <b>подписку</b>\n"
-            "4. Обновите/синхронизируйте подписку в приложении\n\n"
-        )
-        
+    if is_renew:
+        text = "💳 <b>Управление подпиской:</b>\n\n"
         text += (
-            "<b>Детали VPN</b>:\n"
-            "• Быстрый и безопасный VPN\n"
-            "• Обход всех блокировок\n"
-            "• Высокая скорость\n\n"
+            "✅ Ваш VPN <b>активен</b>!\n"
+            "Вы можете пользоваться приложением.\n\n"
         )
-        
-        # Всегда показываем возможность продления, если подписка активна
-        renewal_plans = await get_renewal_plans()
-        subscription_plans = await get_subscription_plans()
-        
-        # Проверяем, должна ли показываться скидка
-        show_discount = await should_show_discount(days_remaining)
         
         if show_discount:
-            # Если скидка активна - показываем текст про скидку
             text += "🎁 <b>Специальное предложение!</b>\n\n"
             text += "🔥 Успей продлить <b>VPN</b> по специальной цене:\n\n"
             
-            # Показываем цены продления с зачеркнутыми обычными ценами
-            for plan_id in renewal_plans:
-                renew_plan = renewal_plans[plan_id]
-                # Находим обычную цену (убираем _renew из plan_id)
-                base_plan_id = plan_id.replace('_renew', '')
-                base_plan = subscription_plans.get(base_plan_id, {})
-                old_price = format_price_rub(base_plan.get('price_rub', 0))
-                new_price = format_price_rub(renew_plan['price_rub'])
-                
-                text += f"{renew_plan['title'].replace(' 🔥', '')} <s>{old_price}</s> - {new_price}\n"
+            for plan_id, plan_data in current_tariffs.items():
+                base_id = plan_id.replace('_renew', '')
+                base_plan = regular_plans.get(base_id, {})
+                old_price = format_price_rub(base_plan.get('price_rub', plan_data.get('price_rub', 0)))
+                new_price = format_price_rub(plan_data['price_rub'])
+                text += f"{plan_data['title'].replace(' 🔥', '')} <s>{old_price}</s> - {new_price}\n"
             text += "\n"
         else:
-            # Если скидки нет - просто показываем обычный текст
             text += "💡 Вы можете продлить подписку в любое время:\n\n"
-        
-        # Всегда показываем кнопки продления
-        # Но если скидка не активна, убираем "🔥" из названий и показываем обычные цены
-        for plan_id, plan_data in renewal_plans.items():
-            if show_discount:
-                # Если скидка активна - показываем скидочные цены с "🔥"
-                button_title = plan_data['title']
-                button_price_rub = plan_data['price_rub']
-                button_price_stars = plan_data['price_stars']
-            else:
-                # Если скидка не активна - убираем "🔥" и показываем обычные цены
-                # Находим обычный план (убираем _renew из plan_id)
-                base_plan_id = plan_id.replace('_renew', '')
-                base_plan = subscription_plans.get(base_plan_id, plan_data)
-                button_title = plan_data['title'].replace(' 🔥', '')
-                button_price_rub = base_plan.get('price_rub', plan_data['price_rub'])
-                button_price_stars = base_plan.get('price_stars', plan_data['price_stars'])
             
-            builder.button(
-                text=f"{button_title} - {format_price_both(button_price_rub, button_price_stars)}",
-                callback_data=f"plan:{plan_id}"
-            )
-        builder.adjust(1)
-        
-        # Кнопка "Назад" всегда
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
     else:
-        # Если подписка неактивна или пользователя нет - показываем планы
-        subscription_plans = await get_subscription_plans()
-        renewal_plans = await get_renewal_plans()
-        
-        # Проверяем, должна ли показываться скидка (для режима "скидка для всех")
-        # Если у пользователя нет подписки, days_remaining = 0, но в режиме enable_for_all скидка должна показываться
         show_discount = await should_show_discount(0)
         
         text = "💳 <b>Информация о вашем VPN:</b>\n\n"
@@ -469,39 +405,42 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
     
     @dp.callback_query(F.data == "show_subscription_plans")
     async def handle_show_subscription_plans(callback: CallbackQuery, state: FSMContext):
-        """Показывает планы подписки для новых пользователей"""
+        """Показывает планы подписки"""
         user_id = callback.from_user.id
-        subscription_plans = await get_subscription_plans()
+        from bot.plans import get_user_tariffs
+        current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
         
         text = "💳 <b>Выберите план подписки:</b>\n\n"
         builder = InlineKeyboardBuilder()
         
-        for plan_id, plan_data in subscription_plans.items():
+        for plan_id, plan_data in current_tariffs.items():
             price_text = format_price_both(plan_data['price_rub'], plan_data['price_stars'])
             text += f"• <b>{plan_data['title']}</b> - {price_text}\n"
             text += f"  Срок: {plan_data['duration']} месяцев\n"
             text += f"  Трафик: {plan_data.get('traffic_gb', 'Безлимитный')} ГБ\n\n"
         
+        action = "buy_renewal" if is_renew else "buy_subscription"
+        
         # Кнопки для оплаты (Stars и YooKassa)
-        for plan_id, plan_data in list(subscription_plans.items())[:2]:  # Показываем первые 2 плана
+        for plan_id, plan_data in list(current_tariffs.items())[:2]:  # Показываем первые 2 плана
             builder.row(
                 InlineKeyboardButton(
                     text=f"⭐ {plan_data['title']} ({format_price_stars(plan_data['price_stars'])})",
-                    callback_data=f"buy_subscription:{plan_id}:stars"
+                    callback_data=f"{action}:{plan_id}:stars"
                 )
             )
             if config.yookassa.enabled:
                 builder.row(
                     InlineKeyboardButton(
                         text=f"💳 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})",
-                        callback_data=f"buy_subscription:{plan_id}:yookassa"
+                        callback_data=f"{action}:{plan_id}:yookassa"
                     )
                 )
             if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
                 builder.row(
                     InlineKeyboardButton(
                         text=f"💎 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})",
-                        callback_data=f"buy_subscription:{plan_id}:cryptopay"
+                        callback_data=f"{action}:{plan_id}:cryptopay"
                     )
                 )
         
@@ -514,35 +453,37 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_show_renewal_plans(callback: CallbackQuery, state: FSMContext):
         """Показывает планы продления"""
         user_id = callback.from_user.id
-        renewal_plans = await get_renewal_plans()
+        from bot.plans import get_user_tariffs
+        current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
         
         text = "💳 <b>Продлить подписку:</b>\n\n"
         builder = InlineKeyboardBuilder()
         
-        for plan_id, plan_data in renewal_plans.items():
+        for plan_id, plan_data in current_tariffs.items():
             price_text = format_price_both(plan_data['price_rub'], plan_data['price_stars'])
             text += f"• <b>{plan_data['title']}</b> - {price_text}\n"
         
         # Кнопки для оплаты
-        for plan_id, plan_data in list(renewal_plans.items())[:2]:
+        action = "buy_renewal" if is_renew else "buy_subscription"
+        for plan_id, plan_data in list(current_tariffs.items())[:2]:
             builder.row(
                 InlineKeyboardButton(
                     text=f"⭐ {plan_data['title']} ({format_price_stars(plan_data['price_stars'])})",
-                    callback_data=f"buy_renewal:{plan_id}:stars"
+                    callback_data=f"{action}:{plan_id}:stars"
                 )
             )
             if config.yookassa.enabled:
                 builder.row(
                     InlineKeyboardButton(
                         text=f"💳 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})",
-                        callback_data=f"buy_renewal:{plan_id}:yookassa"
+                        callback_data=f"{action}:{plan_id}:yookassa"
                     )
                 )
             if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
                 builder.row(
                     InlineKeyboardButton(
                         text=f"💎 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})",
-                        callback_data=f"buy_renewal:{plan_id}:cryptopay"
+                        callback_data=f"{action}:{plan_id}:cryptopay"
                     )
                 )
         
@@ -557,21 +498,14 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         plan_id = callback.data.split(":")[1]
         user_id = callback.from_user.id
         
-        # Получаем планы
-        subscription_plans = await get_subscription_plans()
-        renewal_plans = await get_renewal_plans()
-        ALL_PLANS = {**subscription_plans, **renewal_plans}
+        from bot.plans import get_user_tariffs, get_subscription_plans, get_renewal_plans
+        current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
         
-        if plan_id not in ALL_PLANS:
-            await callback.answer("❌ Неверный план", show_alert=True)
+        if plan_id not in current_tariffs:
+            await callback.answer("❌ План недоступен или не найден", show_alert=True)
             return
-        
-        is_renewal = plan_id in renewal_plans or '_renew' in plan_id
-        plan_data = renewal_plans.get(plan_id) if is_renewal else subscription_plans.get(plan_id)
-        
-        if not plan_data:
-            await callback.answer("❌ План не найден", show_alert=True)
-            return
+            
+        plan_data = current_tariffs[plan_id]
         
         # Проверяем, есть ли у пользователя активная подписка
         async with get_connection() as conn:
@@ -583,16 +517,8 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                     AND subscription_end >= CURRENT_DATE
             ''', user_id)
         
-        # Если пользователь пытается купить новую подписку, но у него уже есть активная
-        if not is_renewal and active_sub:
-            await callback.answer("❌ У вас уже есть активная подписка! Используйте продление.", show_alert=True)
-            return
-        
-        # Проверяем наличие активной подписки для продления
-        if is_renewal:
-            if not active_sub:
-                await callback.answer("❌ У вас нет активной подписки для продления!", show_alert=True)
-                return
+        # Определяем действие
+        action = "buy_renewal" if is_renew else "buy_subscription"
         
         # Показываем методы оплаты
         text = f"💳 <b>{plan_data['title']}</b>\n\n"
@@ -606,7 +532,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         builder.row(
             InlineKeyboardButton(
                 text=f"⭐ Telegram Stars ({format_price_stars(plan_data['price_stars'])})",
-                callback_data=f"{'buy_renewal' if is_renewal else 'buy_subscription'}:{plan_id}:stars"
+                callback_data=f"{action}:{plan_id}:stars"
             )
         )
         
@@ -615,7 +541,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             builder.row(
                 InlineKeyboardButton(
                     text=f"💳 Банковская карта ({format_price_rub(plan_data['price_rub'])})",
-                    callback_data=f"{'buy_renewal' if is_renewal else 'buy_subscription'}:{plan_id}:yookassa"
+                    callback_data=f"{action}:{plan_id}:yookassa"
                 )
             )
             
@@ -624,7 +550,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             builder.row(
                 InlineKeyboardButton(
                     text=f"💎 Crypto Pay ({format_price_rub(plan_data['price_rub'])})",
-                    callback_data=f"{'buy_renewal' if is_renewal else 'buy_subscription'}:{plan_id}:cryptopay"
+                    callback_data=f"{action}:{plan_id}:cryptopay"
                 )
             )
         
@@ -653,20 +579,18 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         
         plan_id = parts[1]
         method_id = parts[2]
+        user_id = callback.from_user.id
         
-        # Получаем планы
-        subscription_plans = await get_subscription_plans()
-        renewal_plans = await get_renewal_plans()
+        # Получаем актуальные планы
+        from bot.plans import get_user_tariffs
+        current_tariffs, user_is_renew, _ = await get_user_tariffs(user_id)
         
-        # Определяем план
-        if is_renewal:
-            plan_data = renewal_plans.get(plan_id)
-        else:
-            plan_data = subscription_plans.get(plan_id)
-        
-        if not plan_data:
-            await callback.answer("❌ План не найден", show_alert=True)
+        # Убедимся, что тариф доступен
+        if plan_id not in current_tariffs:
+            await callback.answer("❌ План недоступен или устарел", show_alert=True)
             return
+            
+        plan_data = current_tariffs[plan_id]
         
         # Валидация метода оплаты
         if method_id not in PAYMENT_METHODS:

@@ -771,9 +771,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                             days_display = "?"
                         
                         # Формируем кнопки для продления подписки
-                        renewal_plans = await get_renewal_plans()
+                        from ..plans import get_user_tariffs
+                        current_tariffs, _, _ = await get_user_tariffs(user_id)
+                        
                         builder = InlineKeyboardBuilder()
-                        for plan_id, plan_data in renewal_plans.items():
+                        for plan_id, plan_data in current_tariffs.items():
                             builder.button(
                                 text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
                                 callback_data=f"buy_renewal:{plan_id}"

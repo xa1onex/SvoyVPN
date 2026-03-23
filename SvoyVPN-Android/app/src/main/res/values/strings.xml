@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SvoyVPN</string>
+    <string name="widget_title">SvoyVPN</string>
+    <string name="notification_channel_name">Подписка</string>
+    <string name="notification_channel_desc">Уведомления об истечении подписки</string>
+    <string name="btn_login_telegram">Войти через Telegram</string>
+    <string name="btn_login_email">Войти по Email</string>
+    <string name="btn_register">Зарегистрироваться</string>
+    <string name="hint_email">Email</string>
+    <string name="hint_password">Пароль</string>
+    <string name="error_invalid_email">Неверный email</string>
+    <string name="error_invalid_password">Пароль должен быть не менее 6 символов</string>
+    <string name="status_active">Активна</string>
+    <string name="status_inactive">Неактивна</string>
+    <string name="copy_success">Скопировано ✓</string>
+    <string name="loading">Загрузка…</string>
+</resources>
