@@ -399,42 +399,54 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             trial_conversion_rate = 0.0
             if trial_activated and trial_activated > 0:
                 trial_conversion_rate = (trial_converted or 0) / trial_activated * 100.0
+                
+            # Статистика использования подписок (из новых логов)
+            # DAU (24h), WAU (7d), MAU (30d) по реальным запросам
+            sub_dau_24h = await conn.fetchval('SELECT COUNT(DISTINCT user_id) FROM subscription_usage_logs WHERE timestamp >= CURRENT_TIMESTAMP - INTERVAL \'24 hours\'')
+            sub_wau_7d = await conn.fetchval('SELECT COUNT(DISTINCT user_id) FROM subscription_usage_logs WHERE timestamp >= CURRENT_TIMESTAMP - INTERVAL \'7 days\'')
+            sub_mau_30d = await conn.fetchval('SELECT COUNT(DISTINCT user_id) FROM subscription_usage_logs WHERE timestamp >= CURRENT_TIMESTAMP - INTERVAL \'30 days\'')
+            sub_requests_today = await conn.fetchval('SELECT COUNT(*) FROM subscription_usage_logs WHERE DATE(timestamp) = CURRENT_DATE')
+            
+            # Топ платформ за 7 дней
+            top_platforms_rows = await conn.fetch('''
+                SELECT user_agent, COUNT(*) as count 
+                FROM subscription_usage_logs 
+                WHERE timestamp >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+                GROUP BY user_agent 
+                ORDER BY count DESC 
+                LIMIT 5
+            ''')
+            
+            platforms_text = ""
+            for row in top_platforms_rows:
+                ua = (row['user_agent'] or "Unknown").split('/')[0].split(' ')[0][:15]
+                platforms_text += f"  • {ua}: <i>{row['count']} запр.</i>\n"
+            if not platforms_text: platforms_text = "  • Данных пока нет\n"
         
         stats_text = (
             "📊 <b>Подробная статистика</b>\n\n"
             "👥 <b>Пользователи:</b>\n"
             f"• Всего пользователей: <i>{total_users}</i>\n"
             f"• Активных подписок: <i>{active_subscriptions}</i>\n"
-            f"• Платежеспособных (платили): <i>{paying_users_count}</i>\n"
-            f"• Новых сегодня: <i>{new_today}</i>\n"
-            f"• Новых за неделю: <i>{new_week}</i>\n\n"
-            "📈 <b>Активность пользователей:</b>\n"
-            f"• Активных за 7 дней: <i>{active_7days}</i>\n"
-            f"• Активных за 30 дней: <i>{active_users_30d}</i>\n"
-            f"• Неактивных 30+ дней: <i>{inactive_30days}</i>\n\n"
+            f"• Платежеспособных (платили): <i>{paying_users_count}</i>\n\n"
+            
+            "📈 <b>Активность VPN:</b>\n"
+            f"  • DAU (24ч): <b>{sub_dau_24h or 0}</b> чел. 🏆\n"
+            f"  • WAU (7дн): <b>{sub_wau_7d or 0}</b> чел.\n"
+            f"  • MAU (30дн): <b>{sub_mau_30d or 0}</b> чел.\n"
+            f"  • Запросов сегодня: <b>{sub_requests_today or 0}</b>\n\n"
+            
+            "📱 <b>Топ клиентов (7дн):</b>\n"
+            f"{platforms_text}\n"
+            
             "💰 <b>Финансы:</b>\n"
-            f"• Доход (RUB): <i>{total_revenue_rub / 100 if total_revenue_rub else 0:.2f}₽</i>\n"
-            f"• Доход (Stars): <i>{total_revenue_stars}⭐</i>\n"
-            f"• Платежей сегодня: <i>{payments_today}</i>\n"
-            f"• Доход сегодня: <i>{revenue_today_rub / 100 if revenue_today_rub else 0:.2f}₽</i>\n"
-            f"• Доход за 30 дней (RUB): <i>{revenue_30d_rub / 100 if revenue_30d_rub else 0:.2f}₽</i>\n"
-            f"• ARPU 30д: <i>{arpu_30d:.2f}₽</i>\n"
-            f"• ARPPU 30д: <i>{arppu_30d:.2f}₽</i>\n\n"
-            "📉 <b>Отток и продления:</b>\n"
-            f"• Подписок истекло за 30д (churn): <i>{churn_30d}</i>\n"
-            f"• Подписок истекает в ближайшие 7д: <i>{expiring_7d}</i>\n\n"
-            "🧪 <b>Пробный период:</b>\n"
-            f"• Активировали триал: <i>{trial_activated}</i>\n"
-            f"• Сделали платеж после триала: <i>{trial_converted}</i>\n"
-            f"• Конверсия триала в оплату: <i>{trial_conversion_rate:.1f}%</i>\n\n"
-            "🔑 <b>VPN Ключи:</b>\n"
-            f"• Всего ключей: <i>{total_keys}</i>\n"
-            f"• Активных ключей: <i>{active_keys}</i>\n\n"
-            "🎁 <b>Рефералы:</b>\n"
-            f"• Всего рефералов: <i>{total_referrals}</i>\n\n"
-            "🖥️ <b>Серверы:</b>\n"
-            f"• Всего серверов: <i>{total_servers}</i>\n"
-            f"• Активных серверов: <i>{active_servers}</i>\n"
+            f"• Доход сегодня: <i>{revenue_today_rub / 100 if revenue_today_rub else 0:.0f}₽</i>\n"
+            f"• Доход за 30д: <i>{revenue_30d_rub / 100 if revenue_30d_rub else 0:.0f}₽</i>\n\n"
+            
+            "📉 <b>Конверсия:</b>\n"
+            f"• Триал → Оплата: <i>{trial_conversion_rate:.1f}%</i>\n\n"
+            
+            f"🕒 {datetime.now(pytz.timezone('Europe/Moscow')).strftime('%d.%m.%Y %H:%M')}"
         )
         
         builder = InlineKeyboardBuilder()

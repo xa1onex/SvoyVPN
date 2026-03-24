@@ -22,7 +22,7 @@ from aiogram.types import LabeledPrice, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .config import FlyerConfig, YooKassaConfig
-from .database import get_connection
+from .database import get_connection, log_subscription_usage
 from .subscriptions import create_or_activate_keys_for_all_servers, get_user_subscription_url
 from .plans import get_subscription_plans, get_renewal_plans
 
@@ -227,6 +227,12 @@ class WebhookServer:
                     raise HTTPNotFound()
                 
                 user_id = user_row["user_id"]
+                
+                # Логируем запрос (User-Agent и IP)
+                user_agent = request.headers.get("User-Agent", "Unknown")
+                ip_address = request.headers.get("X-Forwarded-For", request.remote or "Unknown")
+                if "," in ip_address: ip_address = ip_address.split(",")[0].strip()
+                await log_subscription_usage(user_id, user_agent, ip_address)
                 
                 # Проверяем активность подписки
                 is_active = await conn.fetchval('''

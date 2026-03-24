@@ -471,6 +471,23 @@ async def init_db() -> None:
         except Exception as e:
             logging.warning(f"Could not create utm_visits table: {e}")
 
+        # Subscription usage logs
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS subscription_usage_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    user_agent TEXT,
+                    ip_address TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            ''')
+            await conn.execute('CREATE INDEX IF NOT EXISTS idx_sub_usage_user_id ON subscription_usage_logs(user_id)')
+            await conn.execute('CREATE INDEX IF NOT EXISTS idx_sub_usage_timestamp ON subscription_usage_logs(timestamp)')
+        except Exception as e:
+            logging.warning(f"Could not create subscription_usage_logs table: {e}")
+
 
 
 
@@ -581,4 +598,16 @@ async def delete_device_instruction_photo(photo_id: int) -> None:
     """Удалить фото инструкции"""
     async with get_connection() as conn:
         await conn.execute('DELETE FROM device_instruction_photos WHERE id = $1', photo_id)
+
+
+async def log_subscription_usage(user_id: int, user_agent: str, ip_address: str) -> None:
+    """Логирует запрос подписки пользователя"""
+    try:
+        async with get_connection() as conn:
+            await conn.execute('''
+                INSERT INTO subscription_usage_logs (user_id, user_agent, ip_address, timestamp)
+                VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            ''', user_id, user_agent, ip_address)
+    except Exception as e:
+        logging.error(f"Error logging subscription usage: {e}")
 
