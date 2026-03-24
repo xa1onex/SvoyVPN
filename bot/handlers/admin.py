@@ -429,9 +429,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             "👥 <b>Пользователи:</b>\n"
             f"• Всего пользователей: <i>{total_users}</i>\n"
             f"• Активных подписок: <i>{active_subscriptions}</i>\n"
-            f"• Платежеспособных (платили): <i>{paying_users_count}</i>\n\n"
-            
-            "📈 <b>Активность VPN:</b>\n"
+            f"• Платежеспособных (платили): <i>{paying_users_count}</i>\n"
+            f"• Новых сегодня: <i>{new_today}</i>\n"
+            f"• Новых за неделю: <i>{new_week}</i>\n\n"
+
+            "📈 <b>Активность VPN (по логам):</b>\n"
             f"  • DAU (24ч): <b>{sub_dau_24h or 0}</b> чел. 🏆\n"
             f"  • WAU (7дн): <b>{sub_wau_7d or 0}</b> чел.\n"
             f"  • MAU (30дн): <b>{sub_mau_30d or 0}</b> чел.\n"
@@ -440,12 +442,39 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             "📱 <b>Топ клиентов (7дн):</b>\n"
             f"{platforms_text}\n"
             
+            "🤖 <b>Активность в боте:</b>\n"
+            f"• Активных за 7 дней: <i>{active_7days}</i>\n"
+            f"• Активных за 30 дней: <i>{active_users_30d}</i>\n"
+            f"• Неактивных 30+ дней: <i>{inactive_30days}</i>\n\n"
+
             "💰 <b>Финансы:</b>\n"
-            f"• Доход сегодня: <i>{revenue_today_rub / 100 if revenue_today_rub else 0:.0f}₽</i>\n"
-            f"• Доход за 30д: <i>{revenue_30d_rub / 100 if revenue_30d_rub else 0:.0f}₽</i>\n\n"
-            
-            "📉 <b>Конверсия:</b>\n"
-            f"• Триал → Оплата: <i>{trial_conversion_rate:.1f}%</i>\n\n"
+            f"• Доход (RUB): <i>{total_revenue_rub / 100 if total_revenue_rub else 0:.2f}₽</i>\n"
+            f"• Доход (Stars): <i>{total_revenue_stars}⭐</i>\n"
+            f"• Платежей сегодня: <i>{payments_today}</i>\n"
+            f"• Доход сегодня: <i>{revenue_today_rub / 100 if revenue_today_rub else 0:.2f}₽</i>\n"
+            f"• Доход за 30 дней (RUB): <i>{revenue_30d_rub / 100 if revenue_30d_rub else 0:.2f}₽</i>\n"
+            f"• ARPU 30д: <i>{arpu_30d:.2f}₽</i>\n"
+            f"• ARPPU 30д: <i>{arppu_30d:.2f}₽</i>\n\n"
+
+            "📉 <b>Отток и продления:</b>\n"
+            f"• Подписок истекло за 30д (churn): <i>{churn_30d}</i>\n"
+            f"• Подписок истекает в ближайшие 7д: <i>{expiring_7d}</i>\n\n"
+
+            "🧪 <b>Пробный период:</b>\n"
+            f"• Активировали триал: <i>{trial_activated}</i>\n"
+            f"• Сделали платеж после триала: <i>{trial_converted}</i>\n"
+            f"• Конверсия триала в оплату: <i>{trial_conversion_rate:.1f}%</i>\n\n"
+
+            "🔑 <b>VPN Ключи:</b>\n"
+            f"• Всего ключей: <i>{total_keys}</i>\n"
+            f"• Активных ключей: <i>{active_keys}</i>\n\n"
+
+            "🎁 <b>Рефералы:</b>\n"
+            f"• Всего рефералов: <i>{total_referrals}</i>\n\n"
+
+            "🖥️ <b>Серверы:</b>\n"
+            f"• Всего серверов: <i>{total_servers}</i>\n"
+            f"• Активных серверов: <i>{active_servers}</i>\n\n"
             
             f"🕒 {datetime.now(pytz.timezone('Europe/Moscow')).strftime('%d.%m.%Y %H:%M')}"
         )
