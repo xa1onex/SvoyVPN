@@ -119,6 +119,7 @@ def get_admin_panel_keyboard():
     """Получить клавиатуру админ панели"""
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"))
+    builder.row(InlineKeyboardButton(text="🔔 Логи активности", callback_data="admin_realtime_logs"))
     builder.row(InlineKeyboardButton(text="💰 Управление ценами", callback_data="admin_prices"))
     builder.row(InlineKeyboardButton(text="🎁 Управление скидками", callback_data="admin_discounts"))
     builder.row(InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast"))
@@ -483,6 +484,51 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
         
         await callback.message.edit_text(stats_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        await safe_callback_answer(callback)
+    
+    # Логи активности в реальном времени
+    @dp.callback_query(F.data == "admin_realtime_logs")
+    async def handle_admin_realtime_logs(callback: CallbackQuery):
+        """Просмотр последних действий пользователей (по логам подписки)"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        
+        async with get_connection() as conn:
+            logs = await conn.fetch('''
+                SELECT l.user_id, l.user_agent, l.timestamp, u.username, u.first_name 
+                FROM subscription_usage_logs l
+                LEFT JOIN users u ON l.user_id = u.user_id
+                ORDER BY l.timestamp DESC 
+                LIMIT 20
+            ''')
+        
+        if not logs:
+            text = "🔔 <b>Логи активности</b>\n\nЛоги пока пусты. Дождитесь подключений пользователей."
+        else:
+            text = "🔔 <b>Последние действия (реальное время):</b>\n\n"
+            for log in logs:
+                user_id = log['user_id']
+                name = log['first_name'] or log['username'] or f"ID:{user_id}"
+                # Очистка User-Agent
+                ua = (log['user_agent'] or "Unknown").split('/')[0].split(' ')[0][:12]
+                # Форматирование времени (МСК)
+                ts = log['timestamp']
+                if ts.tzinfo is None:
+                    ts = pytz.utc.localize(ts).astimezone(pytz.timezone('Europe/Moscow'))
+                else:
+                    ts = ts.astimezone(pytz.timezone('Europe/Moscow'))
+                
+                time_str = ts.strftime('%H:%M:%S')
+                
+                text += f"🕒 <code>{time_str}</code> | <b>{name}</b> (<code>{user_id}</code>)\n"
+                text += f"└ 🔌 Подключился через: <code>{ua}</code>\n\n"
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_realtime_logs"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
     
     # Управление ценами
