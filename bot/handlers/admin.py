@@ -6,6 +6,7 @@ import asyncio
 import pytz
 from datetime import datetime, timedelta
 from aiogram import Bot, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -528,7 +529,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         builder.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_realtime_logs"))
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
         
-        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        try:
+            await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                pass
+            else:
+                raise
         await safe_callback_answer(callback)
     
     # Управление ценами
