@@ -1519,7 +1519,10 @@
       }
 
       currentSlide = idx;
-      track.style.transform = `translateX(-${idx * 100}%)`;
+      
+      const subActive = S.subscription && S.subscription.isActive;
+      const shift = subActive ? 1 : 0;
+      track.style.transform = `translateX(-${(idx - shift) * 100}%)`;
 
       dots.forEach((d, i) => {
         if (d) d.classList.toggle('active', i === idx);
@@ -1731,6 +1734,7 @@
         if (dx < 0 && currentSlide < TOTAL_SLIDES - 1) {
           const canNext = !btnNext.disabled;
           if (!canNext) { haptic('error'); return; }
+          const subActive = S.subscription && S.subscription.isActive;
           if (currentSlide === 1) renderDownloadSlide();
           if (currentSlide === 2) renderConnectSlide();
           goToSlide(currentSlide + 1, 'forward');
