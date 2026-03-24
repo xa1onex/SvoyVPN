@@ -37,15 +37,25 @@
       
       /* Apply theme to html/body early */
       document.documentElement.setAttribute('data-theme', scheme);
+
+      /* Clear login fields on load to prevent browser autofill */
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          ['loginUsr', 'loginKey', 'regUsr', 'regKey1', 'regKey2'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+          });
+        }, 150);
+      });
     })();
   </script>
 
   <link rel="preload" as="font" href="need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="need/assets/index_v111.css" />
-  <link rel="stylesheet" href="need/app_v124.css?v=124" />
+  <link rel="stylesheet" href="need/app_v124.css?v=125" />
 
-  <script defer src="need/app_v124.js?v=124"></script>
+  <script defer src="need/app_v124.js?v=125"></script>
 
   <style>
   /* PC Styles for Website */
@@ -89,34 +99,85 @@
     }
   }
 
-  /* Auth Screen */
+  /* Auth Screen — Exact Mobile Style */
   #screenAuth {
+      background: #18222d;
+      overflow-y: auto;
+      display: none;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 20px;
+      padding: 60px 20px 40px;
   }
-  .auth-box {
-      width: 100%;
-      max-width: 400px;
-      background: var(--section_bg_color);
-      padding: 30px;
-      border-radius: 20px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  #screenAuth.active { display: flex; }
+
+  #screenAuth .logo-anim {
+    position: relative; width: 176px; height: 176px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 24px; flex-shrink: 0;
   }
-  .auth-input {
-      width: 100%;
-      padding: 15px;
-      border-radius: 12px;
-      border: 1px solid var(--separator_color);
-      background: var(--bg_color);
-      color: var(--text_color);
-      margin-bottom: 15px;
-      font-size: 16px;
-      outline: none;
+  #screenAuth .logo-anim .ring {
+    position: absolute; border-radius: 50%;
+    border: 4px solid var(--accent, #3aa8fc);
+    animation: pulse 2.4s ease-out infinite;
   }
-  .auth-input:focus {
-      border-color: var(--accent_text_color);
+  #screenAuth .logo-anim .ring:nth-child(1) { width:100%;height:100%;opacity:.15;animation-delay:0s; }
+  #screenAuth .logo-anim .ring:nth-child(2) { width:75%;height:75%;opacity:.25;animation-delay:.4s; }
+  #screenAuth .logo-anim .ring:nth-child(3) { width:50%;height:50%;opacity:.35;animation-delay:.8s; }
+  
+  #screenAuth .logo-anim .logo-core {
+    width: 88px; height: 88px; border-radius: 50%;
+    background: var(--accent, #3aa8fc);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1; box-shadow: 0 8px 44px rgba(58, 168, 252,.35);
   }
+  #screenAuth .logo-anim .logo-core svg { width:75px;height:75px;fill:currentColor;color:#fff; }
+  
+  #screenAuth .app-name { font-size:22px;font-weight:700;line-height:1.2;text-align:center;margin-bottom:4px; color: #fff; }
+  #screenAuth .app-tagline { font-size:14px;font-weight:400;line-height:1.4;color:#8e9db0;text-align:center;margin-bottom:24px; }
+  
+  #screenAuth .auth-card { width:100%;max-width:360px;background:#21303f;border-radius:14px;padding:20px 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+  
+  #screenAuth .tabs { display:flex;background:rgba(255,255,255,0.07);border-radius:12px;padding:4px;margin-bottom:24px; }
+  #screenAuth .tab-btn { flex:1;text-align:center;padding:10px;border-radius:9px;font-size:13px;font-weight:600;color:#8e9db0;cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent; border:none; background:none; }
+  #screenAuth .tab-btn.active { background:var(--accent, #3aa8fc);color:#fff; }
+  
+  #screenAuth .panel { display:none; }
+  #screenAuth .panel.active { display:block; }
+  
+  #screenAuth .tg-btn { width:100%;padding:14px;background:var(--accent, #3aa8fc);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:opacity .15s, transform .1s;-webkit-tap-highlight-color:transparent; }
+  #screenAuth .tg-btn:active { transform:scale(.98);opacity:.85; }
+  #screenAuth .tg-btn svg { width:22px;height:22px;fill:#fff;flex-shrink:0; }
+  
+  #screenAuth .tg-hint { margin-top:14px;font-size:12px;color:#8e9db0;text-align:center;line-height:1.5; }
+  
+  #screenAuth .polling { display:none;margin-top:20px;padding:14px;background:rgba(58,168,252,.08);border:1px solid rgba(58,168,252,.2);border-radius:12px;text-align:center; }
+  #screenAuth .polling.visible { display:block; }
+  #screenAuth .polling-text { font-size:13px;color:var(--accent, #3aa8fc); }
+  
+  #screenAuth .dots::after { content:'';animation:dotdot 1.5s infinite; }
+  @keyframes dotdot { 0%{content:'';}25%{content:'.';}50%{content:'..';}75%{content:'...';} }
+  
+  #screenAuth .input-group { margin-bottom:14px; text-align: left; }
+  #screenAuth .input-label { font-size:13px;color:#8e9db0;margin-bottom:6px;display:block;font-weight:500;margin-left:4px; }
+  #screenAuth .input-field { width:100%;padding:14px 16px;background:rgba(255,255,255,0.07);border:1px solid transparent;border-radius:12px;color:#fff;font-size:16px;font-family:inherit;outline:none;transition:all .2s; -webkit-appearance:none; appearance:none; }
+  #screenAuth .input-field:focus { border-color:rgba(58,168,252,0.4);background:rgba(255,255,255,0.1); }
+  #screenAuth .input-field::placeholder { color:#8e9db0; }
+  
+  #screenAuth .sub-tabs { display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid rgba(255,255,255,0.08); }
+  #screenAuth .sub-tab { flex:1;text-align:center;padding:10px;font-size:13px;font-weight:600;color:#8e9db0;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s; }
+  #screenAuth .sub-tab.active { color:var(--accent, #3aa8fc);border-bottom-color:var(--accent, #3aa8fc); }
+  
+  #screenAuth .auth-btn { width:100%;padding:14px;background:var(--accent, #3aa8fc);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;transition:opacity .15s, transform .1s;margin-top:4px;-webkit-tap-highlight-color:transparent; }
+  #screenAuth .auth-btn:active { transform:scale(.98);opacity:.85; }
+  
+  #screenAuth .error-msg { background:rgba(255,69,58,.1);border:1px solid rgba(255,69,58,.3);border-radius:10px;padding:12px;font-size:13px;color:#ff6b61;margin-bottom:14px;display:none; text-align:center; }
+  #screenAuth .error-msg.visible { display:block; }
+  #screenAuth .success-msg { background:rgba(52,199,89,.1);border:1px solid rgba(52,199,89,.3);border-radius:10px;padding:12px;font-size:13px;color:#4cd964;margin-bottom:14px;display:none;text-align:center; }
+  #screenAuth .success-msg.visible { display:block; }
+  
+  #screenAuth .divider { display:flex;align-items:center;gap:12px;margin:20px 0 0;color:#8e9db0;font-size:12px; }
+  #screenAuth .divider::before,#screenAuth .divider::after { content:'';flex:1;height:1px;background:rgba(255,255,255,0.08); }
+
   </style>
 </head>
 
@@ -143,20 +204,127 @@
     
     <!-- ═══ SCREEN: AUTH ═══ -->
     <div id="screenAuth" class="screen">
-      <div class="auth-box">
-          <div style="text-align:center; margin-bottom:20px;">
-              <svg viewBox="0 0 1024 1024" fill="var(--accent_text_color)" style="width:60px;height:60px;">
-                 <use href="#svoy-logo-path" />
-              </svg>
-              <h2 style="margin-top:10px;">Вход в аккаунт</h2>
+      <!-- Logo & Header -->
+      <div class="logo-anim">
+        <div class="ring" style="--ring-opacity:.15;"></div>
+        <div class="ring" style="--ring-opacity:.25;"></div>
+        <div class="ring" style="--ring-opacity:.35;"></div>
+        <div class="logo-core">
+          <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+            <g transform="translate(0,1024) scale(0.1,-0.1)">
+              <path d="M3033 7920 c-212 -22 -363 -95 -495 -240 -73 -79 -117 -161 -150 -276 -29 -103 -31 -305 -4 -434 54 -255 174 -534 386 -895 48 -82 100 -170 114 -195 57 -98 95 -179 122 -260 23 -73 28 -102 28 -200 0 -104 -3 -124 -32 -209 -32 -92 -84 -197 -149 -298 -18 -29 -33 -54 -33 -56 0 -2 -31 -56 -68 -118 -233 -387 -382 -727 -449 -1024 -24 -104 -24 -369 0 -455 72 -260 273 -452 555 -527 87 -23 115 -26 277 -26 164 -1 193 2 333 31 341 71 733 234 1167 483 224 129 350 210 580 375 402 289 582 443 985 840 315 310 347 334 453 334 129 0 207 -72 367 -340 213 -357 353 -774 320 -950 -22 -117 -80 -161 -221 -168 -104 -5 -185 7 -340 53 -265 78 -526 201 -772 362 -85 56 -132 82 -140 76 -7 -5 -52 -41 -102 -80 -105 -82 -448 -329 -467 -336 -16 -5 -16 -5 57 -54 260 -174 631 -360 955 -481 166 -61 203 -73 355 -111 197 -49 257 -56 465 -56 214 0 258 8 395 67 97 43 169 94 246 175 111 118 169 245 190 417 17 141 -6 336 -62 531 -34 116 -137 361 -219 520 -79 154 -96 183 -288 509 -61 104 -126 228 -144 275 -31 82 -32 93 -33 226 0 197 12 228 250 633 6 10 43 73 84 141 162 271 279 555 327 790 22 109 25 144 22 266 -4 121 -8 152 -33 224 -78 228 -251 382 -498 441 -170 41 -376 37 -657 -11 -247 -43 -676 -193 -985 -346 -91 -45 -395 -217 -395 -223 0 -3 56 -43 124 -89 68 -46 188 -132 267 -191 l144 -107 50 32 c268 171 612 316 895 375 125 27 292 32 363 11 57 -17 101 -63 118 -123 42 -155 -74 -531 -259 -843 -109 -184 -196 -291 -266 -327 -30 -16 -60 -22 -111 -22 -61 -1 -77 3 -126 31 -56 33 -82 55 -374 321 -747 679 -1516 1161 -2230 1397 -340 113 -652 160 -892 135z m369 -575 c108 -17 147 -26 322 -81 320 -100 663 -275 1071 -547 392 -262 846 -639 1000 -830 238 -295 263 -543 86 -845 -107 -184 -362 -435 -736 -728 -712 -557 -1562 -980 -1981 -987 -82 -2 -96 1 -149 28 -137 70 -146 207 -35 528 84 245 240 551 369 724 89 121 155 164 251 164 107 1 129 -15 400 -291 135 -137 286 -284 335 -326 50 -43 93 -81 96 -86 5 -8 106 57 194 125 117 90 295 241 293 247 -2 4 -52 50 -113 102 -149 129 -358 347 -423 440 -118 172 -167 335 -145 487 36 246 208 472 605 792 l97 78 -92 74 c-51 40 -163 122 -249 181 l-157 106 -58 -46 c-108 -88 -217 -188 -410 -376 -200 -195 -252 -233 -338 -245 -92 -12 -174 33 -265 147 -130 161 -314 542 -370 765 -42 164 -27 311 37 367 54 49 183 60 365 33z"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+      <div class="app-name">SvoyVPN Pro</div>
+      <div class="app-tagline">Быстрый и надёжный, потому что Свой</div>
+
+      <!-- Auth Card -->
+      <div class="auth-card">
+        <div class="tabs">
+          <button class="tab-btn active" id="tabTg">Telegram</button>
+          <button class="tab-btn" id="tabEmail">Email</button>
+        </div>
+
+        <!-- Telegram Panel -->
+        <div id="panelTg" class="panel active">
+          <button class="tg-btn" id="btnTgLogin">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.02 9.52c-.15.658-.54.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.462c.537-.194 1.006.131.883.702z"/>
+            </svg>
+            Войти через Telegram
+          </button>
+          <div id="pollingBox" class="polling">
+            <div class="polling-text">Ожидаем подтверждения от бота<span class="dots"></span></div>
           </div>
-          <input type="email" id="webAuthEmail" class="auth-input" placeholder="Еmail адрес" required>
-          <input type="password" id="webAuthPass" class="auth-input" placeholder="Пароль" required>
-          <div id="webAuthError" style="color:#ff3b30; margin-bottom:10px; display:none; text-align:center; font-size:14px;">Ошибка</div>
-          <button class="btn-primary" id="webBtnLogin">Войти</button>
+          <div id="tgError" class="error-msg"></div>
+          <div class="tg-hint">Вы будете перенаправлены в Telegram. После нажатия «Старт» в боте вход произойдёт автоматически.</div>
+        </div>
+
+        <!-- Email Panel -->
+        <div id="panelEmail" class="panel">
+          <div class="sub-tabs">
+            <div id="subTabLogin" class="sub-tab active">Вход</div>
+            <div id="subTabRegister" class="sub-tab">Регистрация</div>
+          </div>
+          
+          <!-- Login Form -->
+          <div id="webLoginForm">
+            <div id="loginError" class="error-msg"></div>
+            <div class="input-group">
+              <label class="input-label">Email</label>
+              <input class="input-field" type="email" id="loginUsr" name="loginUsr" placeholder="you@example.com" value="" autocomplete="off"/>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Пароль</label>
+              <input class="input-field" type="password" id="loginKey" name="loginKey" placeholder="••••••••" value="" autocomplete="new-password"/>
+            </div>
+            <div style="text-align:right;margin-bottom:16px;">
+              <a href="javascript:void(0)" id="btnShowReset" style="color:#8e9db0;font-size:13px;text-decoration:none;">Забыли пароль?</a>
+            </div>
+            <button class="auth-btn" id="btnLoginSubmit">Войти в аккаунт</button>
+          </div>
+
+          <!-- Reset Password Form -->
+          <div id="webResetForm" style="display:none;">
+            <div id="resetError" class="error-msg"></div>
+            <div id="resetSuccess" class="success-msg"></div>
+            <div id="resetStep1">
+              <div class="input-group">
+                <label class="input-label">Email</label>
+                <input class="input-field" type="email" id="resetEmail" placeholder="you@example.com"/>
+              </div>
+              <button class="auth-btn" id="btnResetSendOtp">Получить код</button>
+            </div>
+            <div id="resetStep2" style="display:none;">
+              <p style="font-size:13px;color:#8e9db0;margin-bottom:14px;text-align:center;">Введите код из письма и новый пароль</p>
+              <div class="input-group">
+                <label class="input-label">Код из письма</label>
+                <input class="input-field" type="text" id="resetOtp" placeholder="123456" maxlength="6" inputmode="numeric"/>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Новый пароль</label>
+                <input class="input-field" type="password" id="resetNewPass" placeholder="••••••••"/>
+              </div>
+              <button class="auth-btn" id="btnResetSubmit">Сменить пароль</button>
+            </div>
+            <button id="btnResetBack" style="width:100%;padding:12px;background:none;border:none;color:#8e9db0;font-size:13px;cursor:pointer;margin-top:8px;">← Вернуться ко входу</button>
+          </div>
+
+          <!-- Register Form -->
+          <div id="webRegisterForm" style="display:none;">
+            <div id="registerError" class="error-msg"></div>
+            <div id="registerSuccess" class="success-msg"></div>
+            <div id="regStep1">
+              <div class="input-group">
+                <label class="input-label">Email</label>
+                <input class="input-field" type="email" id="regUsr" name="regUsr" placeholder="you@example.com" value="" autocomplete="off"/>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Пароль (минимум 6 символов)</label>
+                <input class="input-field" type="password" id="regKey1" name="regKey1" placeholder="••••••••" value="" autocomplete="new-password"/>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Повторите пароль</label>
+                <input class="input-field" type="password" id="regKey2" name="regKey2" placeholder="••••••••" value="" autocomplete="new-password"/>
+              </div>
+              <button class="auth-btn" id="btnRegSendOtp">Получить код на email</button>
+            </div>
+            <div id="regStep2" style="display:none;">
+              <p style="font-size:13px;color:#8e9db0;margin-bottom:14px;text-align:center;">Введите 6-значный код,<br>отправленный на вашу почту</p>
+              <div class="input-group">
+                <label class="input-label">Код подтверждения</label>
+                <input class="input-field" type="text" id="regOtp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code"/>
+              </div>
+              <button class="auth-btn" id="btnRegSubmit">Подтвердить и войти</button>
+              <button id="btnRegBack" style="width:100%;padding:12px;background:none;border:none;color:#8e9db0;font-size:13px;cursor:pointer;margin-top:8px;">← Изменить email</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-<div id="screenVpn" class="screen active">
+<div id="screenVpn" class="screen">
       <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
 
         <!-- Animated logo -->
@@ -496,7 +664,7 @@
           </div>
 
           <!-- Android Logout Button (hidden by default) -->
-          <div class="link-card" id="btnAndroidLogout" style="display:none; color:#ff453a;">
+          <div class="link-card" id="btnLogout" style="display:none; color:#ff453a;">
             <div class="link-icon" style="background:rgba(255,69,58,0.1); color:#ff453a;">
               <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
