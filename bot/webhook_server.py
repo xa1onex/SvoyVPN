@@ -22,7 +22,7 @@ from aiogram.types import LabeledPrice, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .config import FlyerConfig, YooKassaConfig
-from .database import get_connection, log_subscription_usage
+from .database import get_connection, log_subscription_usage, log_miniapp_usage
 from .subscriptions import create_or_activate_keys_for_all_servers, get_user_subscription_url
 from .plans import get_subscription_plans, get_renewal_plans
 
@@ -827,6 +827,9 @@ class WebhookServer:
             if not user_id:
                 return web.json_response({"error": "User ID not found"}, status=400)
             
+            # Логируем активность в Mini App
+            await log_miniapp_usage(user_id, 'open')
+            
             # Получаем данные пользователя из БД
             async with get_connection() as conn:
                 user = await conn.fetchrow(
@@ -1128,10 +1131,13 @@ class WebhookServer:
                 try:
                     # Создаем инвойс-ссылку для Stars
                     labeled_prices = [LabeledPrice(label=plan_data['title'], amount=price_stars)]
+                    # Добавляем _miniapp в payload для отслеживания источника
+                    payload = f"stars_{user_id}_{tariff_id}_{int(datetime.now().timestamp())}_miniapp"
+                    
                     invoice_link = await self.bot.create_invoice_link(
                         title=f"VPN: {plan_data['title']}",
                         description=f"Подписка на {plan_data.get('duration', 1)} мес. ({device_count} устройство)",
-                        payload=f"stars_{user_id}_{tariff_id}_{int(datetime.now().timestamp())}",
+                        payload=payload,
                         provider_token="", # Empty for Stars
                         currency="XTR",
                         prices=labeled_prices
@@ -1163,7 +1169,7 @@ class WebhookServer:
                         invoice_link = await self.bot.create_invoice_link(
                             title=f"VPN: {plan_data['title']}",
                             description=f"Подписка на {plan_data.get('duration', 1)} мес. ({device_count} устройство)",
-                            payload=f"yoo_{user_id}_{tariff_id}_{int(datetime.now().timestamp())}",
+                            payload=f"yoo_{user_id}_{tariff_id}_{int(datetime.now().timestamp())}_miniapp",
                             provider_token=self.yookassa_config.provider_token,
                             currency="RUB",
                             prices=labeled_prices
@@ -1189,7 +1195,8 @@ class WebhookServer:
                     metadata={
                         "user_id": user_id,
                         "plan_id": tariff_id,
-                        "device_count": device_count
+                        "device_count": device_count,
+                        "payment_source": "miniapp"
                     }
                 )
                 
@@ -1203,7 +1210,7 @@ class WebhookServer:
                 
                 amount_rub = (plan_data.get('price_rub', 0) * device_count) / 100.0
                 api_url = "https://testnet-pay.crypt.bot/api/createInvoice" if self.cryptopay_config.testnet else "https://pay.crypt.bot/api/createInvoice"
-                payload_str = f"{user_id}:{tariff_id}:cryptopay:{device_count}"
+                payload_str = f"{user_id}:{tariff_id}:cryptopay:{device_count}:miniapp"
                 
                 import aiohttp
                 async with aiohttp.ClientSession() as session:
@@ -1230,11 +1237,11 @@ class WebhookServer:
                                     plan_type = "subscription" if tariff_id in subscription_plans else "renewal"
                                     
                                     await conn.execute('''
-                                        INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
-                                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                                        INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id, payment_source)
+                                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                                     ''', 
                                         user_id, int(round(amount_rub * 100)), "RUB", 
-                                        tariff_id, plan_type, "pending", str(invoice_id)
+                                        tariff_id, plan_type, "pending", str(invoice_id), "miniapp"
                                     )
                             except Exception as db_e:
                                 logger.error(f"Error saving pending CryptoPay payment to DB: {db_e}")

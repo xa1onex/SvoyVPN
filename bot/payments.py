@@ -23,7 +23,8 @@ async def process_telegram_stars_payment(
     plan_data: dict,
     method_data: dict,
     is_new_subscription: bool,
-    config: AppConfig
+    config: AppConfig,
+    source: str = 'bot'
 ) -> bool:
     """
     Обрабатывает платеж через Telegram Stars
@@ -94,9 +95,9 @@ async def process_telegram_stars_payment(
             else:
                 await conn.execute('''
                     INSERT INTO payments 
-                    (user_id, amount, currency, plan_id, plan_type, status, telegram_payment_charge_id, yookassa_payment_id)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                ''', user_id, total_amount, currency, plan_id, 'subscription', 'completed', charge_id, provider_charge_id)
+                    (user_id, amount, currency, plan_id, plan_type, status, telegram_payment_charge_id, yookassa_payment_id, payment_source)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ''', user_id, total_amount, currency, plan_id, 'subscription', 'completed', charge_id, provider_charge_id, source)
         
         # Создаём/активируем ключи (после транзакции)
         if is_new_subscription:
@@ -200,8 +201,9 @@ async def process_webhook_payment(
     user_id = metadata.get("user_id")
     plan_id = metadata.get("plan_id")
     method_id = metadata.get("method_id", "yookassa")
+    payment_source = metadata.get("payment_source", "bot")
     
-    logger.info(f"Processing webhook payment: id={payment_id}, method={method_id}, user={user_id}, plan={plan_id}")
+    logger.info(f"Processing webhook payment: id={payment_id}, method={method_id}, user={user_id}, plan={plan_id}, source={payment_source}")
     
     if user_id is None or plan_id is None:
         logger.warning(f"Webhook payment {payment_id} missing required metadata")
@@ -289,15 +291,15 @@ async def process_webhook_payment(
                 if existing:
                     await conn.execute('''
                         UPDATE payments 
-                        SET status = 'completed', amount = $1
-                        WHERE yookassa_payment_id = $2
-                    ''', amount_cents, payment_id)
+                        SET status = 'completed', amount = $1, payment_source = $2
+                        WHERE yookassa_payment_id = $3
+                    ''', amount_cents, payment_source, payment_id)
                 else:
                     await conn.execute('''
                         INSERT INTO payments 
-                        (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    ''', user_id, amount_cents, "RUB", plan_id, "subscription", "completed", payment_id)
+                        (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id, payment_source)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    ''', user_id, amount_cents, "RUB", plan_id, "subscription", "completed", payment_id, payment_source)
             
             # Создаём/активируем ключи (после транзакции)
             if is_new_subscription:

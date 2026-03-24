@@ -425,6 +425,19 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 ua = (row['user_agent'] or "Unknown").split('/')[0].split(' ')[0][:15]
                 platforms_text += f"  • {ua}: <i>{row['count']} запр.</i>\n"
             if not platforms_text: platforms_text = "  • Данных пока нет\n"
+
+            # Статистика продаж по источникам
+            sales_source = await conn.fetch('''
+                SELECT payment_source, COUNT(*) as count, SUM(amount) as total
+                FROM payments 
+                WHERE status = 'completed'
+                GROUP BY payment_source
+            ''')
+            sales_stats = {"bot": {"count": 0, "total": 0}, "miniapp": {"count": 0, "total": 0}}
+            for row in sales_source:
+                src = row['payment_source'] or 'bot'
+                if src in sales_stats:
+                    sales_stats[src] = {"count": row['count'], "total": row['total']}
         
         stats_text = (
             "📊 <b>Подробная статистика</b>\n\n"
@@ -452,6 +465,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             "💰 <b>Финансы:</b>\n"
             f"• Доход (RUB): <i>{total_revenue_rub / 100 if total_revenue_rub else 0:.2f}₽</i>\n"
             f"• Доход (Stars): <i>{total_revenue_stars}⭐</i>\n"
+            f"• Платежи через Бота: <b>{sales_stats['bot']['count']}</b> (<i>{sales_stats['bot']['total']/100:.0f}₽</i>)\n"
+            f"• Платежи через Mini-App: <b>{sales_stats['miniapp']['count']}</b> (<i>{sales_stats['miniapp']['total']/100:.0f}₽</i>)\n"
             f"• Платежей сегодня: <i>{payments_today}</i>\n"
             f"• Доход сегодня: <i>{revenue_today_rub / 100 if revenue_today_rub else 0:.2f}₽</i>\n"
             f"• Доход за 30 дней (RUB): <i>{revenue_30d_rub / 100 if revenue_30d_rub else 0:.2f}₽</i>\n"
@@ -497,8 +512,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         async with get_connection() as conn:
             logs = await conn.fetch('''
-                SELECT l.user_id, l.user_agent, l.timestamp, u.username, u.first_name 
-                FROM subscription_usage_logs l
+                SELECT l.user_id, l.type, l.detail, l.timestamp, u.username, u.first_name 
+                FROM (
+                    SELECT user_id, 'vpn' as type, user_agent as detail, timestamp FROM subscription_usage_logs
+                    UNION ALL
+                    SELECT user_id, 'miniapp' as type, action as detail, timestamp FROM miniapp_usage_logs
+                ) l
                 LEFT JOIN users u ON l.user_id = u.user_id
                 ORDER BY l.timestamp DESC 
                 LIMIT 20
@@ -511,8 +530,16 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             for log in logs:
                 user_id = log['user_id']
                 name = log['first_name'] or log['username'] or f"ID:{user_id}"
-                # Очистка User-Agent
-                ua = (log['user_agent'] or "Unknown").split('/')[0].split(' ')[0][:12]
+                ltype = log['type']
+                detail = log['detail'] or "Unknown"
+                
+                # Иконка и текст в зависимости от типа
+                if ltype == 'vpn':
+                    ua = detail.split('/')[0].split(' ')[0][:12]
+                    action_text = f"🔌 Подключился через: <code>{ua}</code>"
+                else:
+                    action_text = f"📱 Мини-апп: <code>{detail.capitalize()}</code>"
+                
                 # Форматирование времени (МСК)
                 ts = log['timestamp']
                 if ts.tzinfo is None:
@@ -522,8 +549,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 
                 time_str = ts.strftime('%H:%M:%S')
                 
-                text += f"🕒 <code>{time_str}</code> | <b>{name}</b> (<code>{user_id}</code>)\n"
-                text += f"└ 🔌 Подключился через: <code>{ua}</code>\n\n"
+                text += f"🕒 <code>{time_str}</code> | <b>{name}</b>\n"
+                text += f"└ {action_text}\n\n"
         
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_realtime_logs"))

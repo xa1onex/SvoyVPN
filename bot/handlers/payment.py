@@ -30,26 +30,32 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
             payload = message.successful_payment.invoice_payload
             logger.info(f"Processing successful payment with payload: {payload}")
             
-            plan_id = None
-            method_id = None
-            
+            source = 'bot'
             if payload.startswith("stars_"):
                 method_id = "stars"
+                if payload.endswith("_miniapp"):
+                    source = 'miniapp'
+                    payload = payload[:-8]
                 parts = payload.split("_")
                 # stars_{user_id}_{tariff_id}_{timestamp}
-                # tariff_id can have underscores (e.g. 1_month)
                 plan_id = "_".join(parts[2:-1])
             elif payload.startswith("yoo_"):
                 method_id = "yookassa"
+                if payload.endswith("_miniapp"):
+                    source = 'miniapp'
+                    payload = payload[:-8]
                 parts = payload.split("_")
                 # yoo_{user_id}_{tariff_id}_{timestamp}
                 plan_id = "_".join(parts[2:-1])
             elif "|" in payload:
                 parts = payload.split("|")
+                # tariff_id|method|user_id[|miniapp]
                 plan_id = parts[0]
                 method_id = parts[1]
+                if len(parts) > 3 and parts[3] == "miniapp":
+                    source = 'miniapp'
             else:
-                # Fallback: keep existing logic if it might be just plan_id
+                # Fallback
                 plan_id = payload
                 method_id = "stars" if message.successful_payment.currency == "XTR" else "yookassa"
             
@@ -81,7 +87,8 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
                 plan_data=plan_data,
                 method_data=method_data,
                 is_new_subscription=is_new_subscription,
-                config=config
+                config=config,
+                source=source
             )
             
         except Exception as e:

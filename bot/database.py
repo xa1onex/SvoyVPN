@@ -488,6 +488,52 @@ async def init_db() -> None:
         except Exception as e:
             logging.warning(f"Could not create subscription_usage_logs table: {e}")
 
+        # Mini-app usage logs
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS miniapp_usage_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    action TEXT DEFAULT 'open',
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            ''')
+            await conn.execute('CREATE INDEX IF NOT EXISTS idx_miniapp_usage_user_id ON miniapp_usage_logs(user_id)')
+            await conn.execute('CREATE INDEX IF NOT EXISTS idx_miniapp_usage_timestamp ON miniapp_usage_logs(timestamp)')
+        except Exception as e:
+            logging.warning(f"Could not create miniapp_usage_logs table: {e}")
+
+        # Добавляем колонку payment_source в payments (если нет)
+        try:
+            res = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name = 'payments' AND column_name = 'payment_source'")
+            if not res:
+                await conn.execute("ALTER TABLE payments ADD COLUMN payment_source TEXT DEFAULT 'bot'")
+        except Exception as e:
+             logging.warning(f"Could not add payment_source to payments: {e}")
+
+async def log_subscription_usage(user_id: int, user_agent: str, ip_address: str):
+    """Логирует обращение к subscription endpoint"""
+    try:
+        async with get_connection() as conn:
+            await conn.execute(
+                'INSERT INTO subscription_usage_logs (user_id, user_agent, ip_address) VALUES ($1, $2, $3)',
+                user_id, user_agent, ip_address
+            )
+    except Exception as e:
+        logging.error(f"Error logging subscription usage: {e}")
+
+async def log_miniapp_usage(user_id: int, action: str = 'open'):
+    """Логирует активность в Mini App"""
+    try:
+        async with get_connection() as conn:
+            await conn.execute(
+                'INSERT INTO miniapp_usage_logs (user_id, action) VALUES ($1, $2)',
+                user_id, action
+            )
+    except Exception as e:
+        logging.error(f"Error logging miniapp usage: {e}")
+
 
 
 
