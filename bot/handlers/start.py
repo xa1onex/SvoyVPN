@@ -455,14 +455,16 @@ async def setup_other_handlers(dp, bot: Bot, config):
         if isinstance(message_or_callback, CallbackQuery):
             callback = message_or_callback
             message = callback.message
+            actor = callback.from_user
             await callback.answer()
         else:
             message = message_or_callback
             callback = None
+            actor = message.from_user
         
-        user_id = message.from_user.id
-        username = message.from_user.username
-        first_name = message.from_user.first_name or "Пользователь"
+        user_id = actor.id
+        username = actor.username
+        first_name = actor.first_name or "Пользователь"
         from urllib.parse import quote
         
         async with get_connection() as conn:
