@@ -1,362 +1,3 @@
-
-
-// GLOBAL LOGOUT FOR WEBSITE
-window.WEB_LOGOUT = function() {
-    console.log('[Logout] WEB_LOGOUT called');
-    localStorage.removeItem('svoyvpn_web_jwt');
-    sessionStorage.clear();
-    // Use location.origin + pathname to ensure clear reload
-    window.location.href = window.location.origin + window.location.pathname; 
-};
-
-// === MODERN SVOYVPN AUTH SYSTEM (Mobile-level) ===
-document.addEventListener('DOMContentLoaded', () => {
-
-    const API = (window.AppConfig ? window.AppConfig.apiBaseURL : 'https://xdoublegroup.online') + '/api';
-    let pollingInterval = null;
-    let currentNonce = null;
-    let _pendingRegEmail = '';
-
-    // Elements
-    const el = {
-        tabTg: document.getElementById('tabTg'),
-        tabEmail: document.getElementById('tabEmail'),
-        panelTg: document.getElementById('panelTg'),
-        panelEmail: document.getElementById('panelEmail'),
-        
-        subTabLogin: document.getElementById('subTabLogin'),
-        subTabRegister: document.getElementById('subTabRegister'),
-        
-        loginForm: document.getElementById('webLoginForm'),
-        registerForm: document.getElementById('webRegisterForm'),
-        resetForm: document.getElementById('webResetForm'),
-        
-        btnTgLogin: document.getElementById('btnTgLogin'),
-        pollingBox: document.getElementById('pollingBox'),
-        tgError: document.getElementById('tgError'),
-        
-        loginEmail: document.getElementById('loginUsr'),
-        loginPass: document.getElementById('loginKey'),
-        loginError: document.getElementById('loginError'),
-        btnLoginSubmit: document.getElementById('btnLoginSubmit'),
-        btnShowReset: document.getElementById('btnShowReset'),
-        
-        regEmail: document.getElementById('regUsr'),
-        regPass: document.getElementById('regKey1'),
-        regPass2: document.getElementById('regKey2'),
-        regOtp: document.getElementById('regOtp'),
-        regError: document.getElementById('registerError'),
-        regSuccess: document.getElementById('registerSuccess'),
-        regStep1: document.getElementById('regStep1'),
-        regStep2: document.getElementById('regStep2'),
-        btnRegSendOtp: document.getElementById('btnRegSendOtp'),
-        btnRegSubmit: document.getElementById('btnRegSubmit'),
-        btnRegBack: document.getElementById('btnRegBack'),
-        
-        resetEmail: document.getElementById('resetEmail'),
-        resetOtp: document.getElementById('resetOtp'),
-        resetNewPass: document.getElementById('resetNewPass'),
-        resetError: document.getElementById('resetError'),
-        resetSuccess: document.getElementById('resetSuccess'),
-        resetStep1: document.getElementById('resetStep1'),
-        resetStep2: document.getElementById('resetStep2'),
-        btnResetSendOtp: document.getElementById('btnResetSendOtp'),
-        btnResetSubmit: document.getElementById('btnResetSubmit'),
-        btnResetBack: document.getElementById('btnResetBack')
-    };
-
-    if (!el.tabTg) return;
-
-    // Initial redirect if web and no token
-    const _tgCheck = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-    const isMobileAppCheck = (!!window.webkit && !!window.webkit.messageHandlers && !!window.webkit.messageHandlers.iOSBridge) || !!window.AndroidBridge;
-    if (!isMobileAppCheck && !_tgCheck && !localStorage.getItem('svoyvpn_web_jwt')) {
-        const authScreen = document.getElementById('screenAuth');
-        if (authScreen) authScreen.classList.add('active');
-    }
-
-    // --- Helpers ---
-    function haptic(style) {
-        if (window.haptic) window.haptic(style);
-        // On web we mostly do nothing or could use navigator.vibrate
-    }
-
-    function showError(element, msg) {
-        if (!element) return;
-        element.textContent = msg;
-        element.classList.add('visible');
-    }
-
-    function hideError(element) {
-        if (element) element.classList.remove('visible');
-    }
-
-    function notifySuccess(token) {
-        localStorage.setItem('svoyvpn_web_jwt', token);
-        location.reload();
-    }
-
-    // --- Tab Switching ---
-    function switchTab(tab) {
-        el.tabTg.classList.remove('active');
-        el.tabEmail.classList.remove('active');
-        el.panelTg.classList.remove('active');
-        el.panelEmail.classList.remove('active');
-        haptic('light');
-        if (tab === 'tg') {
-            el.tabTg.classList.add('active');
-            el.panelTg.classList.add('active');
-        } else {
-            el.tabEmail.classList.add('active');
-            el.panelEmail.classList.add('active');
-        }
-    }
-    el.tabTg.onclick = () => switchTab('tg');
-    el.tabEmail.onclick = () => switchTab('email');
-
-    function switchEmailTab(t) {
-        el.subTabLogin.classList.remove('active');
-        el.subTabRegister.classList.remove('active');
-        el.loginForm.style.display = 'none';
-        el.registerForm.style.display = 'none';
-        el.resetForm.style.display = 'none';
-        haptic('light');
-        if (t === 'login') {
-            el.subTabLogin.classList.add('active');
-            el.loginForm.style.display = 'block';
-            el.loginEmail.value = '';
-            el.loginPass.value = '';
-        } else if (t === 'register') {
-            el.subTabRegister.classList.add('active');
-            el.registerForm.style.display = 'block';
-            el.regEmail.value = '';
-            el.regPass.value = '';
-            el.regPass2.value = '';
-        } else if (t === 'reset') {
-            el.resetForm.style.display = 'block';
-            el.resetEmail.value = '';
-        }
-    }
-    el.subTabLogin.onclick = () => switchEmailTab('login');
-    el.subTabRegister.onclick = () => switchEmailTab('register');
-    el.btnShowReset.onclick = () => switchEmailTab('reset');
-    el.btnResetBack.onclick = () => switchEmailTab('login');
-
-    // --- Telegram Logic ---
-    el.btnTgLogin.onclick = async () => {
-        hideError(el.tgError);
-        el.btnTgLogin.disabled = true;
-        try {
-            const r = await fetch(API + '/auth/tg-init', { method: 'POST' });
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            const data = await r.json();
-            currentNonce = data.nonce;
-            
-            // Open bot in new tab/window for Web
-            window.open(data.botUrl, '_blank');
-            
-            el.pollingBox.classList.add('visible');
-            startPolling(data.nonce);
-        } catch(e) {
-            showError(el.tgError, 'Ошибка подключения: ' + e.message);
-            el.btnTgLogin.disabled = false;
-        }
-    };
-
-    function startPolling(nonce) {
-        if (pollingInterval) clearInterval(pollingInterval);
-        pollingInterval = setInterval(async () => {
-            try {
-                const r = await fetch(API + '/auth/tg-poll?nonce=' + nonce);
-                const data = await r.json();
-                if (data.status === 'ok' && data.token) {
-                    clearInterval(pollingInterval);
-                    el.pollingBox.classList.remove('visible');
-                    notifySuccess(data.token);
-                } else if (data.status === 'expired') {
-                    clearInterval(pollingInterval);
-                    el.pollingBox.classList.remove('visible');
-                    el.btnTgLogin.disabled = false;
-                    showError(el.tgError, 'Время ожидания истекло. Попробуйте ещё раз.');
-                }
-            } catch(e) { /* retry */ }
-        }, 2000);
-    }
-
-    // --- Email Flow ---
-    el.btnLoginSubmit.onclick = async () => {
-        hideError(el.loginError);
-        const email = el.loginEmail.value.trim();
-        const pass = el.loginPass.value;
-        if (!email || !pass) return showError(el.loginError, 'Заполните все поля');
-        
-        el.btnLoginSubmit.disabled = true;
-        try {
-            const r = await fetch(API + '/auth/login', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({email, password: pass})
-            });
-            const data = await r.json();
-            if (!r.ok) return showError(el.loginError, data.error || data.detail || 'Ошибка входа');
-            notifySuccess(data.token);
-        } catch(e) { showError(el.loginError, 'Ошибка сети'); }
-        el.btnLoginSubmit.disabled = false;
-    };
-
-    el.btnRegSendOtp.onclick = async () => {
-        hideError(el.regError);
-        const email = el.regEmail.value.trim();
-        const pass = el.regPass.value;
-        const pass2 = el.regPass2.value;
-        if (!email || !pass) return showError(el.regError, 'Заполните все поля');
-        if (pass !== pass2) return showError(el.regError, 'Пароли не совпадают');
-        if (pass.length < 6) return showError(el.regError, 'Пароль минимум 6 символов');
-        
-        el.btnRegSendOtp.disabled = true;
-        try {
-            const r = await fetch(API + '/auth/email-otp', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({email, password: pass})
-            });
-            const data = await r.json();
-            if (!r.ok) { showError(el.regError, data.error || data.detail || 'Ошибка'); el.btnRegSendOtp.disabled=false; return; }
-            _pendingRegEmail = email;
-            el.regStep1.style.display = 'none';
-            el.regStep2.style.display = 'block';
-            el.regSuccess.textContent = 'Код отправлен на ' + email;
-            el.regSuccess.classList.add('visible');
-        } catch(e) { showError(el.regError, 'Ошибка сети'); el.btnRegSendOtp.disabled=false; }
-    };
-
-    el.btnRegSubmit.onclick = async () => {
-        hideError(el.regError);
-        el.regSuccess.classList.remove('visible');
-        const email = _pendingRegEmail || el.regEmail.value.trim();
-        const otp = el.regOtp.value.trim();
-        if (!otp) return showError(el.regError, 'Введите код');
-        
-        el.btnRegSubmit.disabled = true;
-        try {
-            const r = await fetch(API + '/auth/register', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({email, otp})
-            });
-            const data = await r.json();
-            if (!r.ok) { showError(el.regError, data.error || data.detail || 'Ошибка'); el.btnRegSubmit.disabled=false; return; }
-            if (data.token) notifySuccess(data.token);
-        } catch(e) { showError(el.regError, 'Ошибка сети'); el.btnRegSubmit.disabled=false; }
-    };
-    el.btnRegBack.onclick = () => {
-        el.regStep1.style.display = 'block';
-        el.regStep2.style.display = 'none';
-        hideError(el.regError);
-        el.regSuccess.classList.remove('visible');
-        el.btnRegSendOtp.disabled = false;
-    };
-
-    el.btnResetSendOtp.onclick = async () => {
-        hideError(el.resetError);
-        const email = el.resetEmail.value.trim();
-        if (!email) return showError(el.resetError, 'Введите email');
-        
-        el.btnResetSendOtp.disabled = true;
-        try {
-            const r = await fetch(API + '/auth/reset-otp', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({email})
-            });
-            const data = await r.json();
-            if (!r.ok) { showError(el.resetError, data.error || data.detail || 'Ошибка'); el.btnResetSendOtp.disabled=false; return; }
-            el.resetStep1.style.display = 'none';
-            el.resetStep2.style.display = 'block';
-            el.resetSuccess.textContent = 'Код сброса отправлен';
-            el.resetSuccess.classList.add('visible');
-        } catch(e) { showError(el.resetError, 'Ошибка сети'); el.btnResetSendOtp.disabled=false; }
-    };
-
-    el.btnResetSubmit.onclick = async () => {
-        hideError(el.resetError);
-        const email = el.resetEmail.value.trim();
-        const otp = el.resetOtp.value.trim();
-        const pass = el.resetNewPass.value;
-        if (!otp || pass.length < 6) return showError(el.resetError, 'Заполните поля корректно');
-        
-        el.btnResetSubmit.disabled = true;
-        try {
-            const r = await fetch(API + '/auth/reset-password', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({email, otp, password: pass})
-            });
-            const data = await r.json();
-            if (!r.ok) { showError(el.resetError, data.error || data.detail || 'Ошибка'); el.btnResetSubmit.disabled=false; return; }
-            el.resetSuccess.textContent = 'Пароль изменён! Входим...';
-            el.resetSuccess.classList.add('visible');
-            if (data.token) {
-                setTimeout(() => notifySuccess(data.token), 1000);
-            } else {
-                setTimeout(() => switchEmailTab('login'), 2000);
-            }
-        } catch(e) { showError(el.resetError, 'Ошибка сети'); el.btnResetSubmit.disabled=false; }
-    };
-
-});
-
-// --- SVOYVPN WEB ENGINE CONFIG ---
-window.AppConfig = {
-    apiBaseURL: 'https://xdoublegroup.online',
-    isWeb: true
-};
-
-// Global Fetch Interceptor (The "Right way" to handle shared API)
-const _originalFetch = window.fetch;
-window.fetch = async (...args) => {
-    let [resource, config] = args;
-    let url = resource.toString();
-
-    // 1. Force Absolute URLs for API and Images
-    if (url.includes('/api/') || url.includes('/miniapp/')) {
-        if (!url.startsWith('http')) {
-             url = window.AppConfig.apiBaseURL + (url.startsWith('.') ? url.slice(1) : url);
-        }
-    }
-
-    // 2. Add Authorization Header automatically
-    const token = localStorage.getItem('svoyvpn_web_jwt');
-    if (token) {
-        config = config || {};
-        config.headers = config.headers || {};
-        if (config.headers instanceof Headers) {
-            config.headers.set('Authorization', 'Bearer ' + token);
-        } else {
-            config.headers['Authorization'] = 'Bearer ' + token;
-        }
-    }
-
-    return _originalFetch(url, config);
-};
-
-
-    const originalFetch = window.fetch;
-    window.fetch = function(url, options = {}) {
-        if (url.toString().includes('xdoublegroup.online/api/') || url.toString().includes('/api/')) {
-            const token = localStorage.getItem('svoyvpn_web_jwt') || window.__androidJwt;
-            if (token) {
-                options.headers = options.headers || {};
-                if (options.headers instanceof Headers) {
-                    options.headers.set('Authorization', 'Bearer ' + token);
-                } else {
-                    options.headers['Authorization'] = 'Bearer ' + token;
-                }
-            }
-        }
-        return originalFetch(url, options);
-    };
-
 /* ═══════════════════════════════════════════
    SvoyVPN Miniapp — App Logic
    ═══════════════════════════════════════════ */
@@ -371,9 +12,7 @@ window.fetch = async (...args) => {
   const IS_MOBILE_APP = IS_ANDROID || IS_IOS;
   const URL_THEME = urlParams.get('theme');
 
-  // Only map `tg` if there's actually a Telegram environment running
-  let _tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-  const tg = (_tg && (_tg.initData || _tg.platform !== 'unknown')) ? _tg : null;
+  const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
   window.onerror = function (msg, url, line, col, error) {
     const errDiv = document.createElement('div');
@@ -451,7 +90,7 @@ window.fetch = async (...args) => {
   function haptic(style) {
     try {
       if (tg && tg.HapticFeedback) {
-        if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred(style);
+        tg.HapticFeedback.impactOccurred(style);
       } else if (window.haptic && typeof window.haptic === 'function') {
         window.haptic(style);
       } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSBridge) {
@@ -494,7 +133,7 @@ window.fetch = async (...args) => {
   /* ═══════ Sprite loader ═══════ */
   async function loadSprite() {
     try {
-      const res = await fetch('./need/assets/sprite.svg');
+      const res = await fetch('/miniapp/need/assets/sprite.svg');
       if (!res.ok) return;
       const text = await res.text();
       const host = document.getElementById('spriteHost');
@@ -751,7 +390,7 @@ window.fetch = async (...args) => {
   async function measurePing(serverId) {
     try {
       const t0 = performance.now();
-      const r = await fetch('https://xdoublegroup.online/api/ping?id=' + serverId, { cache: 'no-store' });
+      const r = await fetch('/miniapp/api/ping?id=' + serverId, { cache: 'no-store' });
       const t1 = performance.now();
       if (!r.ok) return -1;
       const d = await r.json();
@@ -1064,7 +703,7 @@ window.fetch = async (...args) => {
               return;
             }
 
-            const d = await api('https://xdoublegroup.online/api/trial/activate', {
+            const d = await api('/miniapp/api/trial/activate', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ initData: tg.initData })
@@ -1129,7 +768,7 @@ window.fetch = async (...args) => {
             const b = document.getElementById('obBtnTrial');
             if (b) b.onclick = async function () {
               this.disabled = true; this.textContent = '...';
-              const d = await api('https://xdoublegroup.online/api/trial/activate', {
+              const d = await api('/miniapp/api/trial/activate', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ initData: tg.initData })
               });
@@ -1171,15 +810,15 @@ window.fetch = async (...args) => {
 
   /* ═══════ Load Data ═══════ */
   async function loadData() {
-    let tariffUrl = 'https://xdoublegroup.online/api/tariffs';
+    let tariffUrl = '/miniapp/api/tariffs';
     if (tg && tg.initData) {
       tariffUrl += '?initData=' + encodeURIComponent(tg.initData);
     }
 
     const [tariffs, pm, servers] = await Promise.all([
       api(tariffUrl),
-      api('https://xdoublegroup.online/api/payment-methods'),
-      api('https://xdoublegroup.online/api/servers'),
+      api('/miniapp/api/payment-methods'),
+      api('/miniapp/api/servers'),
     ]);
 
     if (Array.isArray(tariffs) && tariffs.length) {
@@ -1271,33 +910,13 @@ window.fetch = async (...args) => {
       }
       return;
     }
-    // WEB/Local mode: use localStorage JWT instead of tg.initData
-    if (!IS_MOBILE_APP && localStorage.getItem('svoyvpn_web_jwt')) {
-      const d = await api('/api/user', { method: 'GET' });
-      if (d && d.user) {
-        S.user = d.user;
-        S.subscription = d.subscription;
-        renderUser();
-        renderNews();
-        if (!silent) showScreen('screenVpn');
-      } else {
-        // Token invalid or expired
-        localStorage.removeItem('svoyvpn_web_jwt');
-        showScreen('screenAuth');
-      }
-      return;
-    }
-
-    if (!tg || !tg.initData) {
-      if (!IS_MOBILE_APP) showScreen('screenAuth');
-      return;
-    }
+    if (!tg || !tg.initData) return;
 
     // Remember state before update
     const wasActive = S.subscription && S.subscription.isActive;
     const oldEnd = S.subscription && S.subscription.endDate;
 
-    const d = await api('https://xdoublegroup.online/api/user', {
+    const d = await api('/miniapp/api/user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ initData: tg.initData }),
@@ -1308,7 +927,6 @@ window.fetch = async (...args) => {
       S.subscription = d.subscription;
       renderUser();
       renderNews();
-      if (!silent) showScreen('screenVpn');
 
       const isActive = S.subscription && S.subscription.isActive;
       const newEnd = S.subscription && S.subscription.endDate;
@@ -1354,9 +972,7 @@ window.fetch = async (...args) => {
 
         let bgStyle = '';
         if (item.image_url) {
-          let u = item.image_url;
-          if (u.startsWith('/miniapp/')) u = 'https://xdoublegroup.online' + u;
-          bgStyle = `background-image: url(${u})`;
+          bgStyle = `background-image: url(${item.image_url})`;
         }
 
         card.innerHTML = `
@@ -1460,7 +1076,7 @@ window.fetch = async (...args) => {
   }
 
   async function deleteNews(newsId) {
-    const d = await api('https://xdoublegroup.online/api/news/delete', {
+    const d = await api('/miniapp/api/news/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1477,7 +1093,7 @@ window.fetch = async (...args) => {
   }
 
   async function loadNews() {
-    const d = await api('https://xdoublegroup.online/api/news');
+    const d = await api('/miniapp/api/news');
     if (Array.isArray(d)) {
       S.news = d;
       renderNews();
@@ -1553,7 +1169,7 @@ window.fetch = async (...args) => {
 
         try {
           // Use direct fetch for FormData
-          const resp = await fetch('https://xdoublegroup.online/api/news/add', {
+          const resp = await fetch('/miniapp/api/news/add', {
             method: 'POST',
             body: formData
           });
@@ -1599,7 +1215,7 @@ window.fetch = async (...args) => {
     const payHeaders = IS_ANDROID
       ? { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ANDROID_JWT }
       : { 'Content-Type': 'application/json' };
-    const d = await api('https://xdoublegroup.online/api/payment/create', {
+    const d = await api('/miniapp/api/payment/create', {
       method: 'POST',
       headers: payHeaders,
       body: JSON.stringify(payBody),
@@ -1763,7 +1379,7 @@ window.fetch = async (...args) => {
     let refLink = '';
     async function loadReferral() {
       if (!tg || !tg.initData) return;
-      const d = await api('https://xdoublegroup.online/api/referral?initData=' + encodeURIComponent(tg.initData));
+      const d = await api('/miniapp/api/referral?initData=' + encodeURIComponent(tg.initData));
       if (d && d.referralCode) {
         refLink = d.refLink;
         const refL = document.getElementById('refLinkText');
@@ -1812,47 +1428,20 @@ window.fetch = async (...args) => {
         : window.open(link, '_blank');
     });
 
-    /* ── Logout Button (Web & Mobile) ── */
-    const lgBtn = document.getElementById('btnLogout');
-    if (lgBtn) {
-      const isWebJWT = localStorage.getItem('svoyvpn_web_jwt');
-      // Show button if in native app OR if web token exists
-      if (IS_MOBILE_APP || isWebJWT) {
-        lgBtn.style.display = 'flex';
-      }
-
-      // Use a single robust listener
-      lgBtn.addEventListener('click', (e) => {
+    /* ── Mobile App Logout ── */
+    const lgBtn = document.getElementById('btnAndroidLogout');
+    if (lgBtn && IS_MOBILE_APP) {
+      lgBtn.style.display = 'flex';
+      lgBtn.onclick = () => {
         haptic('medium');
-        console.log('[Logout] click, IS_MOBILE_APP:', IS_MOBILE_APP);
-        
-        let bridgeFound = false;
-        if (IS_MOBILE_APP) {
-          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSBridge) {
-            window.webkit.messageHandlers.iOSBridge.postMessage({ action: 'logout' });
-            bridgeFound = true;
-          } else if (window.AndroidBridge && window.AndroidBridge.logout) {
-            window.AndroidBridge.logout();
-            bridgeFound = true;
-          } else if (window.__androidLogout) {
-            window.__androidLogout();
-            bridgeFound = true;
-          }
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSBridge) {
+          window.webkit.messageHandlers.iOSBridge.postMessage({ action: 'logout' });
+        } else if (window.AndroidBridge && window.AndroidBridge.logout) {
+          window.AndroidBridge.logout();
+        } else if (window.__androidLogout) {
+          window.__androidLogout();
         }
-        
-        // If not in a native bridge, or bridge failed, use web logout
-        if (!bridgeFound) {
-          if (confirm('Вы уверены, что хотите выйти?')) {
-            if (window.WEB_LOGOUT) {
-              window.WEB_LOGOUT();
-            } else {
-              localStorage.removeItem('svoyvpn_web_jwt');
-              sessionStorage.clear();
-              location.reload();
-            }
-          }
-        }
-      });
+      };
     }
 
     // Load data
@@ -1880,24 +1469,24 @@ window.fetch = async (...args) => {
 
     const APPS = {
       apple: [
-        { id: 'happ', name: 'Happ', iconImg: './images/happ.png', storeUrl: 'https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215' },
-        { id: 'hiddify', name: 'Hiddify', iconImg: './images/hiddify.png', storeUrl: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532' },
-        { id: 'v2raytun', name: 'V2RayTun', iconImg: './images/v2raytun.png', storeUrl: 'https://apps.apple.com/app/v2raytun/id6476628951' }
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215' },
+        { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png', storeUrl: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532' },
+        { id: 'v2raytun', name: 'V2RayTun', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://apps.apple.com/app/v2raytun/id6476628951' }
       ],
       android: [
-        { id: 'happ', name: 'Happ', iconImg: './images/happ.png', storeUrl: 'https://play.google.com/store/apps/details?id=com.happproxy' },
-        { id: 'hiddify', name: 'Hiddify', iconImg: './images/hiddify.png', storeUrl: 'https://play.google.com/store/apps/details?id=app.hiddify.com' },
-        { id: 'v2raytun', name: 'V2RayTun', iconImg: './images/v2raytun.png', storeUrl: 'https://play.google.com/store/apps/details?id=com.v2raytun.android' }
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://play.google.com/store/apps/details?id=com.happproxy' },
+        { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png', storeUrl: 'https://play.google.com/store/apps/details?id=app.hiddify.com' },
+        { id: 'v2raytun', name: 'V2RayTun', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://play.google.com/store/apps/details?id=com.v2raytun.android' }
       ],
       windows: [
-        { id: 'happ', name: 'Happ', iconImg: './images/happ.png', storeUrl: 'https://github.com/Happ-proxy/happ-desktop/releases/download/2.4.0/setup-Happ.x64.exe' },
-        { id: 'hiddify', name: 'Hiddify', iconImg: './images/hiddify.png', storeUrl: 'https://github.com/hiddify/hiddify-app/releases' },
-        { id: 'v2rayn', name: 'V2RayN', iconImg: './images/v2raytun.png', storeUrl: 'https://github.com/2dust/v2rayN/releases' }
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://github.com/Happ-proxy/happ-desktop/releases/download/2.4.0/setup-Happ.x64.exe' },
+        { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png', storeUrl: 'https://github.com/hiddify/hiddify-app/releases' },
+        { id: 'v2rayn', name: 'V2RayN', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://github.com/2dust/v2rayN/releases' }
       ],
       mac: [
-        { id: 'happ', name: 'Happ', iconImg: './images/happ.png', storeUrl: 'https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215' },
-        { id: 'hiddify', name: 'Hiddify', iconImg: './images/hiddify.png', storeUrl: 'https://github.com/hiddify/hiddify-app/releases' },
-        { id: 'v2raytun', name: 'V2RayTun', iconImg: './images/v2raytun.png', storeUrl: 'https://apps.apple.com/app/v2raytun/id6476628951' }
+        { id: 'happ', name: 'Happ', iconImg: '/miniapp/images/happ.png', storeUrl: 'https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215' },
+        { id: 'hiddify', name: 'Hiddify', iconImg: '/miniapp/images/hiddify.png', storeUrl: 'https://github.com/hiddify/hiddify-app/releases' },
+        { id: 'v2raytun', name: 'V2RayTun', iconImg: '/miniapp/images/v2raytun.png', storeUrl: 'https://apps.apple.com/app/v2raytun/id6476628951' }
       ]
     };
 
@@ -2209,7 +1798,4 @@ window.fetch = async (...args) => {
     updateButtons();
   }
 })();
-
-
-
 
