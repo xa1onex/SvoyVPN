@@ -6,7 +6,7 @@ import asyncio
 import pytz
 from datetime import datetime, timedelta
 from aiogram import Bot, F
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -1357,10 +1357,43 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
 
         sent = 0
         failed = 0
+        failed_user_ids = []
         test_text = " (тестовый режим)" if test_mode else ""
         await callback.message.edit_text(f"📢 Рассылка начата{test_text}... Отправлено: {sent}, Ошибок: {failed}")
         
         has_trial_button = any(btn.get('callback_data') == 'menu:trial' for btn in buttons)
+
+        async def send_with_retry(target_user_id: int, target_markup):
+            max_attempts = 4
+            base_delay = 0.2
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    if media_type and media_file_id:
+                        if media_type == "photo":
+                            await bot.send_photo(target_user_id, photo=media_file_id, caption=broadcast_text or None, reply_markup=target_markup, parse_mode="HTML")
+                        elif media_type == "video":
+                            await bot.send_video(target_user_id, video=media_file_id, caption=broadcast_text or None, reply_markup=target_markup, parse_mode="HTML")
+                        elif media_type == "document":
+                            await bot.send_document(target_user_id, document=media_file_id, caption=broadcast_text or None, reply_markup=target_markup, parse_mode="HTML")
+                        elif media_type == "animation":
+                            await bot.send_animation(target_user_id, animation=media_file_id, caption=broadcast_text or None, reply_markup=target_markup, parse_mode="HTML")
+                    else:
+                        await bot.send_message(target_user_id, broadcast_text, reply_markup=target_markup, parse_mode="HTML")
+                    return True
+                except TelegramRetryAfter as e:
+                    # Telegram flood control: wait required time and retry.
+                    retry_after = max(float(getattr(e, "retry_after", 1.0)), 0.5)
+                    logger.warning(f"Broadcast flood limit for {target_user_id}, retry in {retry_after:.2f}s (attempt {attempt}/{max_attempts})")
+                    await asyncio.sleep(retry_after + 0.1)
+                except TelegramBadRequest as e:
+                    logger.error(f"Broadcast bad request for {target_user_id}: {e}")
+                    return False
+                except Exception as e:
+                    if attempt >= max_attempts:
+                        logger.error(f"Failed to send broadcast to {target_user_id} after {max_attempts} attempts: {e}")
+                        return False
+                    await asyncio.sleep(base_delay * attempt)
+            return False
         
         for user_row in users:
             user_id = user_row['user_id']
@@ -1387,26 +1420,36 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                         user_reply_markup = builder.as_markup() if builder.buttons else None
 
             try:
-                if media_type and media_file_id:
-                    if media_type == "photo":
-                        await bot.send_photo(user_id, photo=media_file_id, caption=broadcast_text or None, reply_markup=user_reply_markup, parse_mode="HTML")
-                    elif media_type == "video":
-                        await bot.send_video(user_id, video=media_file_id, caption=broadcast_text or None, reply_markup=user_reply_markup, parse_mode="HTML")
-                    elif media_type == "document":
-                        await bot.send_document(user_id, document=media_file_id, caption=broadcast_text or None, reply_markup=user_reply_markup, parse_mode="HTML")
-                    elif media_type == "animation":
-                        await bot.send_animation(user_id, animation=media_file_id, caption=broadcast_text or None, reply_markup=user_reply_markup, parse_mode="HTML")
-                else:
-                    await bot.send_message(user_id, broadcast_text, reply_markup=user_reply_markup, parse_mode="HTML")
+                ok = await send_with_retry(user_id, user_reply_markup)
+                if not ok:
+                    failed += 1
+                    failed_user_ids.append(str(user_id))
+                    continue
                 sent += 1
                 if sent % 10 == 0:
                     await callback.message.edit_text(f"📢 Рассылка... Отправлено: {sent}, Ошибок: {failed}")
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.12)
             except Exception as e:
                 failed += 1
+                failed_user_ids.append(str(user_id))
                 logger.error(f"Failed to send broadcast to {user_id}: {e}")
         
-        await callback.message.edit_text(f"✅ <b>Рассылка завершена{test_text}</b>\n\nОтправлено: <i>{sent}</i>\nОшибок: <i>{failed}</i>", parse_mode="HTML")
+        if failed_user_ids:
+            preview_failed = ", ".join(failed_user_ids[:40])
+            suffix = "" if len(failed_user_ids) <= 40 else f" ... (+{len(failed_user_ids) - 40} ещё)"
+            await callback.message.edit_text(
+                f"✅ <b>Рассылка завершена{test_text}</b>\n\n"
+                f"Отправлено: <i>{sent}</i>\n"
+                f"Ошибок: <i>{failed}</i>\n\n"
+                f"<b>Не доставлено user_id:</b>\n<code>{preview_failed}{suffix}</code>",
+                parse_mode="HTML"
+            )
+        else:
+            await callback.message.edit_text(
+                f"✅ <b>Рассылка завершена{test_text}</b>\n\n"
+                f"Отправлено: <i>{sent}</i>\nОшибок: <i>{failed}</i>",
+                parse_mode="HTML"
+            )
         await state.clear()
         await safe_callback_answer(callback)
 
