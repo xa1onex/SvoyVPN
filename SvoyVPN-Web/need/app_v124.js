@@ -1746,6 +1746,7 @@ window.fetch = async (...args) => {
     document.querySelectorAll('.tab').forEach((btn) => {
       btn.addEventListener('click', () => {
         if (btn.dataset.screen) showScreen(btn.dataset.screen);
+        if (btn.dataset.screen === 'screenReferral') loadReferral();
       });
     });
 
@@ -1757,13 +1758,7 @@ window.fetch = async (...args) => {
 
     addClick('btnChoosePlan', () => window.showModal('modalPlan'));
 
-    const btnReferral = document.getElementById('btnReferral');
-    if (btnReferral) {
-      btnReferral.addEventListener('click', () => {
-        window.showModal('modalReferral');
-        loadReferral();
-      });
-    }
+    // btnReferral is handled via tab bar now
 
     let refLink = '';
     async function loadReferral() {
