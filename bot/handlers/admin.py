@@ -61,6 +61,7 @@ class AdminStates(StatesGroup):
     UTM_TAG = State()
     UTM_DESCRIPTION = State()
     UTM_BONUS_DAYS = State()
+    USER_INFO_ID = State()
 
 
 class AdminEditStates(StatesGroup):
@@ -133,6 +134,7 @@ def get_admin_panel_keyboard():
     builder.row(InlineKeyboardButton(text="🛟 Управление менеджерами", callback_data="admin_manage_managers"))
     builder.row(InlineKeyboardButton(text="📱 Управление приложениями", callback_data="admin_device_apps"))
     builder.row(InlineKeyboardButton(text="📈 UTM метки", callback_data="admin_utm"))
+    builder.row(InlineKeyboardButton(text="👤 Инфо о пользователе", callback_data="admin_user_info"))
     builder.row(InlineKeyboardButton(text="⏰ Ручная отправка напоминаний", callback_data="admin_manual_reminder"))
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back_to_main"))
     return builder.as_markup()
@@ -3853,3 +3855,109 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
         await safe_callback_answer(callback)
+
+
+    # Инфо о пользователе
+    @dp.callback_query(F.data == "admin_user_info")
+    async def handle_admin_user_info_start(callback: CallbackQuery, state: FSMContext):
+        """Запрос ID для поиска информации"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+
+        await callback.message.edit_text(
+            "👤 <b>Поиск информации о пользователе</b>\n\n"
+            "Введите Telegram <b>ID</b> пользователя:",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
+        )
+        await state.set_state(AdminStates.USER_INFO_ID)
+        await safe_callback_answer(callback)
+
+    @dp.message(AdminStates.USER_INFO_ID)
+    async def process_admin_user_info(message: Message, state: FSMContext):
+        """Вывод детальной информации о пользователе"""
+        if not is_admin(message.from_user.id, config):
+            await message.answer("❌ Нет доступа")
+            await state.clear()
+            return
+
+        user_id_str = message.text.strip()
+        if not user_id_str.isdigit():
+            await message.answer("❌ ID должен состоять только из цифр. Попробуйте снова:")
+            return
+
+        target_user_id = int(user_id_str)
+        
+        async with get_connection() as conn:
+            # 1. Основная информация
+            user = await conn.fetchrow('''
+                SELECT user_id, username, first_name, registration_date, last_activity, 
+                       pay_subscribed, subscription_end, invited_by, referral_count, balance, trial_used, utm_source
+                FROM users WHERE user_id = $1
+            ''', target_user_id)
+
+            if not user:
+                await message.answer(f"❌ Пользователь с ID <code>{target_user_id}</code> не найден в базе.", parse_mode="HTML")
+                await state.clear()
+                return
+
+            # 2. Информация о платежах
+            payments = await conn.fetch('''
+                SELECT amount, currency, timestamp, status, plan_id 
+                FROM payments 
+                WHERE user_id = $1 
+                ORDER BY timestamp DESC LIMIT 10
+            ''', target_user_id)
+
+            # 3. Кто пригласил (если есть)
+            inviter_name = "Никто"
+            if user['invited_by']:
+                inviter = await conn.fetchrow('SELECT first_name, username FROM users WHERE user_id = $1', user['invited_by'])
+                if inviter:
+                    inviter_name = f"{inviter['first_name']} (@{inviter['username'] or '—'}) [<code>{user['invited_by']}</code>]"
+            
+            # Формируем текст
+            sub_status = "✅ Активна" if user['pay_subscribed'] and user['subscription_end'] and user['subscription_end'] >= datetime.now() else "❌ Неактивна"
+            sub_end = user['subscription_end'].strftime("%d.%m.%Y %H:%M") if user['subscription_end'] else "—"
+            reg_date = user['registration_date'].strftime("%d.%m.%Y %H:%M") if user['registration_date'] else "—"
+            last_act = user['last_activity'].strftime("%d.%m.%Y %H:%M") if user['last_activity'] else "—"
+            
+            report = (
+                f"👤 <b>Карточка пользователя</b> <code>{target_user_id}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"👤 <b>Имя:</b> {user['first_name'] or '—'}\n"
+                f"🔗 <b>Username:</b> @{user['username'] or '—'}\n"
+                f"📅 <b>Регистрация:</b> <code>{reg_date}</code>\n"
+                f"🕒 <b>Активность:</b> <code>{last_act}</code>\n"
+                f"📍 <b>Источник (UTM):</b> <code>{user['utm_source'] or 'Прямой вход'}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"💎 <b>Подписка:</b> {sub_status}\n"
+                f"⏳ <b>Истекает:</b> <code>{sub_end}</code>\n"
+                f"🎁 <b>Триал:</b> {'✅ Юзал' if user['trial_used'] else '❌ Нет'}\n"
+                f"💰 <b>Баланс:</b> <code>{user['balance'] or 0}</code> коп.\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"👥 <b>Рефералы:</b> {user['referral_count']} чел.\n"
+                f"🤝 <b>Кто пригласил:</b> {inviter_name}\n"
+            )
+
+            if payments:
+                report += f"━━━━━━━━━━━━━━━━━━\n💳 <b>Последние 10 платежей:</b>\n"
+                for p in payments:
+                    p_status = "✅" if p['status'] == 'completed' else "⏳" if p['status'] == 'pending' else "❌"
+                    p_sum = (p['amount'] / 100) if p['currency'] == 'RUB' else p['amount']
+                    p_curr = "₽" if p['currency'] == 'RUB' else "⭐"
+                    p_date = p['timestamp'].strftime("%d.%m.%y")
+                    report += f"• {p_date}: <b>{p_sum}{p_curr}</b> {p_status} (<i>{p['plan_id']}</i>)\n"
+            else:
+                report += f"━━━━━━━━━━━━━━━━━━\n💳 <b>Платежи:</b> отсутствуют\n"
+
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="◀️ Назад к поиску", callback_data="admin_user_info"))
+            builder.row(InlineKeyboardButton(text="🏠 В админку", callback_data="admin_back"))
+
+            await message.answer(report, reply_markup=builder.as_markup(), parse_mode="HTML")
+            await state.clear()
