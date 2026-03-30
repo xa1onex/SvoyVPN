@@ -49,11 +49,12 @@ def setup_scheduler():
         args=[bot]
     )
     
-    # Проверка предстоящих окончаний подписки (каждые 6 часов)
+    # Проверка предстоящих окончаний подписки (каждый день в 13:00)
     scheduler.add_job(
         send_upcoming_subscription_reminders,
-        'interval',
-        hours=6,
+        'cron',
+        hour=13,
+        minute=0,
         args=[bot, config]
     )
     
