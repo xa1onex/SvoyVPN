@@ -3926,11 +3926,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             reg_date = user['registration_date'].strftime("%d.%m.%Y %H:%M") if user['registration_date'] else "—"
             last_act = user['last_activity'].strftime("%d.%m.%Y %H:%M") if user['last_activity'] else "—"
             
+            username_display = f"@{user['username']}" if user['username'] else "—"
+
             report = (
                 f"👤 <b>Карточка пользователя</b> <code>{target_user_id}</code>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"👤 <b>Имя:</b> {user['first_name'] or '—'}\n"
-                f"🔗 <b>Username:</b> @{user['username'] or '—'}\n"
+                f"🔗 <b>Username:</b> {username_display}\n"
                 f"📅 <b>Регистрация:</b> <code>{reg_date}</code>\n"
                 f"🕒 <b>Активность:</b> <code>{last_act}</code>\n"
                 f"📍 <b>Источник (UTM):</b> <code>{user['utm_source'] or 'Прямой вход'}</code>\n"
@@ -3948,7 +3950,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 report += f"━━━━━━━━━━━━━━━━━━\n💳 <b>Последние 10 платежей:</b>\n"
                 for p in payments:
                     p_status = "✅" if p['status'] == 'completed' else "⏳" if p['status'] == 'pending' else "❌"
-                    p_sum = (p['amount'] / 100) if p['currency'] == 'RUB' else p['amount']
+                    if p['currency'] == 'RUB':
+                        rub_amount = p['amount'] / 100
+                        p_sum = f"{rub_amount:.2f}".rstrip("0").rstrip(".")
+                    else:
+                        p_sum = str(p['amount'])
                     p_curr = "₽" if p['currency'] == 'RUB' else "⭐"
                     p_date = p['timestamp'].strftime("%d.%m.%y")
                     report += f"• {p_date}: <b>{p_sum}{p_curr}</b> {p_status} (<i>{p['plan_id']}</i>)\n"

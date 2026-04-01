@@ -526,7 +526,7 @@ async def send_upcoming_subscription_reminders(bot, config):
     """
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     from aiogram.types import InlineKeyboardButton
-    from .plans import get_renewal_plans, format_price_both
+    from .plans import get_user_tariffs, format_price_both
     
     import pytz
 
@@ -562,16 +562,15 @@ async def send_upcoming_subscription_reminders(bot, config):
                   AND u.blacklisted = FALSE
             ''', target_1d)
             
-            renewal_plans = await get_renewal_plans()
-            
             # Напоминания за 3 дня
             for user in users_3d:
                 user_id = user['user_id']
                 sub_end = user['subscription_end']
                 end_date_str = sub_end.strftime("%d.%m.%Y")
+                current_tariffs, _, show_discount = await get_user_tariffs(user_id)
                 
                 builder = InlineKeyboardBuilder()
-                for plan_id, plan_data in renewal_plans.items():
+                for plan_id, plan_data in current_tariffs.items():
                     builder.button(
                         text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
                         callback_data=f"plan:{plan_id}"
@@ -583,13 +582,21 @@ async def send_upcoming_subscription_reminders(bot, config):
                     InlineKeyboardButton(text="🎁 Бесплатно", callback_data="open_invite")
                 )
 
-                text = (
-                    f"🎁 <b>{user['first_name'] or 'Пользователь'}, у нас для вас подарок!</b>\n\n"
-                    f"Ваша подписка заканчивается через <b>3 дня</b> ({end_date_str}).\n\n"
-                    f"🔥 <b>Успейте продлить её сейчас со скидкой!</b>\n"
-                    f"При продлении до истечения срока действуют специальные цены. Не упустите выгоду! 🎁\n\n"
-                    f"Выберите тариф для продления:"
-                )
+                if show_discount:
+                    text = (
+                        f"🎁 <b>{user['first_name'] or 'Пользователь'}, у нас для вас подарок!</b>\n\n"
+                        f"Ваша подписка заканчивается через <b>3 дня</b> ({end_date_str}).\n\n"
+                        f"🔥 <b>Успейте продлить её сейчас со скидкой!</b>\n"
+                        f"При продлении до истечения срока действуют специальные цены. Не упустите выгоду! 🎁\n\n"
+                        f"Выберите тариф для продления:"
+                    )
+                else:
+                    text = (
+                        f"⏰ <b>{user['first_name'] or 'Пользователь'}, подписка скоро закончится</b>\n\n"
+                        f"Ваша подписка заканчивается через <b>3 дня</b> ({end_date_str}).\n\n"
+                        f"Продлите подписку заранее, чтобы сохранить доступ к VPN без перерыва.\n\n"
+                        f"Выберите тариф для продления:"
+                    )
                 
                 try:
                     await bot.send_message(user_id, text, reply_markup=builder.as_markup(), parse_mode="HTML")
@@ -604,9 +611,10 @@ async def send_upcoming_subscription_reminders(bot, config):
                 user_id = user['user_id']
                 sub_end = user['subscription_end']
                 end_date_str = sub_end.strftime("%d.%m.%Y")
+                current_tariffs, _, show_discount = await get_user_tariffs(user_id)
                 
                 builder = InlineKeyboardBuilder()
-                for plan_id, plan_data in renewal_plans.items():
+                for plan_id, plan_data in current_tariffs.items():
                     builder.button(
                         text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
                         callback_data=f"plan:{plan_id}"
@@ -618,11 +626,18 @@ async def send_upcoming_subscription_reminders(bot, config):
                     InlineKeyboardButton(text="🎁 Бесплатно", callback_data="open_invite")
                 )
 
-                text = (
-                    f"⏰ <b>Внимание! Подписка почти закончилась</b>\n\n"
-                    f"Ваша подписка на VPN истекает <b>ЗАВТРА</b> ({end_date_str}).\n\n"
-                    f"Чтобы интернет не отключился в самый подходящий момент, рекомендуем продлить её прямо сейчас по выгодной цене! 🚀"
-                )
+                if show_discount:
+                    text = (
+                        f"⏰ <b>Внимание! Подписка почти закончилась</b>\n\n"
+                        f"Ваша подписка на VPN истекает <b>ЗАВТРА</b> ({end_date_str}).\n\n"
+                        f"Чтобы интернет не отключился в самый подходящий момент, рекомендуем продлить её прямо сейчас по выгодной цене! 🚀"
+                    )
+                else:
+                    text = (
+                        f"⏰ <b>Внимание! Подписка почти закончилась</b>\n\n"
+                        f"Ваша подписка на VPN истекает <b>ЗАВТРА</b> ({end_date_str}).\n\n"
+                        f"Чтобы интернет не отключился, продлите подписку прямо сейчас."
+                    )
                 
                 try:
                     await bot.send_message(user_id, text, reply_markup=builder.as_markup(), parse_mode="HTML")
