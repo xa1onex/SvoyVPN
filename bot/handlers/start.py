@@ -117,7 +117,7 @@ async def setup_start_handler(dp, bot: Bot, config):
                         
                         inviter_id = inviter['user_id']
                         
-                        await conn.execute('''
+                        inviter_sub_row = await conn.fetchrow('''
                             UPDATE users SET
                                 referral_count = referral_count + 1,
                                 subscription_end = CASE 
@@ -127,6 +127,7 @@ async def setup_start_handler(dp, bot: Bot, config):
                                 END,
                                 pay_subscribed = TRUE
                             WHERE user_id = $1
+                            RETURNING subscription_end
                         ''', inviter_id, str(inviter_bonus_days))
                         
                         await conn.execute('''
@@ -139,14 +140,24 @@ async def setup_start_handler(dp, bot: Bot, config):
                         
                         # Уведомление пригласившему
                         try:
-                            end_date = datetime.now() + timedelta(days=inviter_bonus_days)
+                            end_date = inviter_sub_row['subscription_end'] if inviter_sub_row else None
+                            end_date_str = end_date.strftime('%d.%m.%Y') if end_date else "—"
                             await bot.send_message(
                                 inviter_id,
                                 f"🎉 Вы получили +{inviter_bonus_days} дней VPN за приглашение друга!\n"
-                                f"Теперь ваш VPN активен до: {end_date.strftime('%d.%m.%Y')}"
+                                f"Теперь ваш VPN активен до: {end_date_str}"
                             )
                         except Exception as e:
                             logger.error(f"Ошибка отправки уведомления: {e}")
+
+                        if inviter_sub_row and inviter_sub_row.get('subscription_end'):
+                            logger.info(
+                                "Referral bonus applied: inviter_id=%s invited_id=%s bonus_days=%s new_end=%s",
+                                inviter_id,
+                                user_id,
+                                inviter_bonus_days,
+                                inviter_sub_row['subscription_end']
+                            )
                         
                         has_referral = True
                         # Сохраняем дату окончания для использования в приветствии
