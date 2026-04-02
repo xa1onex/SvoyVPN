@@ -2076,87 +2076,62 @@ window.AppConfig = {
       return true;
     }
 
-    /* Сначала из /api/user (поле referral); если бэкенд старый или пусто — запасной /api/referral. */
-    async function fetchReferralStandalone() {
-      let initDataStr = '';
-      if (tg && tg.initData) initDataStr = String(tg.initData).trim();
-      if (!initDataStr || initDataStr === 'undefined' || initDataStr === 'null') {
-        try {
-          var _ci = sessionStorage.getItem('svoy_tg_init_data');
-          if (_ci) initDataStr = String(_ci).trim();
-        } catch (_) { }
-      }
-      if (!initDataStr || initDataStr === 'undefined' || initDataStr === 'null') return null;
+    async function loadReferral() {
+      const refDesc = document.getElementById('refDesc');
 
-      const base = '/api/referral';
-      try {
-        let r = await fetch(base, {
+      // Helper: try a fetch to /api/referral, return parsed JSON or null (never throws)
+      async function _tryRef(opts) {
+        try {
+          const r = await fetch('/api/referral', opts);
+          if (!r.ok) return null;
+          const j = await r.json().catch(() => null);
+          return j && j.referralCode ? j : null;
+        } catch (_) { return null; }
+      }
+
+      // 1. Already loaded
+      if (applyReferralPayload(S.referral)) return;
+
+      // 2. Re-fetch /api/user — new backend includes referral field
+      await loadUser(true);
+      if (applyReferralPayload(S.referral)) return;
+
+      // 3. Telegram: use live tg.initData only (never stale sessionStorage)
+      //    Only attempt if we're inside a real Telegram WebApp
+      if (tg && tg.initData && String(tg.initData).includes('hash=')) {
+        const j = await _tryRef({
           method: 'POST',
           skipWebJwt: true,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData: initDataStr }),
+          body: JSON.stringify({ initData: String(tg.initData) }),
         });
-        let j = null;
-        try {
-          j = await r.json();
-        } catch (_) { }
-        if (r.ok && j && j.referralCode) return j;
-        
-        // GET fallback
-        r = await fetch(base + '?initData=' + encodeURIComponent(initDataStr), { skipWebJwt: true });
-        try {
-          j = await r.json();
-        } catch (_) { }
-        if (r.ok && j && j.referralCode) return j;
-      } catch (_) { }
-      return null;
-    }
+        if (j && applyReferralPayload(j)) { S.referral = j; return; }
+      }
 
-    async function loadReferral() {
-      const refD = document.getElementById('refDesc');
-      const failDesc = function (msg) {
-        if (refD) refD.textContent = msg;
-      };
-      if (applyReferralPayload(S.referral)) return;
-      await loadUser(true);
-      if (applyReferralPayload(S.referral)) return;
-      let extra = await fetchReferralStandalone();
-      if (extra && applyReferralPayload(extra)) {
-        S.referral = extra;
-        return;
+      // 4. Web email-login: only use JWT if we KNOW the current session is JWT-based
+      if (S.authViaWebJwt) {
+        const tok = localStorage.getItem('svoyvpn_web_jwt');
+        if (tok) {
+          const j = await _tryRef({
+            method: 'GET',
+            skipWebJwt: true,
+            headers: { Authorization: 'Bearer ' + tok },
+          });
+          if (j && applyReferralPayload(j)) { S.referral = j; return; }
+        }
       }
+
+      // 5. Android JWT
       if (IS_ANDROID && ANDROID_JWT) {
-        try {
-          const r = await fetch('/api/referral', {
-            method: 'GET',
-            skipWebJwt: true,
-            headers: { Authorization: 'Bearer ' + ANDROID_JWT },
-          });
-          const j = await r.json();
-          if (r.ok && j && j.referralCode && applyReferralPayload(j)) {
-            S.referral = j;
-            return;
-          }
-        } catch (_) { }
+        const j = await _tryRef({
+          method: 'GET',
+          skipWebJwt: true,
+          headers: { Authorization: 'Bearer ' + ANDROID_JWT },
+        });
+        if (j && applyReferralPayload(j)) { S.referral = j; return; }
       }
-      const webTok = S.authViaWebJwt && S.user ? localStorage.getItem('svoyvpn_web_jwt') : null;
-      if (webTok) {
-        try {
-          const r = await fetch('/api/referral', {
-            method: 'GET',
-            skipWebJwt: true,
-            headers: { Authorization: 'Bearer ' + webTok },
-          });
-          const j = await r.json();
-          if (r.ok && j && j.referralCode && applyReferralPayload(j)) {
-            S.referral = j;
-            return;
-          }
-        } catch (_) { }
-      }
-      failDesc(
-        'Не удалось загрузить реферальную ссылку. Обновите мини-приложение (потяните вниз) или откройте его снова из бота.'
-      );
+
+      if (refDesc) refDesc.textContent = 'Не удалось загрузить данные. Потяните вниз для обновления.';
     }
 
     addClick('btnCopyRef', function () { copyText(refLink, this); });
