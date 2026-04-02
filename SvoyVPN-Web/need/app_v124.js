@@ -1559,7 +1559,47 @@ window.AppConfig = {
       }
       return;
     }
-    // WEB/Local mode: use localStorage JWT instead of tg.initData
+
+    // Telegram WebApp: ВСЕГДА раньше web-JWT из того же WebView (иначе чужой JWT + лишние запросы /api/referral → 400)
+    if (tg && tg.initData) {
+      const wasActive = S.subscription && S.subscription.isActive;
+      const oldEnd = S.subscription && S.subscription.endDate;
+
+      const d = await api('/api/user', {
+        method: 'POST',
+        skipWebJwt: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      });
+
+      if (d && d.user) {
+        S.authViaWebJwt = false;
+        S.user = d.user;
+        S.subscription = d.subscription;
+        S.referral = d.referral && d.referral.referralCode ? d.referral : null;
+        try {
+          sessionStorage.setItem('svoy_tg_init_data', String(tg.initData));
+        } catch (_) { }
+        renderUser();
+        renderNews();
+        if (!silent) showScreen('screenVpn');
+
+        const isActive = S.subscription && S.subscription.isActive;
+        const newEnd = S.subscription && S.subscription.endDate;
+        const pendingTime = localStorage.getItem('pending_payment_time');
+        if (pendingTime && (Date.now() - parseInt(pendingTime)) < 20 * 60 * 1000) {
+          if ((!wasActive && isActive) || (oldEnd && newEnd && oldEnd !== newEnd)) {
+            localStorage.removeItem('pending_payment_time');
+            stopPaymentPolling();
+            showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.<br>Детальный чек отправлен вам в бот.');
+            hideModal('modalPlan');
+          }
+        }
+      }
+      return;
+    }
+
+    // Браузер без Telegram: JWT из localStorage
     if (!IS_MOBILE_APP && localStorage.getItem('svoyvpn_web_jwt')) {
       const d = await api('/api/user', { method: 'GET' });
       if (d && d.user) {
@@ -1571,7 +1611,6 @@ window.AppConfig = {
         renderNews();
         if (!silent) showScreen('screenVpn');
       } else {
-        // Token invalid or expired
         S.authViaWebJwt = false;
         localStorage.removeItem('svoyvpn_web_jwt');
         showScreen('screenAuth');
@@ -1579,50 +1618,7 @@ window.AppConfig = {
       return;
     }
 
-    if (!tg || !tg.initData) {
-      if (!IS_MOBILE_APP) showScreen('screenAuth');
-      return;
-    }
-
-    // Remember state before update
-    const wasActive = S.subscription && S.subscription.isActive;
-    const oldEnd = S.subscription && S.subscription.endDate;
-
-    const d = await api('https://xdoublegroup.online/api/user', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ initData: tg.initData }),
-    });
-
-    if (d && d.user) {
-      S.authViaWebJwt = false;
-      S.user = d.user;
-      S.subscription = d.subscription;
-      S.referral = d.referral && d.referral.referralCode ? d.referral : null;
-      if (tg && tg.initData) {
-        try {
-          sessionStorage.setItem('svoy_tg_init_data', String(tg.initData));
-        } catch (_) { }
-      }
-      renderUser();
-      renderNews();
-      if (!silent) showScreen('screenVpn');
-
-      const isActive = S.subscription && S.subscription.isActive;
-      const newEnd = S.subscription && S.subscription.endDate;
-
-      // Check for payment success if we were waiting for one
-      const pendingTime = localStorage.getItem('pending_payment_time');
-      if (pendingTime && (Date.now() - parseInt(pendingTime)) < 20 * 60 * 1000) {
-        // If sub changed from inactive to active OR end date shifted forward
-        if ((!wasActive && isActive) || (oldEnd && newEnd && oldEnd !== newEnd)) {
-          localStorage.removeItem('pending_payment_time');
-          stopPaymentPolling();
-          showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.<br>Детальный чек отправлен вам в бот.');
-          hideModal('modalPlan');
-        }
-      }
-    }
+    if (!IS_MOBILE_APP) showScreen('screenAuth');
   }
 
   /* ═══════ News Carousel (v101) ═══════ */
@@ -2079,7 +2075,6 @@ window.AppConfig = {
     async function loadReferral() {
       const refDesc = document.getElementById('refDesc');
 
-      // Helper: try a fetch to /api/referral, return parsed JSON or null (never throws)
       async function _tryRef(opts) {
         try {
           const r = await fetch('/api/referral', opts);
@@ -2089,26 +2084,12 @@ window.AppConfig = {
         } catch (_) { return null; }
       }
 
-      // 1. Already loaded
       if (applyReferralPayload(S.referral)) return;
 
-      // 2. Re-fetch /api/user — new backend includes referral field
       await loadUser(true);
       if (applyReferralPayload(S.referral)) return;
 
-      // 3. Telegram: use live tg.initData only (never stale sessionStorage)
-      //    Only attempt if we're inside a real Telegram WebApp
-      if (tg && tg.initData && String(tg.initData).includes('hash=')) {
-        const j = await _tryRef({
-          method: 'POST',
-          skipWebJwt: true,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData: String(tg.initData) }),
-        });
-        if (j && applyReferralPayload(j)) { S.referral = j; return; }
-      }
-
-      // 4. Web email-login: only use JWT if we KNOW the current session is JWT-based
+      // Только веб-логин (email) и Android: отдельный /api/referral. В Telegram данные уже в /api/user.
       if (S.authViaWebJwt) {
         const tok = localStorage.getItem('svoyvpn_web_jwt');
         if (tok) {
@@ -2120,8 +2101,6 @@ window.AppConfig = {
           if (j && applyReferralPayload(j)) { S.referral = j; return; }
         }
       }
-
-      // 5. Android JWT
       if (IS_ANDROID && ANDROID_JWT) {
         const j = await _tryRef({
           method: 'GET',
