@@ -309,7 +309,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- SVOYVPN WEB ENGINE CONFIG ---
 window.AppConfig = {
     apiBaseURL: 'https://xdoublegroup.online',
-    isWeb: true
+    isWeb: true,
+    /** Если API не прислал refLink, собираем deep link сами */
+    referralBotUsername: 'SvoyVPN_bot',
 };
 
 (function() {
@@ -382,17 +384,23 @@ window.AppConfig = {
     selectedPM: null,
   };
 
-  /** Единый формат рефералки из /api/user (camelCase / snake_case, пустой {}). */
+  /** Единый формат рефералки из /api/user или /api/referral (camelCase / snake_case). */
   function normalizeReferralFromApi(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const code = raw.referralCode || raw.referral_code;
     if (!code) return null;
+    let refLink = String(raw.refLink || raw.ref_link || '').trim();
+    if (!refLink) {
+      const bot =
+        (window.AppConfig && window.AppConfig.referralBotUsername) || 'SvoyVPN_bot';
+      refLink = 'https://t.me/' + bot + '?start=ref_' + encodeURIComponent(String(code));
+    }
     return {
       referralCode: String(code),
       referralCount: Number(raw.referralCount ?? raw.referral_count ?? 0) || 0,
       inviterBonusDays: Number(raw.inviterBonusDays ?? raw.inviter_bonus_days ?? 5) || 5,
       invitedBonusDays: Number(raw.invitedBonusDays ?? raw.invited_bonus_days ?? 3) || 3,
-      refLink: String(raw.refLink || raw.ref_link || ''),
+      refLink: refLink,
     };
   }
 
@@ -2088,12 +2096,73 @@ window.AppConfig = {
 
     async function loadReferral() {
       const refDesc = document.getElementById('refDesc');
+
+      async function fetchReferralPostInit(initDataStr) {
+        try {
+          const r = await fetch('/api/referral', {
+            method: 'POST',
+            skipWebJwt: true,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ initData: initDataStr }),
+          });
+          if (!r.ok) return null;
+          return await r.json().catch(() => null);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      async function fetchReferralGetJwt(token) {
+        try {
+          const r = await fetch('/api/referral', {
+            method: 'GET',
+            skipWebJwt: true,
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          if (!r.ok) return null;
+          return await r.json().catch(() => null);
+        } catch (_) {
+          return null;
+        }
+      }
+
       if (applyReferralPayload(S.referral)) return;
       await loadUser(true);
       if (applyReferralPayload(S.referral)) return;
+
+      if (tg && tg.initData) {
+        const j = await fetchReferralPostInit(String(tg.initData));
+        const n = normalizeReferralFromApi(j);
+        if (n) {
+          S.referral = n;
+          if (applyReferralPayload(S.referral)) return;
+        }
+      }
+
+      if (S.authViaWebJwt) {
+        const tok = localStorage.getItem('svoyvpn_web_jwt');
+        if (tok) {
+          const j = await fetchReferralGetJwt(tok);
+          const n = normalizeReferralFromApi(j);
+          if (n) {
+            S.referral = n;
+            if (applyReferralPayload(S.referral)) return;
+          }
+        }
+      }
+
+      if (IS_ANDROID && ANDROID_JWT) {
+        const j = await fetchReferralGetJwt(ANDROID_JWT);
+        const n = normalizeReferralFromApi(j);
+        if (n) {
+          S.referral = n;
+          if (applyReferralPayload(S.referral)) return;
+        }
+      }
+
       if (refDesc) {
         refDesc.textContent =
-          'Подарки доступны после входа. Потяните экран вниз для обновления или откройте приложение из бота ещё раз.';
+          'Не удалось загрузить подарки. Потяните экран вниз для обновления или откройте приложение из бота снова.';
       }
     }
 
