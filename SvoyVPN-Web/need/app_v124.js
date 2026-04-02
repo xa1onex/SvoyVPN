@@ -382,6 +382,20 @@ window.AppConfig = {
     selectedPM: null,
   };
 
+  /** Единый формат рефералки из /api/user (camelCase / snake_case, пустой {}). */
+  function normalizeReferralFromApi(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const code = raw.referralCode || raw.referral_code;
+    if (!code) return null;
+    return {
+      referralCode: String(code),
+      referralCount: Number(raw.referralCount ?? raw.referral_count ?? 0) || 0,
+      inviterBonusDays: Number(raw.inviterBonusDays ?? raw.inviter_bonus_days ?? 5) || 5,
+      invitedBonusDays: Number(raw.invitedBonusDays ?? raw.invited_bonus_days ?? 3) || 3,
+      refLink: String(raw.refLink || raw.ref_link || ''),
+    };
+  }
+
   /* ═══════ Helpers ═══════ */
   const MW = ['месяц', 'месяца', 'месяцев'];
   function mw(n) {
@@ -1542,7 +1556,7 @@ window.AppConfig = {
         S.authViaWebJwt = false;
         S.user = d.user;
         S.subscription = d.subscription;
-        S.referral = d.referral && d.referral.referralCode ? d.referral : null;
+        S.referral = normalizeReferralFromApi(d.referral);
         renderUser();
         renderNews();
         const isActive = S.subscription && S.subscription.isActive;
@@ -1576,7 +1590,7 @@ window.AppConfig = {
         S.authViaWebJwt = false;
         S.user = d.user;
         S.subscription = d.subscription;
-        S.referral = d.referral && d.referral.referralCode ? d.referral : null;
+        S.referral = normalizeReferralFromApi(d.referral);
         try {
           sessionStorage.setItem('svoy_tg_init_data', String(tg.initData));
         } catch (_) { }
@@ -1606,7 +1620,7 @@ window.AppConfig = {
         S.authViaWebJwt = true;
         S.user = d.user;
         S.subscription = d.subscription;
-        S.referral = d.referral && d.referral.referralCode ? d.referral : null;
+        S.referral = normalizeReferralFromApi(d.referral);
         renderUser();
         renderNews();
         if (!silent) showScreen('screenVpn');
@@ -1630,9 +1644,6 @@ window.AppConfig = {
     newsCarousel.innerHTML = '';
 
     const isAdmin = S.user && S.user.isAdmin;
-
-    // Debug: log to help user see if they are admin (they can see console in some web inspectors)
-    console.log('[News] renderNews, isAdmin:', isAdmin, 'news count:', S.news.length);
 
     // If admin is logged in, show "Add News" card AT THE END (as requested)
     // Wait, user said "at the very end", so we add news cards first
@@ -2056,8 +2067,11 @@ window.AppConfig = {
     let refLink = '';
 
     function applyReferralPayload(d) {
-      if (!d || !d.referralCode) return false;
-      refLink = d.refLink;
+      const n = normalizeReferralFromApi(d);
+      if (!n) return false;
+      S.referral = n;
+      refLink = n.refLink;
+      d = n;
       const refL = document.getElementById('refLinkText');
       if (refL) refL.textContent = d.refLink;
       const refC = document.getElementById('refCount');
@@ -2074,43 +2088,13 @@ window.AppConfig = {
 
     async function loadReferral() {
       const refDesc = document.getElementById('refDesc');
-
-      async function _tryRef(opts) {
-        try {
-          const r = await fetch('/api/referral', opts);
-          if (!r.ok) return null;
-          const j = await r.json().catch(() => null);
-          return j && j.referralCode ? j : null;
-        } catch (_) { return null; }
-      }
-
       if (applyReferralPayload(S.referral)) return;
-
       await loadUser(true);
       if (applyReferralPayload(S.referral)) return;
-
-      // Только веб-логин (email) и Android: отдельный /api/referral. В Telegram данные уже в /api/user.
-      if (S.authViaWebJwt) {
-        const tok = localStorage.getItem('svoyvpn_web_jwt');
-        if (tok) {
-          const j = await _tryRef({
-            method: 'GET',
-            skipWebJwt: true,
-            headers: { Authorization: 'Bearer ' + tok },
-          });
-          if (j && applyReferralPayload(j)) { S.referral = j; return; }
-        }
+      if (refDesc) {
+        refDesc.textContent =
+          'Подарки доступны после входа. Потяните экран вниз для обновления или откройте приложение из бота ещё раз.';
       }
-      if (IS_ANDROID && ANDROID_JWT) {
-        const j = await _tryRef({
-          method: 'GET',
-          skipWebJwt: true,
-          headers: { Authorization: 'Bearer ' + ANDROID_JWT },
-        });
-        if (j && applyReferralPayload(j)) { S.referral = j; return; }
-      }
-
-      if (refDesc) refDesc.textContent = 'Не удалось загрузить данные. Потяните вниз для обновления.';
     }
 
     addClick('btnCopyRef', function () { copyText(refLink, this); });
