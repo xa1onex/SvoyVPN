@@ -389,6 +389,8 @@ window.fetch = async (...args) => {
     user: null,
     subscription: null,
     referral: null,
+    /** true только если последний успешный loadUser шёл через svoyvpn_web_jwt (не Telegram / не Android JWT). */
+    authViaWebJwt: false,
     tariffs: [],
     paymentMethods: [],
     servers: [],
@@ -1554,6 +1556,7 @@ window.fetch = async (...args) => {
         headers: { 'Authorization': 'Bearer ' + ANDROID_JWT }
       });
       if (d && d.user) {
+        S.authViaWebJwt = false;
         S.user = d.user;
         S.subscription = d.subscription;
         S.referral = d.referral && d.referral.referralCode ? d.referral : null;
@@ -1577,6 +1580,7 @@ window.fetch = async (...args) => {
     if (!IS_MOBILE_APP && localStorage.getItem('svoyvpn_web_jwt')) {
       const d = await api('/api/user', { method: 'GET' });
       if (d && d.user) {
+        S.authViaWebJwt = true;
         S.user = d.user;
         S.subscription = d.subscription;
         S.referral = d.referral && d.referral.referralCode ? d.referral : null;
@@ -1585,6 +1589,7 @@ window.fetch = async (...args) => {
         if (!silent) showScreen('screenVpn');
       } else {
         // Token invalid or expired
+        S.authViaWebJwt = false;
         localStorage.removeItem('svoyvpn_web_jwt');
         showScreen('screenAuth');
       }
@@ -1607,6 +1612,7 @@ window.fetch = async (...args) => {
     });
 
     if (d && d.user) {
+      S.authViaWebJwt = false;
       S.user = d.user;
       S.subscription = d.subscription;
       S.referral = d.referral && d.referral.referralCode ? d.referral : null;
@@ -2137,6 +2143,7 @@ window.fetch = async (...args) => {
         try {
           const r = await fetch('/api/referral', {
             method: 'GET',
+            skipWebJwt: true,
             headers: { Authorization: 'Bearer ' + ANDROID_JWT },
           });
           const j = await r.json();
@@ -2146,9 +2153,14 @@ window.fetch = async (...args) => {
           }
         } catch (_) { }
       }
-      if (!IS_MOBILE_APP && localStorage.getItem('svoyvpn_web_jwt')) {
+      const webTok = S.authViaWebJwt && S.user ? localStorage.getItem('svoyvpn_web_jwt') : null;
+      if (webTok) {
         try {
-          const r = await fetch('/api/referral', { method: 'GET' });
+          const r = await fetch('/api/referral', {
+            method: 'GET',
+            skipWebJwt: true,
+            headers: { Authorization: 'Bearer ' + webTok },
+          });
           const j = await r.json();
           if (r.ok && j && j.referralCode && applyReferralPayload(j)) {
             S.referral = j;
