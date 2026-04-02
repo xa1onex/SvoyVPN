@@ -388,6 +388,7 @@ window.fetch = async (...args) => {
   const S = {
     user: null,
     subscription: null,
+    referral: null,
     tariffs: [],
     paymentMethods: [],
     servers: [],
@@ -1555,6 +1556,7 @@ window.fetch = async (...args) => {
       if (d && d.user) {
         S.user = d.user;
         S.subscription = d.subscription;
+        S.referral = d.referral || null;
         renderUser();
         renderNews();
         const isActive = S.subscription && S.subscription.isActive;
@@ -1577,6 +1579,7 @@ window.fetch = async (...args) => {
       if (d && d.user) {
         S.user = d.user;
         S.subscription = d.subscription;
+        S.referral = d.referral || null;
         renderUser();
         renderNews();
         if (!silent) showScreen('screenVpn');
@@ -1606,6 +1609,7 @@ window.fetch = async (...args) => {
     if (d && d.user) {
       S.user = d.user;
       S.subscription = d.subscription;
+      S.referral = d.referral || null;
       if (tg && tg.initData) {
         try {
           sessionStorage.setItem('svoy_tg_init_data', String(tg.initData));
@@ -2065,119 +2069,34 @@ window.fetch = async (...args) => {
     // btnReferral is handled via tab bar now
 
     let refLink = '';
-    async function referralRequestJson(url, opts) {
-      try {
-        const r = await fetch(url, opts || {});
-        let d = null;
-        try {
-          d = await r.json();
-        } catch (_) { }
-        return { ok: r.ok, status: r.status, d: d };
-      } catch (_) {
-        return { ok: false, status: 0, d: null };
+
+    function applyReferralPayload(d) {
+      if (!d || !d.referralCode) return false;
+      refLink = d.refLink;
+      const refL = document.getElementById('refLinkText');
+      if (refL) refL.textContent = d.refLink;
+      const refC = document.getElementById('refCount');
+      if (refC) refC.textContent = d.referralCount + ' чел.';
+      const refB = document.getElementById('refBonus');
+      if (refB) refB.textContent = d.inviterBonusDays + ' дн. за друга';
+      const refDEl = document.getElementById('refDesc');
+      if (refDEl) {
+        refDEl.textContent =
+          `Дарим ${d.inviterBonusDays} дней Вам и ${d.invitedBonusDays} дня другу за каждое успешное приглашение.`;
       }
+      return true;
     }
 
+    /* Данные рефералки приходят в ответе /api/user — отдельный /api/referral не нужен (обходит 400 у прокси/WebView). */
     async function loadReferral() {
       const refD = document.getElementById('refDesc');
       const failDesc = function (msg) {
         if (refD) refD.textContent = msg;
       };
-
-      /* Реальный клиент Telegram (не заглушка в обычном браузере: там platform чаще 'unknown') */
-      const telegramClientLikely =
-        tg && tg.platform && String(tg.platform).toLowerCase() !== 'unknown';
-
-      let initDataStr = '';
-      if (tg && tg.initData) initDataStr = String(tg.initData).trim();
-      if (!initDataStr && tg && typeof tg.ready === 'function') {
-        try {
-          tg.ready();
-        } catch (_) { }
-        await new Promise(function (r) {
-          setTimeout(r, 80);
-        });
-        if (tg.initData) initDataStr = String(tg.initData).trim();
-      }
-      if (!initDataStr && telegramClientLikely) {
-        await new Promise(function (r) {
-          setTimeout(r, 200);
-        });
-        if (tg.initData) initDataStr = String(tg.initData).trim();
-      }
-      if (!initDataStr && telegramClientLikely) {
-        await new Promise(function (r) {
-          setTimeout(r, 400);
-        });
-        if (tg.initData) initDataStr = String(tg.initData).trim();
-      }
-      if (!initDataStr) {
-        try {
-          var _cachedInit = sessionStorage.getItem('svoy_tg_init_data');
-          if (_cachedInit) initDataStr = String(_cachedInit).trim();
-        } catch (_) { }
-      }
-
-      let d = null;
-      if (initDataStr) {
-        const base = 'https://xdoublegroup.online/api/referral';
-        /* Без skipWebJwt: если тело POST по пути обнулилось, сработает Bearer (как у /api/user).
-           На сервере подписанный initData всё равно обрабатывается раньше JWT. */
-        const postOpts = {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData: initDataStr }),
-        };
-        let res = await referralRequestJson(base, postOpts);
-        if (!res.ok || !res.d || !res.d.referralCode) {
-          res = await referralRequestJson(
-            base + '?initData=' + encodeURIComponent(initDataStr)
-          );
-        }
-        d = res.ok && res.d && res.d.referralCode ? res.d : null;
-        if (!d && res.d && res.d.error) {
-          if (res.d.error === 'User ID not found') {
-            failDesc('В этой среде Telegram не передан профиль. Откройте мини-приложение из бота ещё раз.');
-            return;
-          }
-          if (res.d.error === 'Invalid initData') {
-            failDesc('Сессия Telegram устарела. Закройте мини-приложение и откройте снова из бота.');
-            return;
-          }
-        }
-      } else if (IS_ANDROID && ANDROID_JWT) {
-        d = await api('/api/referral', {
-          method: 'GET',
-          headers: { Authorization: 'Bearer ' + ANDROID_JWT },
-        });
-      } else if (!IS_MOBILE_APP && localStorage.getItem('svoyvpn_web_jwt')) {
-        if (telegramClientLikely) {
-          failDesc(
-            'Не удалось получить подписанные данные Telegram. Закройте мини-приложение и откройте снова из бота.'
-          );
-          return;
-        }
-        d = await api('/api/referral');
-      } else {
-        failDesc('Войдите в аккаунт, чтобы открыть раздел подарков.');
-        return;
-      }
-
-      if (d && d.referralCode) {
-        refLink = d.refLink;
-        const refL = document.getElementById('refLinkText');
-        if (refL) refL.textContent = d.refLink;
-        const refC = document.getElementById('refCount');
-        if (refC) refC.textContent = d.referralCount + ' чел.';
-        const refB = document.getElementById('refBonus');
-        if (refB) refB.textContent = d.inviterBonusDays + ' дн. за друга';
-        if (refD) {
-          refD.textContent =
-            `Дарим ${d.inviterBonusDays} дней Вам и ${d.invitedBonusDays} дня другу за каждое успешное приглашение.`;
-        }
-      } else {
-        failDesc('Не удалось загрузить реферальные данные. Попробуйте позже.');
-      }
+      if (applyReferralPayload(S.referral)) return;
+      await loadUser(true);
+      if (applyReferralPayload(S.referral)) return;
+      failDesc('Потяните экран вниз для обновления или зайдите в раздел снова.');
     }
 
     addClick('btnCopyRef', function () { copyText(refLink, this); });
