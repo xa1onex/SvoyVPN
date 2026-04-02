@@ -1606,6 +1606,11 @@ window.fetch = async (...args) => {
     if (d && d.user) {
       S.user = d.user;
       S.subscription = d.subscription;
+      if (tg && tg.initData) {
+        try {
+          sessionStorage.setItem('svoy_tg_init_data', String(tg.initData));
+        } catch (_) { }
+      }
       renderUser();
       renderNews();
       if (!silent) showScreen('screenVpn');
@@ -2106,21 +2111,27 @@ window.fetch = async (...args) => {
         });
         if (tg.initData) initDataStr = String(tg.initData).trim();
       }
+      if (!initDataStr) {
+        try {
+          var _cachedInit = sessionStorage.getItem('svoy_tg_init_data');
+          if (_cachedInit) initDataStr = String(_cachedInit).trim();
+        } catch (_) { }
+      }
 
       let d = null;
       if (initDataStr) {
         const base = 'https://xdoublegroup.online/api/referral';
+        /* Без skipWebJwt: если тело POST по пути обнулилось, сработает Bearer (как у /api/user).
+           На сервере подписанный initData всё равно обрабатывается раньше JWT. */
         const postOpts = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ initData: initDataStr }),
-          skipWebJwt: true,
         };
         let res = await referralRequestJson(base, postOpts);
         if (!res.ok || !res.d || !res.d.referralCode) {
           res = await referralRequestJson(
-            base + '?initData=' + encodeURIComponent(initDataStr),
-            { skipWebJwt: true }
+            base + '?initData=' + encodeURIComponent(initDataStr)
           );
         }
         d = res.ok && res.d && res.d.referralCode ? res.d : null;
