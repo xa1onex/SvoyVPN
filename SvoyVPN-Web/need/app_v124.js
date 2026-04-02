@@ -1556,7 +1556,7 @@ window.fetch = async (...args) => {
       if (d && d.user) {
         S.user = d.user;
         S.subscription = d.subscription;
-        S.referral = d.referral || null;
+        S.referral = d.referral && d.referral.referralCode ? d.referral : null;
         renderUser();
         renderNews();
         const isActive = S.subscription && S.subscription.isActive;
@@ -1579,7 +1579,7 @@ window.fetch = async (...args) => {
       if (d && d.user) {
         S.user = d.user;
         S.subscription = d.subscription;
-        S.referral = d.referral || null;
+        S.referral = d.referral && d.referral.referralCode ? d.referral : null;
         renderUser();
         renderNews();
         if (!silent) showScreen('screenVpn');
@@ -1609,7 +1609,7 @@ window.fetch = async (...args) => {
     if (d && d.user) {
       S.user = d.user;
       S.subscription = d.subscription;
-      S.referral = d.referral || null;
+      S.referral = d.referral && d.referral.referralCode ? d.referral : null;
       if (tg && tg.initData) {
         try {
           sessionStorage.setItem('svoy_tg_init_data', String(tg.initData));
@@ -2087,7 +2087,39 @@ window.fetch = async (...args) => {
       return true;
     }
 
-    /* Данные рефералки приходят в ответе /api/user — отдельный /api/referral не нужен (обходит 400 у прокси/WebView). */
+    /* Сначала из /api/user (поле referral); если бэкенд старый или пусто — запасной /api/referral. */
+    async function fetchReferralStandalone() {
+      let initDataStr = '';
+      if (tg && tg.initData) initDataStr = String(tg.initData).trim();
+      if (!initDataStr) {
+        try {
+          var _ci = sessionStorage.getItem('svoy_tg_init_data');
+          if (_ci) initDataStr = String(_ci).trim();
+        } catch (_) { }
+      }
+      if (!initDataStr) return null;
+      const base = 'https://xdoublegroup.online/api/referral';
+      try {
+        let r = await fetch(base, {
+          method: 'POST',
+          skipWebJwt: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData: initDataStr }),
+        });
+        let j = null;
+        try {
+          j = await r.json();
+        } catch (_) { }
+        if (r.ok && j && j.referralCode) return j;
+        r = await fetch(base + '?initData=' + encodeURIComponent(initDataStr), { skipWebJwt: true });
+        try {
+          j = await r.json();
+        } catch (_) { }
+        if (r.ok && j && j.referralCode) return j;
+      } catch (_) { }
+      return null;
+    }
+
     async function loadReferral() {
       const refD = document.getElementById('refDesc');
       const failDesc = function (msg) {
@@ -2096,7 +2128,37 @@ window.fetch = async (...args) => {
       if (applyReferralPayload(S.referral)) return;
       await loadUser(true);
       if (applyReferralPayload(S.referral)) return;
-      failDesc('Потяните экран вниз для обновления или зайдите в раздел снова.');
+      let extra = await fetchReferralStandalone();
+      if (extra && applyReferralPayload(extra)) {
+        S.referral = extra;
+        return;
+      }
+      if (IS_ANDROID && ANDROID_JWT) {
+        try {
+          const r = await fetch('/api/referral', {
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + ANDROID_JWT },
+          });
+          const j = await r.json();
+          if (r.ok && j && j.referralCode && applyReferralPayload(j)) {
+            S.referral = j;
+            return;
+          }
+        } catch (_) { }
+      }
+      if (!IS_MOBILE_APP && localStorage.getItem('svoyvpn_web_jwt')) {
+        try {
+          const r = await fetch('/api/referral', { method: 'GET' });
+          const j = await r.json();
+          if (r.ok && j && j.referralCode && applyReferralPayload(j)) {
+            S.referral = j;
+            return;
+          }
+        } catch (_) { }
+      }
+      failDesc(
+        'Не удалось загрузить реферальную ссылку. Обновите мини-приложение (потяните вниз) или откройте его снова из бота.'
+      );
     }
 
     addClick('btnCopyRef', function () { copyText(refLink, this); });
