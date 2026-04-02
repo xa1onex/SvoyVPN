@@ -29,8 +29,8 @@
       var meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute('content', bg);
 
-      /* Force header color with hex — works on Bot API >= 6.9 */
-      if (tg) {
+      /* Bot API 6.1+; на WebApp 6.0 вызов даёт лишь warning в консоли */
+      if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')) {
         try { tg.setHeaderColor(bg); } catch (_) { }
         try { tg.setBackgroundColor(bg); } catch (_) { }
       }
@@ -54,54 +54,14 @@
   <link rel="preload" as="font" href="need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="need/assets/index_v111.css" />
   <link rel="stylesheet" href="need/app_v124.css?v=126" />
+  <link rel="stylesheet" href="need/desktop-pc.css?v=13" />
 
-  <script defer src="need/app_v124.js?v=127"></script>
+  <script defer src="need/app_v124.js?v=135"></script>
 
   <style>
-  /* PC Styles for Website */
-  @media (min-width: 768px) {
-    .app {
-      flex-direction: column;
-    }
-    .tab-bar {
-      order: -1; /* Move to top */
-      padding: 0 5% !important;
-      justify-content: center !important;
-      border-top: none !important;
-      border-bottom: .5px solid var(--separator_color, rgba(0,0,0,.08));
-      height: 70px !important;
-      position: sticky;
-      top: 0;
-      z-index: 1000;
-    }
-    .tab-bar .tab {
-      flex: none !important;
-      padding: 0 30px !important;
-      flex-direction: row !important;
-      gap: 10px !important;
-    }
-    .tab-bar .tab-label {
-      font-size: 16px !important;
-    }
-    .screen-content {
-      max-width: 800px;
-      margin: 0 auto;
-      width: 100%;
-      padding: 40px 16px !important;
-    }
-    /* Enhance cards on PC */
-    .card, .status-card, .server-card, .tariff-card {
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .card:hover, .status-card:hover, .server-card:hover, .tariff-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-    }
-  }
-
   /* Auth Screen — Exact Mobile Style */
   #screenAuth {
-      background: #18222d;
+      background: var(--bg_color, #18222d);
       overflow-y: auto;
       display: none;
       flex-direction: column;
@@ -132,13 +92,13 @@
   }
   #screenAuth .logo-anim .logo-core svg { width:75px;height:75px;fill:currentColor;color:#fff; }
   
-  #screenAuth .app-name { font-size:22px;font-weight:700;line-height:1.2;text-align:center;margin-bottom:4px; color: #fff; }
-  #screenAuth .app-tagline { font-size:14px;font-weight:400;line-height:1.4;color:#8e9db0;text-align:center;margin-bottom:24px; }
+  #screenAuth .app-name { font-size:22px;font-weight:700;line-height:1.2;text-align:center;margin-bottom:4px; color: var(--text_color, #fff); }
+  #screenAuth .app-tagline { font-size:14px;font-weight:400;line-height:1.4;color:var(--hint_color, #8e9db0);text-align:center;margin-bottom:24px; }
   
-  #screenAuth .auth-card { width:100%;max-width:360px;background:#21303f;border-radius:14px;padding:20px 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+  #screenAuth .auth-card { width:100%;max-width:360px;background:var(--section_bg_color, #21303f);border:1px solid var(--section_separator_color, rgba(255,255,255,.08));border-radius:14px;padding:20px 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); }
   
-  #screenAuth .tabs { display:flex;background:rgba(255,255,255,0.07);border-radius:12px;padding:4px;margin-bottom:24px; }
-  #screenAuth .tab-btn { flex:1;text-align:center;padding:10px;border-radius:9px;font-size:13px;font-weight:600;color:#8e9db0;cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent; border:none; background:none; }
+  #screenAuth .tabs { display:flex;background:var(--secondary_bg_color, rgba(255,255,255,0.07));border-radius:12px;padding:4px;margin-bottom:24px; }
+  #screenAuth .tab-btn { flex:1;text-align:center;padding:10px;border-radius:9px;font-size:13px;font-weight:600;color:var(--hint_color, #8e9db0);cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent; border:none; background:none; }
   #screenAuth .tab-btn.active { background:var(--accent, #3aa8fc);color:#fff; }
   
   #screenAuth .panel { display:none; }
@@ -148,7 +108,7 @@
   #screenAuth .tg-btn:active { transform:scale(.98);opacity:.85; }
   #screenAuth .tg-btn svg { width:22px;height:22px;fill:#fff;flex-shrink:0; }
   
-  #screenAuth .tg-hint { margin-top:14px;font-size:12px;color:#8e9db0;text-align:center;line-height:1.5; }
+  #screenAuth .tg-hint { margin-top:14px;font-size:12px;color:var(--hint_color, #8e9db0);text-align:center;line-height:1.5; }
   
   #screenAuth .polling { display:none;margin-top:20px;padding:14px;background:rgba(58,168,252,.08);border:1px solid rgba(58,168,252,.2);border-radius:12px;text-align:center; }
   #screenAuth .polling.visible { display:block; }
@@ -158,13 +118,13 @@
   @keyframes dotdot { 0%{content:'';}25%{content:'.';}50%{content:'..';}75%{content:'...';} }
   
   #screenAuth .input-group { margin-bottom:14px; text-align: left; }
-  #screenAuth .input-label { font-size:13px;color:#8e9db0;margin-bottom:6px;display:block;font-weight:500;margin-left:4px; }
-  #screenAuth .input-field { width:100%;padding:14px 16px;background:rgba(255,255,255,0.07);border:1px solid transparent;border-radius:12px;color:#fff;font-size:16px;font-family:inherit;outline:none;transition:all .2s; -webkit-appearance:none; appearance:none; }
-  #screenAuth .input-field:focus { border-color:rgba(58,168,252,0.4);background:rgba(255,255,255,0.1); }
-  #screenAuth .input-field::placeholder { color:#8e9db0; }
+  #screenAuth .input-label { font-size:13px;color:var(--hint_color, #8e9db0);margin-bottom:6px;display:block;font-weight:500;margin-left:4px; }
+  #screenAuth .input-field { width:100%;padding:14px 16px;background:var(--secondary_bg_color, rgba(255,255,255,0.07));border:1px solid var(--section_separator_color, transparent);border-radius:12px;color:var(--text_color, #fff);font-size:16px;font-family:inherit;outline:none;transition:all .2s; -webkit-appearance:none; appearance:none; }
+  #screenAuth .input-field:focus { border-color:rgba(58,168,252,0.4);background:var(--secondary_bg_color, rgba(255,255,255,0.1)); }
+  #screenAuth .input-field::placeholder { color:var(--hint_color, #8e9db0); }
   
-  #screenAuth .sub-tabs { display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid rgba(255,255,255,0.08); }
-  #screenAuth .sub-tab { flex:1;text-align:center;padding:10px;font-size:13px;font-weight:600;color:#8e9db0;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s; }
+  #screenAuth .sub-tabs { display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--separator_color, rgba(255,255,255,0.08)); }
+  #screenAuth .sub-tab { flex:1;text-align:center;padding:10px;font-size:13px;font-weight:600;color:var(--hint_color, #8e9db0);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s; }
   #screenAuth .sub-tab.active { color:var(--accent, #3aa8fc);border-bottom-color:var(--accent, #3aa8fc); }
   
   #screenAuth .auth-btn { width:100%;padding:14px;background:var(--accent, #3aa8fc);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;transition:opacity .15s, transform .1s;margin-top:4px;-webkit-tap-highlight-color:transparent; }
@@ -175,8 +135,40 @@
   #screenAuth .success-msg { background:rgba(52,199,89,.1);border:1px solid rgba(52,199,89,.3);border-radius:10px;padding:12px;font-size:13px;color:#4cd964;margin-bottom:14px;display:none;text-align:center; }
   #screenAuth .success-msg.visible { display:block; }
   
-  #screenAuth .divider { display:flex;align-items:center;gap:12px;margin:20px 0 0;color:#8e9db0;font-size:12px; }
-  #screenAuth .divider::before,#screenAuth .divider::after { content:'';flex:1;height:1px;background:rgba(255,255,255,0.08); }
+  #screenAuth .divider { display:flex;align-items:center;gap:12px;margin:20px 0 0;color:var(--hint_color, #8e9db0);font-size:12px; }
+  #screenAuth .divider::before,#screenAuth .divider::after { content:'';flex:1;height:1px;background:var(--separator_color, rgba(255,255,255,0.08)); }
+
+  /* Pre-auth guard: while auth screen is active, hide app navigation/content */
+  #screenAuth.active ~ #tabBar {
+    display: none !important;
+  }
+  #screenAuth.active ~ .screen.active {
+    display: none !important;
+  }
+
+  /* Light theme contrast tuning for auth screen */
+  html[data-theme="light"] #screenAuth .app-name { color: #1b2430; }
+  html[data-theme="light"] #screenAuth .app-tagline { color: #5c6a7a; }
+  html[data-theme="light"] #screenAuth .auth-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  }
+  html[data-theme="light"] #screenAuth .tabs { background: #eef2f7; }
+  html[data-theme="light"] #screenAuth .tab-btn { color: #556274; }
+  html[data-theme="light"] #screenAuth .tg-hint { color: #66758a; }
+  html[data-theme="light"] #screenAuth .input-label { color: #556274; }
+  html[data-theme="light"] #screenAuth .input-field {
+    background: #f5f8fc;
+    color: #1f2937;
+    border: 1px solid #d7e0ea;
+  }
+  html[data-theme="light"] #screenAuth .input-field::placeholder { color: #8a97a8; }
+  html[data-theme="light"] #screenAuth .sub-tabs { border-bottom-color: #dbe3ec; }
+  html[data-theme="light"] #screenAuth .sub-tab { color: #556274; }
+  html[data-theme="light"] #screenAuth .divider { color: #66758a; }
+  html[data-theme="light"] #screenAuth .divider::before,
+  html[data-theme="light"] #screenAuth .divider::after { background: #dbe3ec; }
 
   </style>
 </head>
@@ -361,8 +353,17 @@
           </p>
           <div id="serverNavPlaceholder"></div>
         </div>
+        
+        <!-- Mobile grid -->
         <div id="serversWrap" class="server-grid">
           <div class="server-card server-card--loading text-muted body">Загрузка…</div>
+        </div>
+
+        <!-- Desktop map -->
+        <div id="serverMapWrap" class="server-map-wrap" style="display: none;">
+          <div id="mapContainer" class="map-container">
+             <!-- SVG and pins go here -->
+          </div>
         </div>
 
       </div>

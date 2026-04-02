@@ -325,9 +325,10 @@ window.fetch = async (...args) => {
         }
     }
 
-    // 2. Add Authorization Header automatically
+    // 2. Add Authorization Header automatically (skip for e.g. Telegram initData-only API)
     const token = localStorage.getItem('svoyvpn_web_jwt');
-    if (token) {
+    const skipWebJwt = config && config.skipWebJwt;
+    if (token && !skipWebJwt) {
         config = config || {};
         config.headers = config.headers || {};
         if (config.headers instanceof Headers) {
@@ -345,7 +346,8 @@ window.fetch = async (...args) => {
     window.fetch = function(url, options = {}) {
         if (url.toString().includes('xdoublegroup.online/api/') || url.toString().includes('/api/')) {
             const token = localStorage.getItem('svoyvpn_web_jwt') || window.__androidJwt;
-            if (token) {
+            const skipWebJwt = options && options.skipWebJwt;
+            if (token && !skipWebJwt) {
                 options.headers = options.headers || {};
                 if (options.headers instanceof Headers) {
                     options.headers.set('Authorization', 'Bearer ' + token);
@@ -371,9 +373,8 @@ window.fetch = async (...args) => {
   const IS_MOBILE_APP = IS_ANDROID || IS_IOS;
   const URL_THEME = urlParams.get('theme');
 
-  // Only map `tg` if there's actually a Telegram environment running
   let _tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-  const tg = (_tg && (_tg.initData || _tg.platform !== 'unknown')) ? _tg : null;
+  const tg = _tg;
 
   window.onerror = function (msg, url, line, col, error) {
     const errDiv = document.createElement('div');
@@ -450,8 +451,8 @@ window.fetch = async (...args) => {
 
   function haptic(style) {
     try {
-      if (tg && tg.HapticFeedback) {
-        if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred(style);
+      if (tg && tg.HapticFeedback && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')) {
+        tg.HapticFeedback.impactOccurred(style);
       } else if (window.haptic && typeof window.haptic === 'function') {
         window.haptic(style);
       } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iOSBridge) {
@@ -468,9 +469,13 @@ window.fetch = async (...args) => {
     const scheme = tg.colorScheme || 'dark';
     const bgColor = scheme === 'dark' ? '#18222d' : '#ffffff';
     const secBgColor = scheme === 'dark' ? '#21303f' : '#f7f9fb';
-    try { tg.setHeaderColor(bgColor); } catch (_) { }
-    try { tg.setBackgroundColor(bgColor); } catch (_) { }
-    try { tg.setBottomBarColor(secBgColor); } catch (_) { }
+    if (tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')) {
+      try { tg.setHeaderColor(bgColor); } catch (_) { }
+      try { tg.setBackgroundColor(bgColor); } catch (_) { }
+    }
+    if (tg.isVersionAtLeast && tg.isVersionAtLeast('7.10')) {
+      try { tg.setBottomBarColor(secBgColor); } catch (_) { }
+    }
   }
 
   function applyTheme() {
@@ -792,6 +797,13 @@ window.fetch = async (...args) => {
   function renderServers() {
     const w = document.getElementById('serversWrap');
     if (!w) return;
+    
+    // Render desktop map if applicable
+    const mapWrap = document.getElementById('serverMapWrap');
+    if (mapWrap && window.innerWidth >= 1024) {
+      initAndRenderMap();
+    }
+
     if (!S.servers.length) {
       w.innerHTML = '<div class="server-card server-card--loading text-muted body">Нет серверов</div>';
       // Remove old nav if exists
@@ -873,6 +885,32 @@ window.fetch = async (...args) => {
     if (pingInterval) clearInterval(pingInterval);
     pingInterval = setInterval(function () {
       if (!S.servers.length) return;
+      
+      // Refresh map pings if map is visible
+      const mapWrap = document.getElementById('serverMapWrap');
+      if (mapWrap && window.innerWidth >= 1024) {
+        document.querySelectorAll('.map-pin').forEach(pin => {
+           const idsRaw = pin.getAttribute('data-server-ids');
+           if (idsRaw) {
+             const ids = idsRaw.split(',').filter(Boolean);
+             const pingEl = pin.querySelector('.map-pin-ping');
+             if (pingEl && ids.length) {
+               measureGroupPing(ids).then(ms => {
+                  let dotClass = 'ping-dead';
+                  let text = 'N/A';
+                  if (ms > 0) {
+                    text = ms + 'ms';
+                    if (ms < 80) dotClass = 'ping-fast';
+                    else if (ms < 150) dotClass = 'ping-med';
+                    else dotClass = 'ping-slow';
+                  }
+                  pingEl.innerHTML = `<span class="ping-dot ${dotClass}"></span>${text}`;
+               });
+             }
+           }
+        });
+      }
+
       const pageSize = (S.user && S.user.trialAvailable && !(S.subscription && S.subscription.isActive)) ? 2 : 4;
       var start = serverPage * pageSize;
       var pageServers = S.servers.slice(start, start + pageSize);
@@ -884,6 +922,268 @@ window.fetch = async (...args) => {
         }
       });
     }, 60000);
+  }
+
+  /* ═══════ MAP LOGIC ═══════ */
+  let mapInitialized = false;
+  const MAP_VB_ORIG = { x: 30.767, y: 241.591, w: 784.077, h: 458.627 };
+  
+  function initAndRenderMap() {
+    const container = document.getElementById('mapContainer');
+    if (!container) return;
+    
+    if (!mapInitialized) {
+      fetch('need/world-map.svg')
+        .then(res => res.text())
+        .then(svg => {
+          container.innerHTML = svg;
+          /* viewBox из файла — полная карта; не подменять узким фокусом */
+          mapInitialized = true;
+          placePinsOnMap();
+        });
+    } else {
+      placePinsOnMap();
+    }
+  }
+
+  function hashStr(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
+    }
+    return Math.abs(h >>> 0);
+  }
+
+  function jitterFromId(id, salt) {
+    const h = hashStr(String(id) + ':' + salt);
+    return (h % 10000) / 10000; // 0..1 deterministic
+  }
+
+  function isFreeServer(s) {
+    const em = String((s && s.emoji) || '');
+    const nm = String((s && s.name) || '').toLowerCase();
+    return em.includes('🆓') || nm.includes('🆓') || nm.includes('[free]') || nm.includes(' free ');
+  }
+
+  function extractCountryCodeFromText(text) {
+    if (!text) return null;
+    // Find first pair of regional indicator symbols anywhere in string.
+    const cps = Array.from(String(text));
+    for (let i = 0; i < cps.length - 1; i++) {
+      const a = cps[i].codePointAt(0);
+      const b = cps[i + 1].codePointAt(0);
+      if (a >= 0x1F1E6 && a <= 0x1F1FF && b >= 0x1F1E6 && b <= 0x1F1FF) {
+        return String.fromCharCode(a - 0x1F1E6 + 97) + String.fromCharCode(b - 0x1F1E6 + 97);
+      }
+    }
+    return null;
+  }
+
+  function resolvePinCollisions(pins) {
+    const MIN_DIST = 4.4; // percent of map width
+    const ITER = 70;
+    for (let k = 0; k < ITER; k++) {
+      let moved = false;
+      for (let i = 0; i < pins.length; i++) {
+        for (let j = i + 1; j < pins.length; j++) {
+          const a = pins[i];
+          const b = pins[j];
+          let dx = b.px - a.px;
+          let dy = b.py - a.py;
+          const d = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+          if (d < MIN_DIST) {
+            moved = true;
+            const push = (MIN_DIST - d) * 0.52;
+            dx /= d;
+            dy /= d;
+            a.px -= dx * push;
+            a.py -= dy * push;
+            b.px += dx * push;
+            b.py += dy * push;
+          }
+        }
+      }
+      // Keep labels within map bounds.
+      for (const p of pins) {
+        p.px = Math.max(5, Math.min(95, p.px));
+        p.py = Math.max(10, Math.min(94, p.py));
+      }
+      if (!moved) break;
+    }
+  }
+
+  function measureGroupPing(ids) {
+    const tasks = ids.map((id) => measurePing(id).catch(() => -1));
+    return Promise.all(tasks).then((values) => {
+      const ok = values.filter((v) => typeof v === 'number' && v > 0);
+      if (!ok.length) return -1;
+      return Math.round(ok.reduce((a, b) => a + b, 0) / ok.length);
+    });
+  }
+
+  function placePinsOnMap() {
+    const container = document.getElementById('mapContainer');
+    container.querySelectorAll('.map-pin').forEach(p => p.remove());
+    
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+
+    // To safely get bounding boxes even if the screen is currently hidden
+    const svgClone = svg.cloneNode(true);
+    svgClone.style.position = 'absolute';
+    svgClone.style.visibility = 'hidden';
+    svgClone.style.display = 'block';
+    document.body.appendChild(svgClone);
+    
+    const bboxes = {};
+    
+    const pinModels = [];
+    S.servers.forEach(s => {
+      let code = 'ru'; 
+      const emoji = s.emoji || getFlag(s.name);
+      const freeServer = isFreeServer(s);
+      
+      if (freeServer) {
+         code = 'ru';
+      } else {
+         const fromEmoji = extractCountryCodeFromText(s.emoji || '');
+         const fromName = extractCountryCodeFromText(s.name || '');
+         code = fromEmoji || fromName || code;
+      }
+      
+      if (!bboxes[code]) {
+         let target = svgClone.querySelector(`#${code}`);
+         if (!target) target = svgClone.querySelector('#ru'); 
+         if (target) {
+           bboxes[code] = target.getBBox();
+         }
+      }
+      
+      const bbox = bboxes[code] || {x: 520, y: 280, width: 200, height: 100}; // Fallback for RU roughly
+      let cx = bbox.x + bbox.width / 2;
+      let cy = bbox.y + bbox.height / 2;
+      
+      if (freeServer) {
+         // Free servers are distributed deterministically across Russia.
+         const rx = jitterFromId(s.id, 'x');
+         const ry = jitterFromId(s.id, 'y');
+         cx = bbox.x + (0.2 + rx * 0.55) * bbox.width;
+         cy = bbox.y + (0.2 + ry * 0.55) * bbox.height;
+      } else if (code === 'ru') {
+         cx = bbox.x + 0.15 * bbox.width;
+         cy = bbox.y + 0.5 * bbox.height;
+      } else if (code === 'us') {
+         cy = bbox.y + 0.6 * bbox.height;
+      } else if (code === 'fr') {
+         cx = bbox.x + 0.5 * bbox.width;
+         cy = bbox.y + 0.2 * bbox.height;
+      }
+      
+      let px = ((cx - MAP_VB_ORIG.x) / MAP_VB_ORIG.w) * 100;
+      let py = ((cy - MAP_VB_ORIG.y) / MAP_VB_ORIG.h) * 100;
+
+      // Dense Europe area: add tiny deterministic spread before global collision solve.
+      if (px > 44 && px < 66 && py > 22 && py < 47) {
+        px += (jitterFromId(s.id, 'eu-x') - 0.5) * 2.9;
+        py += (jitterFromId(s.id, 'eu-y') - 0.5) * 2.2;
+      }
+
+      pinModels.push({ s, emoji, px, py, freeServer, code });
+    });
+
+    // Merge servers by same location so duplicates become one pin with counter.
+    const locationMap = {};
+    pinModels.forEach((p) => {
+      // 🆓 серверы не схлопываем — у каждого свой узел и своя точка в РФ.
+      const key = p.freeServer ? 'free-' + p.s.id : (p.code || 'ru');
+      if (!locationMap[key]) {
+        locationMap[key] = {
+          key,
+          code: p.code || 'ru',
+          freeServer: p.freeServer,
+          emoji: p.freeServer ? '🆓' : p.emoji,
+          pxSum: 0,
+          pySum: 0,
+          count: 0,
+          servers: []
+        };
+      }
+      const g = locationMap[key];
+      g.pxSum += p.px;
+      g.pySum += p.py;
+      g.count += 1;
+      g.servers.push(p.s);
+      if (!g.freeServer && g.emoji === '🌍' && p.emoji && p.emoji !== '🌍') g.emoji = p.emoji;
+    });
+
+    const groupedPins = Object.values(locationMap).map((g) => ({
+      ...g,
+      px: g.pxSum / g.count,
+      py: g.pySum / g.count
+    }));
+
+    // Slight deterministic spread for dense Europe area.
+    groupedPins.forEach((p) => {
+      if (p.px > 40 && p.px < 69 && p.py > 16 && p.py < 52) {
+        p.px += (jitterFromId(p.key, 'grp-eu-x') - 0.5) * 1.8;
+        p.py += (jitterFromId(p.key, 'grp-eu-y') - 0.5) * 1.4;
+      }
+    });
+
+    resolvePinCollisions(groupedPins);
+
+    groupedPins.forEach(({ key, emoji, px, py, freeServer, servers, count }) => {
+      const pin = document.createElement('div');
+      pin.className = 'map-pin';
+      if (freeServer) pin.classList.add('map-pin--free');
+      pin.setAttribute('data-pin-key', key);
+      pin.setAttribute('data-server-ids', servers.map((x) => x.id).join(','));
+      pin.style.left = px + '%';
+      pin.style.top = py + '%';
+      
+      pin.innerHTML = `
+        <div class="map-pin-inner">
+          <div class="map-pin-flag">${freeServer ? '🆓' : emoji}</div>
+          ${count > 1 ? `<div class="map-pin-count">×${count}</div>` : ''}
+          <div class="map-pin-ping"><span class="ping-dot ping-dead"></span>...</div>
+        </div>
+      `;
+      
+      const pingEl = pin.querySelector('.map-pin-ping');
+      const ids = servers.map((x) => x.id);
+      measureGroupPing(ids).then(ms => {
+         let dotClass = 'ping-dead';
+         let text = 'N/A';
+         if (ms > 0) {
+           text = ms + 'ms';
+           if (ms < 80) dotClass = 'ping-fast';
+           else if (ms < 150) dotClass = 'ping-med';
+           else dotClass = 'ping-slow';
+         }
+         pingEl.innerHTML = `<span class="ping-dot ${dotClass}"></span>${text}`;
+      });
+      
+      pin.addEventListener('click', () => {
+         haptic('light');
+         pingEl.innerHTML = `<span class="ping-dot ping-dead"></span>...`;
+         measureGroupPing(ids).then(ms => {
+           let dotClass = 'ping-dead';
+           let text = 'N/A';
+           if (ms > 0) {
+             text = ms + 'ms';
+             if (ms < 80) dotClass = 'ping-fast';
+             else if (ms < 150) dotClass = 'ping-med';
+             else dotClass = 'ping-slow';
+           }
+           pingEl.innerHTML = `<span class="ping-dot ${dotClass}"></span>${text}`;
+         });
+      });
+      
+      container.appendChild(pin);
+    });
+    
+    document.body.removeChild(svgClone);
   }
 
   /* ═══════ Render: Total ═══════ */
@@ -1005,9 +1305,9 @@ window.fetch = async (...args) => {
         `;
 
         statusHtml += `
-          <div style="display: flex; gap: 8px; width: 100%;">
-            <button class="btn-primary" style="flex:1;" onclick="window.showScreen('screenSetup')">Подключиться</button>
-            <button class="btn-secondary" style="flex:1;" onclick="window.showModal('modalPlan')">Продлить</button>
+          <div class="sub-actions-row">
+            <button class="btn-primary" onclick="window.showScreen('screenSetup')">Подключиться</button>
+            <button class="btn-secondary" onclick="window.showModal('modalPlan')">Продлить</button>
           </div>
         `;
         subBlockBox.innerHTML = statusHtml;
@@ -1753,17 +2053,105 @@ window.fetch = async (...args) => {
     function addClick(id, handler) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('click', handler);
-      else console.warn('Missing element for click:', id);
     }
 
-    addClick('btnChoosePlan', () => window.showModal('modalPlan'));
+    // btnReferral — вкладка; тариф — onclick в renderUser (showModal)
 
     // btnReferral is handled via tab bar now
 
     let refLink = '';
+    async function referralRequestJson(url, opts) {
+      try {
+        const r = await fetch(url, opts || {});
+        let d = null;
+        try {
+          d = await r.json();
+        } catch (_) { }
+        return { ok: r.ok, status: r.status, d: d };
+      } catch (_) {
+        return { ok: false, status: 0, d: null };
+      }
+    }
+
     async function loadReferral() {
-      if (!tg || !tg.initData) return;
-      const d = await api('https://xdoublegroup.online/api/referral?initData=' + encodeURIComponent(tg.initData));
+      const refD = document.getElementById('refDesc');
+      const failDesc = function (msg) {
+        if (refD) refD.textContent = msg;
+      };
+
+      /* Реальный клиент Telegram (не заглушка в обычном браузере: там platform чаще 'unknown') */
+      const telegramClientLikely =
+        tg && tg.platform && String(tg.platform).toLowerCase() !== 'unknown';
+
+      let initDataStr = '';
+      if (tg && tg.initData) initDataStr = String(tg.initData).trim();
+      if (!initDataStr && tg && typeof tg.ready === 'function') {
+        try {
+          tg.ready();
+        } catch (_) { }
+        await new Promise(function (r) {
+          setTimeout(r, 80);
+        });
+        if (tg.initData) initDataStr = String(tg.initData).trim();
+      }
+      if (!initDataStr && telegramClientLikely) {
+        await new Promise(function (r) {
+          setTimeout(r, 200);
+        });
+        if (tg.initData) initDataStr = String(tg.initData).trim();
+      }
+      if (!initDataStr && telegramClientLikely) {
+        await new Promise(function (r) {
+          setTimeout(r, 400);
+        });
+        if (tg.initData) initDataStr = String(tg.initData).trim();
+      }
+
+      let d = null;
+      if (initDataStr) {
+        const base = 'https://xdoublegroup.online/api/referral';
+        const postOpts = {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData: initDataStr }),
+          skipWebJwt: true,
+        };
+        let res = await referralRequestJson(base, postOpts);
+        if (!res.ok || !res.d || !res.d.referralCode) {
+          res = await referralRequestJson(
+            base + '?initData=' + encodeURIComponent(initDataStr),
+            { skipWebJwt: true }
+          );
+        }
+        d = res.ok && res.d && res.d.referralCode ? res.d : null;
+        if (!d && res.d && res.d.error) {
+          if (res.d.error === 'User ID not found') {
+            failDesc('В этой среде Telegram не передан профиль. Откройте мини-приложение из бота ещё раз.');
+            return;
+          }
+          if (res.d.error === 'Invalid initData') {
+            failDesc('Сессия Telegram устарела. Закройте мини-приложение и откройте снова из бота.');
+            return;
+          }
+        }
+      } else if (IS_ANDROID && ANDROID_JWT) {
+        d = await api('/api/referral', {
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + ANDROID_JWT },
+        });
+      } else if (!IS_MOBILE_APP && localStorage.getItem('svoyvpn_web_jwt')) {
+        if (telegramClientLikely) {
+          failDesc(
+            'Не удалось получить подписанные данные Telegram. Закройте мини-приложение и откройте снова из бота.'
+          );
+          return;
+        }
+        d = await api('/api/referral');
+      } else {
+        failDesc('Войдите в аккаунт, чтобы открыть раздел подарков.');
+        return;
+      }
+
       if (d && d.referralCode) {
         refLink = d.refLink;
         const refL = document.getElementById('refLinkText');
@@ -1772,8 +2160,12 @@ window.fetch = async (...args) => {
         if (refC) refC.textContent = d.referralCount + ' чел.';
         const refB = document.getElementById('refBonus');
         if (refB) refB.textContent = d.inviterBonusDays + ' дн. за друга';
-        const refD = document.getElementById('refDesc');
-        if (refD) refD.textContent = `Дарим ${d.inviterBonusDays} дней Вам и ${d.invitedBonusDays} дня другу за каждое успешное приглашение.`;
+        if (refD) {
+          refD.textContent =
+            `Дарим ${d.inviterBonusDays} дней Вам и ${d.invitedBonusDays} дня другу за каждое успешное приглашение.`;
+        }
+      } else {
+        failDesc('Не удалось загрузить реферальные данные. Попробуйте позже.');
       }
     }
 
@@ -1784,11 +2176,7 @@ window.fetch = async (...args) => {
       tg && tg.openTelegramLink ? tg.openTelegramLink(shareUrl) : window.open(shareUrl, '_blank');
     });
 
-    // Copy buttons
-    addClick('btnCopySetup', function () {
-      const el = document.getElementById('subUrlSetup');
-      if (el) copyText(el.value, this);
-    });
+    // Copy: онбординг — obBtnNext; профиль — btnCopyProfile (subUrlSetup в разметке нет)
 
     addClick('btnCopyProfile', function () {
       const el = document.getElementById('subUrlProfile');

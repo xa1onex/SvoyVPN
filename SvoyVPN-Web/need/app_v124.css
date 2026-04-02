@@ -445,6 +445,20 @@ body {
     -webkit-tap-highlight-color: transparent;
 }
 
+/* Два действия в ряд (главный экран: Подключиться / Продлить) */
+.sub-actions-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.sub-actions-row .btn-primary,
+.sub-actions-row .btn-secondary {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto !important;
+}
+
 .btn-secondary:active {
     opacity: .85;
     transform: scale(.98);

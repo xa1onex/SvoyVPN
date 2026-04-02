@@ -1,0 +1,784 @@
+/* SvoyVPN-Web — desktop layout layer (loads after app_v124.css) */
+
+@media (min-width: 1024px) {
+  :root {
+    --pc-max: 960px;
+    --pc-max-narrow: 560px;
+    --pc-radius: 12px;
+    --pc-btn-py: 10px;
+    --pc-btn-px: 18px;
+    --pc-font-btn: 14px;
+    --pc-font-body: 15px;
+    --pc-font-title: 30px;
+    --pc-font-subtitle: 20px;
+    /* Онбординг «Подключиться» — та же визуальная шкала, что у карточек и кнопок */
+    --pc-ob-col: min(var(--pc-max-narrow), 100%);
+    --pc-ob-title: var(--pc-font-subtitle);
+    --pc-ob-desc: var(--pc-font-body);
+    --pc-ob-btn-min: 44px;
+  }
+
+  /* App shell */
+  .app {
+    background:
+      radial-gradient(900px 380px at 50% -100px, rgba(58, 168, 252, 0.1), transparent 65%),
+      var(--bg_color, #fff);
+  }
+
+  /* Main scroll column — fixed readable width, centered */
+  .screen-content {
+    width: 100% !important;
+    max-width: var(--pc-max) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding: 14px 20px 20px !important;
+    box-sizing: border-box;
+  }
+
+  /* Top nav: compact, not stretched */
+  .tab-bar {
+    order: -1;
+    position: sticky;
+    top: 0;
+    z-index: 1100;
+    height: 52px !important;
+    padding: 0 16px calc(0px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))) !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    border-top: none !important;
+    border-bottom: 1px solid var(--separator_color, rgba(0, 0, 0, 0.08)) !important;
+    background: color-mix(in srgb, var(--bg_color, #fff) 92%, transparent) !important;
+    backdrop-filter: blur(10px);
+  }
+
+  .tab-bar .tab {
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    max-width: 200px;
+    padding: 0 14px !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    border-radius: 10px;
+    height: 40px;
+  }
+
+  .tab-bar .tab-icon {
+    width: 22px !important;
+    height: 22px !important;
+    margin-top: 0 !important;
+  }
+
+  .tab-bar .tab-label {
+    font-size: 13px !important;
+    font-weight: 650 !important;
+  }
+
+  /* Typography scale */
+  .title {
+    font-size: var(--pc-font-title) !important;
+    line-height: 1.1 !important;
+    font-weight: 750 !important;
+    letter-spacing: -0.02em;
+  }
+
+  .subtitle,
+  .title-s {
+    font-size: var(--pc-font-subtitle) !important;
+    line-height: 1.2 !important;
+    font-weight: 700 !important;
+  }
+
+  .body,
+  .caption {
+    font-size: var(--pc-font-body) !important;
+    line-height: 1.45 !important;
+  }
+
+  /* Cards: same width as content column */
+  .card {
+    width: 100% !important;
+    max-width: var(--pc-max) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    border-radius: var(--pc-radius) !important;
+    padding: 12px 14px !important;
+  }
+
+  /* Primary CTAs — компактные, по центру (не на всю ширину экрана) */
+  #screenVpn .screen-content > .btn-primary,
+  #screenVpn .screen-content > .btn-secondary,
+  /* Кнопки внутри промо-карточки пробного периода */
+  #subBlockBox .card .btn-primary,
+  #subBlockBox > .btn-primary,
+  #subBlockBox > .btn-secondary,
+  #screenReferral .screen-content > .btn-primary,
+  #screenReferral .screen-content > .btn-share {
+    width: auto !important;
+    max-width: var(--pc-max-narrow) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    display: block !important;
+    padding: var(--pc-btn-py) var(--pc-btn-px) !important;
+    font-size: var(--pc-font-btn) !important;
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+    min-height: 42px !important;
+    line-height: 1.25 !important;
+  }
+
+  #modalAddNews .btn-primary {
+    width: auto !important;
+    max-width: 320px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    display: block !important;
+    padding: var(--pc-btn-py) 24px !important;
+    font-size: var(--pc-font-btn) !important;
+  }
+
+  /* Two-button row from JS (.sub-actions-row) */
+  .sub-actions-row {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    justify-content: center !important;
+    gap: 10px !important;
+    width: 100% !important;
+    max-width: 520px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .sub-actions-row .btn-primary,
+  .sub-actions-row .btn-secondary {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: auto !important;
+    padding: var(--pc-btn-py) 14px !important;
+    font-size: var(--pc-font-btn) !important;
+  }
+
+  /* Copy field: readable, not a giant strip */
+  .copy-field {
+    max-width: var(--pc-max-narrow) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding: 4px 4px 4px 12px !important;
+    border-radius: 12px !important;
+  }
+
+  .copy-field input {
+    font-size: 13px !important;
+    padding: 6px 0 !important;
+  }
+
+  .copy-field .btn-copy {
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 10px !important;
+  }
+
+  /* Link list: compact rows */
+  .link-list {
+    max-width: var(--pc-max-narrow) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    gap: 8px !important;
+  }
+
+  .link-card {
+    padding: 10px 12px !important;
+    border-radius: var(--pc-radius) !important;
+    min-height: 0 !important;
+  }
+
+  .link-card .link-icon {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .link-card .link-name {
+    font-size: 14px !important;
+  }
+
+  .link-card .link-subtext {
+    font-size: 12px !important;
+  }
+
+  /* Server grid: 2 columns, sane card height */
+  .server-grid {
+    max-width: var(--pc-max) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    gap: 10px !important;
+  }
+
+  .server-card {
+    padding: 10px 12px !important;
+  }
+
+  /* Profile: single centered column */
+  #screenProfile .screen-content {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    max-width: 720px !important;
+  }
+
+  #screenProfile .logo-anim {
+    transform: scale(0.9);
+    transform-origin: top center;
+  }
+
+  #screenProfile .link-list,
+  #screenProfile .copy-field,
+  #screenProfile #newsSection {
+    width: 100% !important;
+    max-width: var(--pc-max-narrow) !important;
+  }
+
+  /* Modal: centered dialog instead of full-width bottom sheet */
+  .modal {
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 24px 16px !important;
+  }
+
+  .modal-content {
+    width: min(920px, 96vw) !important;
+    max-height: min(88vh, 900px) !important;
+    margin: 0 auto !important;
+    border-radius: 16px !important;
+    padding: 16px 18px 18px !important;
+    transform: none !important;
+    transition: opacity 0.25s ease, transform 0.25s ease !important;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18);
+  }
+
+  .modal.active .modal-content {
+    transform: none !important;
+  }
+
+  #modalPlan .tariff-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  #modalPlan .pm-list {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  #modalPlan .pay-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    flex-wrap: wrap !important;
+    padding: 10px 12px !important;
+    border-radius: 12px !important;
+    margin-top: 10px !important;
+    border: 1px solid var(--separator_color, rgba(0, 0, 0, 0.08));
+    background: var(--section_bg_color, #fff);
+  }
+
+  #modalPlan .pay-row .btn-primary {
+    margin: 0 !important;
+    min-width: 140px !important;
+    max-width: 220px !important;
+  }
+
+  .pay-row .total-price {
+    font-size: 20px !important;
+  }
+
+  /* Tariff / payment cells */
+  .tariff-card,
+  .payment-method {
+    border-radius: 10px !important;
+    min-height: 0 !important;
+  }
+
+  /* Home: subscription block */
+  #screenVpn #subBlockBox {
+    width: 100% !important;
+    max-width: var(--pc-max) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  #serversWrap.server-grid, #serverNavPlaceholder {
+    display: none !important;
+  }
+
+  /* Без отрицательных margin: у .screen-content overflow-y:auto даёт clip по X — карта резалась по краям */
+  #serverMapWrap {
+    display: block !important;
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 10px;
+    position: relative;
+  }
+  
+  /* Совпадает с viewBox в world-map.svg и MAP_VB_ORIG в app_v124.js */
+  .map-container {
+    width: 100%;
+    position: relative;
+    aspect-ratio: 784.077 / 458.627;
+  }
+  
+  .map-container svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    /* «Море» = прозрачно, виден --bg_color родителя; суша — чуть темнее/светлее фона */
+    fill: color-mix(in srgb, var(--text_color, #1a2632) 14%, var(--bg_color, #ffffff));
+    stroke: color-mix(in srgb, var(--bg_color, #ffffff) 78%, var(--text_color, #1a2632) 22%);
+    stroke-width: 0.5;
+  }
+  
+  .map-pin {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    cursor: pointer;
+    transition: transform 0.2s, z-index 0s;
+    z-index: 10;
+  }
+  
+  .map-pin:hover {
+    transform: translate(-50%, -100%) scale(1.1);
+    z-index: 20;
+  }
+  
+  .map-pin-inner {
+    background: var(--bg_color, #fff);
+    border: 1px solid var(--separator_color, rgba(0,0,0,0.08));
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-radius: 10px;
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+  }
+
+  .map-pin--free .map-pin-inner {
+    border-color: rgba(52, 199, 89, 0.45);
+    box-shadow: 0 4px 12px rgba(52, 199, 89, 0.2);
+  }
+  
+  html[data-theme="dark"] .map-pin-inner {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  
+  .map-pin-flag {
+    font-size: 16px;
+    line-height: 1;
+  }
+  
+  .map-pin-ping {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--subtitle_text_color, #8e8e93);
+    display: flex;
+    align-items: center;
+  }
+
+  .map-pin-count {
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--accent_text_color, #3aa8fc);
+    background: rgba(58, 168, 252, 0.12);
+    border-radius: 999px;
+    padding: 2px 5px;
+  }
+  
+  .ping-dot { 
+    width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; 
+  }
+  .ping-fast { background: #34c759; }
+  .ping-med { background: #ffcc00; }
+  .ping-slow { background: #ff3b30; }
+  .ping-dead { background: #8e8e93; }
+
+  #screenVpn .logo-anim {
+    transform: scale(0.88);
+    transform-origin: top center;
+  }
+
+  #screenVpn .title {
+    margin-top: -4px;
+    text-align: center;
+  }
+
+  #screenVpn .body {
+    text-align: center;
+    margin-bottom: 6px;
+  }
+
+  #screenVpn #serversWrap.server-grid {
+    display: none !important;
+  }
+
+  /* ── Экран «Подключиться»: та же колонка/типографика, что на остальных экранах; кнопки у контента ── */
+  #screenSetup .screen-content {
+    align-items: center !important;
+    justify-content: flex-start !important;
+    padding: 14px 20px 22px !important;
+    max-width: var(--pc-max) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  #screenSetup .logo-anim {
+    transform: scale(0.88);
+    transform-origin: top center;
+  }
+
+  /* Карусель не растягивается на всю высоту — иначе трек тянется и кнопки уезжают вниз */
+  #screenSetup .ob-carousel {
+    flex: 0 1 auto !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    max-width: var(--pc-ob-col) !important;
+    margin: 0 auto !important;
+  }
+
+  #screenSetup .ob-track {
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    align-items: flex-start !important;
+  }
+
+  #screenSetup .ob-slide {
+    padding: 0 12px 14px !important;
+  }
+
+  #screenSetup .ob-slide-inner {
+    flex: 0 1 auto !important;
+    min-height: 0 !important;
+    justify-content: flex-start !important;
+  }
+
+  #screenSetup .ob-title {
+    font-size: var(--pc-ob-title) !important;
+    line-height: 1.2 !important;
+    font-weight: 700 !important;
+    margin-top: 0 !important;
+    margin-bottom: 10px !important;
+  }
+
+  #screenSetup .ob-desc {
+    font-size: var(--pc-ob-desc) !important;
+    line-height: 1.45 !important;
+    margin-bottom: 14px !important;
+    max-width: 42em;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  #screenSetup .ob-dots {
+    padding: 8px 0 10px !important;
+    gap: 6px !important;
+  }
+
+  #screenSetup .ob-dot {
+    width: 7px !important;
+    height: 7px !important;
+  }
+
+  #screenSetup .ob-dot.active {
+    width: 22px !important;
+  }
+
+  #screenSetup .ob-actions {
+    flex-shrink: 0 !important;
+    padding: 10px 0 12px !important;
+    margin-top: 4px !important;
+    width: 100%;
+    max-width: var(--pc-ob-col);
+    align-self: center !important;
+  }
+
+  #screenSetup .ob-action-row {
+    gap: 10px !important;
+  }
+
+  #screenSetup .ob-btn-next,
+  #screenSetup .ob-btn-copied,
+  #screenSetup .ob-action-row.split .ob-btn-copied {
+    padding: var(--pc-btn-py) var(--pc-btn-px) !important;
+    font-size: var(--pc-font-btn) !important;
+    font-weight: 600 !important;
+    border-radius: var(--pc-radius) !important;
+    min-height: var(--pc-ob-btn-min) !important;
+  }
+
+  #screenSetup .ob-btn-back {
+    margin-top: 2px !important;
+    font-size: 14px !important;
+    padding: 6px 10px !important;
+  }
+
+  #screenSetup .ob-device-grid {
+    max-width: var(--pc-ob-col);
+    margin-left: auto;
+    margin-right: auto;
+    gap: 12px !important;
+  }
+
+  #screenSetup .ob-device-card {
+    padding: 16px 10px 14px !important;
+    border-radius: var(--pc-radius) !important;
+  }
+
+  #screenSetup .ob-device-card span {
+    font-size: 14px !important;
+  }
+
+  #screenSetup .ob-device-card svg {
+    width: 36px !important;
+    height: 36px !important;
+  }
+
+  /* Галочка выбора: отступ от края и читаемый контраст */
+  #screenSetup .ob-device-card .ob-check {
+    top: 10px !important;
+    right: 10px !important;
+    width: 22px !important;
+    height: 22px !important;
+    border: 2px solid var(--bg_color, #fff);
+    box-shadow: 0 2px 8px rgba(58, 168, 252, 0.28);
+    z-index: 2;
+  }
+
+  #screenSetup .ob-device-card .ob-check svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  #screenSetup .ob-app-list {
+    max-width: var(--pc-ob-col);
+    margin-left: auto;
+    margin-right: auto;
+    gap: 8px !important;
+  }
+
+  #screenSetup .ob-app-item {
+    padding: 12px 14px !important;
+    border-radius: var(--pc-radius) !important;
+  }
+
+  #screenSetup .ob-app-name {
+    font-size: 15px !important;
+  }
+
+  #screenSetup .ob-app-store {
+    font-size: 13px !important;
+  }
+
+  #screenSetup .ob-app-icon {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 10px !important;
+  }
+
+  #screenSetup .ob-app-icon svg {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  #screenSetup .ob-icon-wrap {
+    margin: 12px 0 10px !important;
+  }
+
+  #screenSetup .ob-icon-circle {
+    width: 80px !important;
+    height: 80px !important;
+  }
+
+  #screenSetup .ob-icon-circle svg {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  #screenSetup #obSubCheckBlock,
+  #screenSetup #obDownloadContent,
+  #screenSetup #obConnectContent {
+    width: 100%;
+    max-width: var(--pc-ob-col);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  #screenSetup .card {
+    padding: 14px 16px !important;
+    border-radius: var(--pc-radius) !important;
+  }
+
+  /* Кнопки в карточках слайдов — как .btn-primary на главной */
+  #screenSetup .card .btn-primary {
+    width: auto !important;
+    max-width: var(--pc-ob-col) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    display: block !important;
+    padding: var(--pc-btn-py) var(--pc-btn-px) !important;
+    font-size: var(--pc-font-btn) !important;
+    min-height: var(--pc-ob-btn-min) !important;
+    border-radius: 10px !important;
+  }
+
+  /* Рефералы */
+  #screenReferral .screen-content {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  #screenReferral .referral-card {
+    border: 1px solid var(--separator_color, rgba(0, 0, 0, 0.08));
+  }
+
+  /* Карточки: лёгкий hover на десктопе */
+  .card,
+  .status-card,
+  .server-card,
+  .referral-card,
+  .link-card,
+  .tariff-card,
+  .payment-method {
+    border-radius: 12px !important;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.07);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .card:hover,
+  .status-card:hover,
+  .server-card:hover,
+  .referral-card:hover,
+  .link-card:hover,
+  .tariff-card:hover,
+  .payment-method:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+  }
+
+  /* Экран входа: компактная колонка */
+  #screenAuth {
+    justify-content: center;
+    padding: 14px 16px 20px;
+  }
+
+  #screenAuth .logo-anim {
+    transform: scale(0.86);
+    margin-bottom: 10px;
+  }
+
+  #screenAuth .app-name {
+    font-size: 40px;
+    margin-top: 2px;
+  }
+
+  #screenAuth .app-tagline {
+    font-size: 17px;
+    margin-bottom: 12px;
+  }
+
+  #screenAuth .auth-card {
+    max-width: 520px;
+    padding: 16px;
+  }
+
+  #screenAuth .tg-hint {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  /* Light theme on desktop: stronger contrast */
+  html[data-theme="light"] .tab-bar {
+    border-bottom-color: #d6e1ec !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+  }
+
+  html[data-theme="light"] .card,
+  html[data-theme="light"] .status-card,
+  html[data-theme="light"] .server-card,
+  html[data-theme="light"] .referral-card,
+  html[data-theme="light"] .link-card,
+  html[data-theme="light"] .tariff-card,
+  html[data-theme="light"] .payment-method {
+    border: 1px solid #dbe6f1 !important;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+  }
+
+  html[data-theme="light"] .title,
+  html[data-theme="light"] .title-s,
+  html[data-theme="light"] .subtitle,
+  html[data-theme="light"] .ob-title,
+  html[data-theme="light"] .ob-app-name {
+    color: #0f2438 !important;
+  }
+
+  html[data-theme="light"] .body,
+  html[data-theme="light"] .caption,
+  html[data-theme="light"] .text-muted,
+  html[data-theme="light"] .ob-desc,
+  html[data-theme="light"] .ob-app-store,
+  html[data-theme="light"] .link-subtext {
+    color: #5a6d82 !important;
+  }
+
+  html[data-theme="light"] .copy-field {
+    background: #f5f9fd !important;
+    border: 1px solid #d6e4f2 !important;
+  }
+
+  html[data-theme="light"] .copy-field input {
+    color: #1f3246 !important;
+  }
+
+  html[data-theme="light"] .input-field {
+    border: 1px solid #d6e4f2 !important;
+    background: #f8fbff !important;
+  }
+
+  html[data-theme="light"] .ob-device-card {
+    background: #f9fcff !important;
+    border: 1px solid #d6e4f2 !important;
+  }
+
+  html[data-theme="light"] .ob-device-card span {
+    color: #294157 !important;
+  }
+
+  html[data-theme="light"] .ob-device-card svg {
+    fill: #6b8196 !important;
+  }
+
+  html[data-theme="light"] .ob-device-card.selected {
+    outline-color: #2ea1ff !important;
+    box-shadow: 0 0 0 3px rgba(46, 161, 255, 0.14), 0 8px 20px rgba(46, 161, 255, 0.12) !important;
+  }
+
+  html[data-theme="light"] .link-card .link-name {
+    color: #10273c !important;
+  }
+
+  html[data-theme="light"] .modal-content {
+    border: 1px solid #dbe6f1 !important;
+  }
+}
