@@ -312,52 +312,35 @@ window.AppConfig = {
     isWeb: true
 };
 
-// Global Fetch Interceptor (The "Right way" to handle shared API)
-const _originalFetch = window.fetch;
-window.fetch = async (...args) => {
-    let [resource, config] = args;
-    let url = resource.toString();
-
-    // 1. Force Absolute URLs for API and Images
-    if (url.includes('/api/') || url.includes('/miniapp/')) {
-        if (!url.startsWith('http')) {
-             url = window.AppConfig.apiBaseURL + (url.startsWith('.') ? url.slice(1) : url);
-        }
-    }
-
-    // 2. Add Authorization Header automatically (skip for e.g. Telegram initData-only API)
-    const token = localStorage.getItem('svoyvpn_web_jwt');
-    const skipWebJwt = config && config.skipWebJwt;
-    if (token && !skipWebJwt) {
+(function() {
+    const _originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+        let [resource, config] = args;
+        let url = resource.toString();
         config = config || {};
-        config.headers = config.headers || {};
-        if (config.headers instanceof Headers) {
-            config.headers.set('Authorization', 'Bearer ' + token);
-        } else {
-            config.headers['Authorization'] = 'Bearer ' + token;
-        }
-    }
 
-    return _originalFetch(url, config);
-};
-
-
-    const originalFetch = window.fetch;
-    window.fetch = function(url, options = {}) {
-        if (url.toString().includes('xdoublegroup.online/api/') || url.toString().includes('/api/')) {
-            const token = localStorage.getItem('svoyvpn_web_jwt') || window.__androidJwt;
-            const skipWebJwt = options && options.skipWebJwt;
-            if (token && !skipWebJwt) {
-                options.headers = options.headers || {};
-                if (options.headers instanceof Headers) {
-                    options.headers.set('Authorization', 'Bearer ' + token);
-                } else {
-                    options.headers['Authorization'] = 'Bearer ' + token;
-                }
+        if (url.includes('/api/') || url.includes('/miniapp/')) {
+            if (!url.startsWith('http')) {
+                 const base = window.AppConfig.apiBaseURL;
+                 url = base + (url.startsWith('/') ? url : '/' + url);
             }
         }
-        return originalFetch(url, options);
+
+        const token = localStorage.getItem('svoyvpn_web_jwt') || window.__androidJwt;
+        const skipWebJwt = config && config.skipWebJwt;
+        
+        if (token && !skipWebJwt) {
+            config.headers = config.headers || {};
+            const bearer = 'Bearer ' + token;
+            if (config.headers instanceof Headers) {
+                config.headers.set('Authorization', bearer);
+            } else {
+                config.headers['Authorization'] = bearer;
+            }
+        }
+        return _originalFetch(url, config);
     };
+})();
 
 /* ═══════════════════════════════════════════
    SvoyVPN Miniapp — App Logic
@@ -2097,14 +2080,15 @@ window.fetch = async (...args) => {
     async function fetchReferralStandalone() {
       let initDataStr = '';
       if (tg && tg.initData) initDataStr = String(tg.initData).trim();
-      if (!initDataStr) {
+      if (!initDataStr || initDataStr === 'undefined' || initDataStr === 'null') {
         try {
           var _ci = sessionStorage.getItem('svoy_tg_init_data');
           if (_ci) initDataStr = String(_ci).trim();
         } catch (_) { }
       }
-      if (!initDataStr) return null;
-      const base = 'https://xdoublegroup.online/api/referral';
+      if (!initDataStr || initDataStr === 'undefined' || initDataStr === 'null') return null;
+
+      const base = '/api/referral';
       try {
         let r = await fetch(base, {
           method: 'POST',
@@ -2117,6 +2101,8 @@ window.fetch = async (...args) => {
           j = await r.json();
         } catch (_) { }
         if (r.ok && j && j.referralCode) return j;
+        
+        // GET fallback
         r = await fetch(base + '?initData=' + encodeURIComponent(initDataStr), { skipWebJwt: true });
         try {
           j = await r.json();
