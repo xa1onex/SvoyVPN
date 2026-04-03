@@ -1092,131 +1092,94 @@
     }
   }
 
-  /* ═══════ News Carousel (v101) ═══════ */
+  /* ═══════ Объявления в профиле (список, без карусели) ═══════ */
   function renderNews() {
     const newsSection = document.getElementById('newsSection');
-    const newsCarousel = document.getElementById('newsCarousel');
-    if (!newsCarousel || !newsSection) return;
+    const list = document.getElementById('profileAnnounceList');
+    const heading = document.getElementById('profileAnnounceHeading');
+    if (!list || !newsSection) return;
 
-    newsCarousel.innerHTML = '';
+    list.innerHTML = '';
 
     const isAdmin = S.user && S.user.isAdmin;
-
-    // If admin is logged in, show "Add News" card AT THE END (as requested)
-    // Wait, user said "at the very end", so we add news cards first
-
     let hasContent = false;
+
+    const imgUrl = (u) => {
+      if (!u) return '';
+      const s = String(u);
+      if (s.startsWith('/miniapp/')) return 'https://xdoublegroup.online' + s;
+      return s;
+    };
 
     if (S.news && S.news.length > 0) {
       hasContent = true;
-      S.news.forEach((item, idx) => {
-        const card = document.createElement('div');
-        const gradIdx = (idx % 5) + 1;
-        card.className = `news-card news-grad-${gradIdx}`;
-
-        let bgStyle = '';
-        if (item.image_url) {
-          bgStyle = `background-image: url(${item.image_url})`;
+      S.news.forEach((item) => {
+        const row = document.createElement('div');
+        const iu = item.image_url ? imgUrl(item.image_url) : '';
+        row.className = 'profile-announce-item' + (iu ? ' profile-announce-item--thumb' : '');
+        const delBtn = isAdmin
+          ? `<button type="button" class="profile-announce-del" aria-label="Удалить">✕</button>`
+          : '';
+        if (iu) {
+          row.innerHTML =
+            delBtn +
+            `<img class="profile-announce-item__img" src="${iu.replace(/"/g, '')}" alt="" loading="lazy" />` +
+            '<div class="profile-announce-item__text">' +
+            `<p class="profile-announce-item__title">${escapeHtml(item.title)}</p>` +
+            (item.description
+              ? `<p class="profile-announce-item__desc">${escapeHtml(item.description)}</p>`
+              : '') +
+            '</div>';
+        } else {
+          row.innerHTML =
+            delBtn +
+            '<div class="profile-announce-item__text">' +
+            `<p class="profile-announce-item__title">${escapeHtml(item.title)}</p>` +
+            (item.description
+              ? `<p class="profile-announce-item__desc">${escapeHtml(item.description)}</p>`
+              : '') +
+            '</div>';
         }
-
-        card.innerHTML = `
-          ${item.image_url ? `<div class="news-card__bg" style="${bgStyle}"></div>` : ''}
-          <div class="news-card__overlay"></div>
-          ${isAdmin ? `<div class="news-card__delete" data-id="${item.id}">✕</div>` : ''}
-          <div class="news-card__content">
-            <p class="news-card__title">${item.title}</p>
-            <p class="news-card__desc">${item.description || ''}</p>
-          </div>
-        `;
-
-        card.onclick = (e) => {
-          if (e.target.classList.contains('news-card__delete')) {
+        const del = row.querySelector('.profile-announce-del');
+        if (del) {
+          del.addEventListener('click', (e) => {
             e.stopPropagation();
             haptic('medium');
-            if (confirm('Удалить эту новость?')) {
-              deleteNews(item.id);
-            }
-            return;
-          }
-          haptic('light');
-        };
-        newsCarousel.appendChild(card);
+            if (confirm('Удалить эту новость?')) deleteNews(item.id);
+          });
+        }
+        list.appendChild(row);
       });
     }
 
-    if (S.user && S.user.isAdmin) {
+    if (isAdmin) {
       hasContent = true;
-      const adminCard = document.createElement('div');
-      adminCard.className = 'news-card admin-card';
-      adminCard.innerHTML = `
-        <div class="admin-card__icon">➕</div>
-        <div class="admin-card__label">Добавить</div>
-      `;
-      adminCard.onclick = () => {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'profile-announce-add';
+      add.innerHTML =
+        '<span class="profile-announce-add__icon" aria-hidden="true">+</span><span>Добавить новость</span>';
+      add.addEventListener('click', () => {
         haptic('medium');
         window.showModal('modalAddNews');
-      };
-      newsCarousel.appendChild(adminCard);
+      });
+      list.appendChild(add);
     }
 
     newsSection.style.display = hasContent ? 'block' : 'none';
+    newsSection.classList.toggle('has-announce', hasContent);
 
-    // Add a tiny version badge to verify the code is updated
-    let vBadge = document.getElementById('codeVersionBadge');
-    if (!vBadge) {
-      vBadge = document.createElement('div');
-      vBadge.id = 'codeVersionBadge';
-      vBadge.style.cssText = 'font-size: 8px; opacity: 0.3; text-align: center; margin-top: 10px;';
-      const container = document.querySelector('.screen-profile .container');
-      if (container) container.appendChild(vBadge);
+    if (heading) {
+      if (S.news && S.news.length > 0) {
+        heading.textContent = 'Актуально';
+        heading.style.display = 'block';
+      } else if (isAdmin) {
+        heading.textContent = 'Новости';
+        heading.style.display = 'block';
+      } else {
+        heading.style.display = 'none';
+      }
     }
-    vBadge.textContent = 'v124';
-
-    // Start auto-scroll
-    startNewsAutoScroll();
-  }
-
-  let newsAutoScrollInterval;
-  function startNewsAutoScroll() {
-    const newsCarousel = document.getElementById('newsCarousel');
-    if (!newsCarousel) return;
-
-    if (newsAutoScrollInterval) clearInterval(newsAutoScrollInterval);
-
-    // Only scroll if there's more than 1 item
-    const items = newsCarousel.querySelectorAll('.news-card');
-    if (items.length <= 1) return;
-
-    newsAutoScrollInterval = setInterval(() => {
-      // If user is currently dragging or if the modal is open, we might want to skip, 
-      // but let's keep it simple as requested.
-
-      const cardWidth = items[0].offsetWidth;
-      const gap = 12; // from CSS .news-carousel gap: 12px
-      const step = cardWidth + gap;
-
-      let currentIndex = Math.round(newsCarousel.scrollLeft / step);
-      let nextIndex = currentIndex + 1;
-
-      if (nextIndex >= items.length) {
-        nextIndex = 0;
-      }
-
-      newsCarousel.scrollTo({
-        left: nextIndex * step,
-        behavior: 'smooth'
-      });
-    }, 5000);
-
-    // Pause auto-scroll on manual interaction to not annoy user
-    const stopAuto = () => {
-      if (newsAutoScrollInterval) {
-        clearInterval(newsAutoScrollInterval);
-        newsAutoScrollInterval = null;
-      }
-    };
-    newsCarousel.addEventListener('touchstart', stopAuto, { passive: true });
-    newsCarousel.addEventListener('mousedown', stopAuto, { passive: true });
   }
 
   async function deleteNews(newsId) {

@@ -53,10 +53,10 @@
   <link rel="preload" as="font" href="need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="need/assets/index_v111.css" />
-  <link rel="stylesheet" href="need/app_v124.css?v=129" />
+  <link rel="stylesheet" href="need/app_v124.css?v=130" />
   <link rel="stylesheet" href="need/desktop-pc.css?v=16" />
 
-  <script defer src="need/app_v124.js?v=144"></script>
+  <script defer src="need/app_v124.js?v=145"></script>
 
   <style>
   /* Auth Screen — Exact Mobile Style */
@@ -616,10 +616,9 @@
           </button>
         </div>
 
-        <div id="newsSection" style="width: 100%; margin-top: 12px; margin-bottom: 0; display: none;">
-          <div class="news-carousel" id="newsCarousel">
-            <!-- News cards and Admin card injected by JS -->
-          </div>
+        <div id="newsSection" class="profile-announce-wrap" style="width: 100%; margin-top: 12px; margin-bottom: 0; display: none;">
+          <p id="profileAnnounceHeading" class="caption text-muted profile-announce-heading">Актуально</p>
+          <div id="profileAnnounceList" class="profile-announce-list"></div>
         </div>
 
         <div class="link-list">
