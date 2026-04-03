@@ -646,7 +646,7 @@
         const endHuman = fmtDate(sub.endDate);
         const daysMeta =
           daysLeft > 0
-            ? `Осталось ${daysLeft} ${dw(daysLeft)} полного доступа к серверам.`
+            ? `Осталось ${daysLeft} ${dw(daysLeft)} полной свободы.`
             : 'Срок окончания указан ниже — подключайтесь в любой момент.';
         const warnSoon = daysLeft > 0 && daysLeft <= 7;
         const heroMod = warnSoon ? ' sub-status-hero--warn' : '';
