@@ -1691,9 +1691,7 @@ window.AppConfig = {
     // Subscription URL
     if (sub && sub.subscriptionUrl) {
       const elSetup = document.getElementById('subUrlSetup');
-      const elProfile = document.getElementById('subUrlProfile');
       if (elSetup) elSetup.value = sub.subscriptionUrl;
-      if (elProfile) elProfile.value = sub.subscriptionUrl;
     }
 
     // Refresh servers layout (pageSize may change if trial block appeared)
@@ -2503,13 +2501,6 @@ window.AppConfig = {
       if (!refLink) return;
       const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent('Попробуй этот отличный VPN! Дают бонусные дни при регистрации по ссылке 🎁')}`;
       tg && tg.openTelegramLink ? tg.openTelegramLink(shareUrl) : window.open(shareUrl, '_blank');
-    });
-
-    // Copy: онбординг — obBtnNext; профиль — btnCopyProfile (subUrlSetup в разметке нет)
-
-    addClick('btnCopyProfile', function () {
-      const el = document.getElementById('subUrlProfile');
-      if (el) copyText(el.value, this);
     });
 
     // Pay

@@ -87,6 +87,43 @@ html[data-theme="light"] {
     display: none;
 }
 
+/* VPN home: лого и заголовок → переключатель VPN|eSIM → середина (подсказка / карта) → подписка внизу */
+#screenVpn .screen-content.vpn-screen-layout {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+    min-height: 100%;
+}
+
+#screenVpn .vpn-screen__top {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    flex-shrink: 0;
+}
+
+#screenVpn .vpn-screen__mid {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#screenVpn .vpn-screen__bottom {
+    margin-top: auto;
+    width: 100%;
+    flex-shrink: 0;
+    padding-top: 12px;
+}
+
+#screenVpn .vpn-screen__sub-box {
+    width: 100%;
+}
+
 /* ── Tab Bar ── */
 .tab-bar {
     display: flex;
@@ -1354,11 +1391,7 @@ html[data-theme="light"] {
     transform: scale(.95);
 }
 
-/* ── Profile: привязка почты / Telegram (под полем ссылки подписки) ── */
-#screenProfile .profile-copy-field {
-    margin-bottom: 0;
-}
-
+/* ── Profile: привязка почты / Telegram ── */
 .profile-auth-slot {
     width: 100%;
     max-width: 400px;
@@ -1608,6 +1641,10 @@ html[data-theme="light"] {
 
 .gap-8 {
     height: 8px;
+}
+
+.gap-10 {
+    height: 10px;
 }
 
 .gap-12 {

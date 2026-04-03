@@ -273,7 +273,6 @@
   }
 
   #screenProfile .link-list,
-  #screenProfile .copy-field,
   #screenProfile #profileAuthLinkBox {
     width: 100% !important;
     max-width: var(--pc-max-narrow) !important;

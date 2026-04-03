@@ -78,40 +78,44 @@
 
     <!-- ═══ SCREEN: VPN ═══ -->
     <div id="screenVpn" class="screen active">
-      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
+      <div class="screen-content vpn-screen-layout">
 
-        <div class="product-switch" role="tablist" aria-label="Продукт">
-          <button type="button" class="product-switch__btn product-switch__btn--active" data-product="vpn" aria-selected="true">VPN</button>
-          <button type="button" class="product-switch__btn" data-product="esim" aria-selected="false">eSIM</button>
-        </div>
-        <div class="gap-8"></div>
+        <div class="vpn-screen__top">
+          <div class="logo-anim">
+            <div class="ring" style="--ring-opacity:.15;"></div>
+            <div class="ring" style="--ring-opacity:.25;"></div>
+            <div class="ring" style="--ring-opacity:.35;"></div>
+            <div class="logo-core">
+              <svg viewBox="0 0 1024 1024" fill="currentColor" style="width:75px;height:75px;">
+                <use href="#svoy-logo-path" />
+              </svg>
+            </div>
+          </div>
 
-        <!-- Animated logo -->
-        <div class="logo-anim">
-          <div class="ring" style="--ring-opacity:.15;"></div>
-          <div class="ring" style="--ring-opacity:.25;"></div>
-          <div class="ring" style="--ring-opacity:.35;"></div>
-          <div class="logo-core">
-            <svg viewBox="0 0 1024 1024" fill="currentColor" style="width:75px;height:75px;">
-              <use href="#svoy-logo-path" />
-            </svg>
+          <div class="gap-8"></div>
+          <p class="title text-center">SvoyVPN</p>
+          <p class="body text-muted text-center" style="margin-top:4px;">Быстрый и надёжный, потому что Свой</p>
+          <p id="vpnStatus" style="display:none;"></p>
+
+          <div class="gap-10"></div>
+          <div class="product-switch" role="tablist" aria-label="Продукт">
+            <button type="button" class="product-switch__btn product-switch__btn--active" data-product="vpn" aria-selected="true">VPN</button>
+            <button type="button" class="product-switch__btn" data-product="esim" aria-selected="false">eSIM</button>
           </div>
         </div>
 
-        <div class="gap-8"></div>
-        <p class="title text-center">SvoyVPN</p>
-        <p class="body text-muted text-center" style="margin-top:4px;">Быстрый и надёжный, потому что Свой</p>
-        <p id="vpnStatus" style="display:none;"></p>
-
-        <!-- Dynamic Subscription Block -->
-        <div id="subBlockBox" style="width:100%; margin-top:16px;">
-          <!-- Loaded by JS -->
+        <div class="vpn-screen__mid">
+          <div id="serversRelocatedHint" class="servers-relocated-hint" role="status" aria-live="polite">
+            <div class="servers-relocated-hint__inner">
+              <p class="servers-relocated-hint__text">Сервера для проверки пинга теперь во вкладке <strong>Профиль</strong> — откройте её внизу экрана.</p>
+              <button type="button" class="btn-secondary servers-relocated-hint__btn" id="btnServersRelocatedHintOk">Понятно</button>
+            </div>
+          </div>
         </div>
 
-        <div id="serversRelocatedHint" class="servers-relocated-hint" role="status" aria-live="polite">
-          <div class="servers-relocated-hint__inner">
-            <p class="servers-relocated-hint__text">Сервера для проверки пинга теперь во вкладке <strong>Профиль</strong> — откройте её внизу экрана.</p>
-            <button type="button" class="btn-secondary servers-relocated-hint__btn" id="btnServersRelocatedHintOk">Понятно</button>
+        <div class="vpn-screen__bottom">
+          <div id="subBlockBox" class="vpn-screen__sub-box">
+            <!-- Loaded by JS -->
           </div>
         </div>
 
@@ -398,16 +402,6 @@
           </div>
         </div>
         <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px; display:none;">—</p>
-
-        <div class="copy-field profile-copy-field">
-          <input id="subUrlProfile" type="text" placeholder="—" readonly />
-          <button id="btnCopyProfile" class="btn-copy" aria-label="Скопировать">
-            <svg viewBox="0 0 24 24">
-              <path
-                d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
-            </svg>
-          </button>
-        </div>
 
         <div id="profileAuthLinkBox" class="profile-auth-slot" style="display:none" aria-live="polite"></div>
 

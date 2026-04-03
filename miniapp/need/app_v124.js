@@ -1034,9 +1034,7 @@
     // Subscription URL
     if (sub && sub.subscriptionUrl) {
       const elSetup = document.getElementById('subUrlSetup');
-      const elProfile = document.getElementById('subUrlProfile');
       if (elSetup) elSetup.value = sub.subscriptionUrl;
-      if (elProfile) elProfile.value = sub.subscriptionUrl;
     }
 
     // Refresh servers layout (pageSize may change if trial block appeared)
@@ -1778,11 +1776,6 @@
     // Copy buttons
     addClick('btnCopySetup', function () {
       const el = document.getElementById('subUrlSetup');
-      if (el) copyText(el.value, this);
-    });
-
-    addClick('btnCopyProfile', function () {
-      const el = document.getElementById('subUrlProfile');
       if (el) copyText(el.value, this);
     });
 
