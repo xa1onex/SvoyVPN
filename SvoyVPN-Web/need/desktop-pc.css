@@ -656,6 +656,7 @@
   /* Карточки: лёгкий hover на десктопе */
   .card,
   .status-card,
+  .sub-status-hero,
   .server-card,
   .referral-card,
   .link-card,
@@ -668,6 +669,7 @@
 
   .card:hover,
   .status-card:hover,
+  .sub-status-hero:hover,
   .server-card:hover,
   .referral-card:hover,
   .link-card:hover,
@@ -716,6 +718,7 @@
 
   html[data-theme="light"] .card,
   html[data-theme="light"] .status-card,
+  html[data-theme="light"] .sub-status-hero,
   html[data-theme="light"] .server-card,
   html[data-theme="light"] .referral-card,
   html[data-theme="light"] .link-card,

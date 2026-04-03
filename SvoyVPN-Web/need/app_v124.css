@@ -406,6 +406,131 @@ body {
     align-items: center;
 }
 
+/* Главный экран: блок статуса подписки (активна / не оформлена) */
+.sub-status-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 18px 16px 16px;
+    border: 1px solid rgba(52, 199, 89, 0.35);
+    background: linear-gradient(180deg, rgba(52, 199, 89, 0.09) 0%, transparent 52%);
+}
+
+.sub-status-hero--warn {
+    border-color: rgba(255, 159, 10, 0.45);
+    background: linear-gradient(180deg, rgba(255, 159, 10, 0.1) 0%, transparent 52%);
+}
+
+.sub-status-hero--inactive {
+    border-color: rgba(120, 130, 145, 0.35);
+    background: linear-gradient(180deg, rgba(120, 130, 145, 0.08) 0%, transparent 52%);
+}
+
+.sub-status-hero__ring {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 2px;
+    color: #22a059;
+    background: linear-gradient(160deg, rgba(52, 199, 89, 0.22), rgba(52, 199, 89, 0.06));
+    box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.12);
+    animation: sub-status-pulse 2.8s ease-in-out infinite;
+}
+
+.sub-status-hero--warn .sub-status-hero__ring {
+    color: #c97800;
+    background: linear-gradient(160deg, rgba(255, 159, 10, 0.28), rgba(255, 159, 10, 0.08));
+    box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.14);
+}
+
+.sub-status-hero__ring--muted {
+    animation: none;
+    color: #8b95a5;
+    background: linear-gradient(160deg, rgba(120, 130, 145, 0.2), rgba(120, 130, 145, 0.06));
+    box-shadow: 0 0 0 4px rgba(120, 130, 145, 0.1);
+}
+
+@keyframes sub-status-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.12);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(52, 199, 89, 0.06);
+    }
+}
+
+.sub-status-hero--warn .sub-status-hero__ring {
+    animation-name: sub-status-pulse-warn;
+}
+
+@keyframes sub-status-pulse-warn {
+    0%, 100% {
+        box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.14);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(255, 159, 10, 0.07);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sub-status-hero__ring {
+        animation: none;
+    }
+}
+
+.sub-status-hero__title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--title_color, var(--tg-theme-text-color, #0f2438));
+}
+
+.sub-status-hero__date {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--accent_text_color, #3aa8fc);
+}
+
+.sub-status-hero__meta {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--subtitle_text_color, var(--tg-theme-hint-color, #6b7c8f));
+    max-width: 22em;
+}
+
+.sub-status-hero__urgent {
+    margin: 4px 0 0;
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 600;
+    color: #b45309;
+    max-width: 22em;
+}
+
+/* Два действия в ряд (остальные экраны; главный — одна кнопка «Подключиться») */
+.sub-actions-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.sub-actions-row .btn-primary,
+.sub-actions-row .btn-secondary {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto !important;
+}
+
 /* ── Buttons ── */
 .btn-primary {
     width: 100%;
@@ -443,20 +568,6 @@ body {
     cursor: pointer;
     transition: opacity .15s, transform .1s;
     -webkit-tap-highlight-color: transparent;
-}
-
-/* Два действия в ряд (главный экран: Подключиться / Продлить) */
-.sub-actions-row {
-    display: flex;
-    gap: 8px;
-    width: 100%;
-}
-
-.sub-actions-row .btn-primary,
-.sub-actions-row .btn-secondary {
-    flex: 1 1 0;
-    min-width: 0;
-    width: auto !important;
 }
 
 .btn-secondary:active {

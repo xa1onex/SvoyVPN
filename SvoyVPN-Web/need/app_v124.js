@@ -1298,25 +1298,36 @@ window.AppConfig = {
           pStatus.textContent = '';
         }
 
+        const endHuman = fmtDate(sub.endDate);
+        const daysMeta =
+          daysLeft > 0
+            ? `Осталось ${daysLeft} ${dw(daysLeft)} полного доступа к серверам.`
+            : 'Срок окончания указан ниже — подключайтесь в любой момент.';
+        const warnSoon = daysLeft > 0 && daysLeft <= 7;
+        const heroMod = warnSoon ? ' sub-status-hero--warn' : '';
+
         let statusHtml = `
-            <div class="card status-card">
-              <div class="status-row">
-                <span class="subtitle">Статус</span>
-                <span class="caption" style="color:var(--accent_text_color, #3aa8fc); font-weight: 600;">Активна</span>
+            <div class="card sub-status-hero sub-status-hero--active${heroMod}" role="status">
+              <div class="sub-status-hero__ring" aria-hidden="true">
+                <svg class="sub-status-hero__check" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
               </div>
-              <div class="status-row">
-                <span class="body text-muted">Действует до</span>
-                <span class="body">${daysLeft > 0 ? 'Осталось ' + daysLeft + ' дн.' : fmtDate(sub.endDate)}</span>
-              </div>
+              <p class="sub-status-hero__title">Подписка активна</p>
+              <p class="sub-status-hero__date">Действует до ${endHuman}</p>
+              <p class="sub-status-hero__meta">${daysMeta}</p>
+              ${
+                warnSoon
+                  ? '<p class="sub-status-hero__urgent">Скоро окончание — продлить можно в окне тарифов из профиля.</p>'
+                  : ''
+              }
             </div>
             <div class="gap-12"></div>
         `;
 
         statusHtml += `
-          <div class="sub-actions-row">
-            <button class="btn-primary" onclick="window.showScreen('screenSetup')">Подключиться</button>
-            <button class="btn-secondary" onclick="window.showModal('modalPlan')">Продлить</button>
-          </div>
+          <button class="btn-primary" onclick="window.showModal('modalPlan')">Продлить</button>
         `;
         subBlockBox.innerHTML = statusHtml;
 
@@ -1390,11 +1401,15 @@ window.AppConfig = {
 
         } else {
           subBlockBox.innerHTML = `
-            <div class="card status-card">
-              <div class="status-row">
-                <span class="subtitle">Подписка</span>
-                <span class="caption text-danger">Неактивна</span>
+            <div class="card sub-status-hero sub-status-hero--inactive" role="status">
+              <div class="sub-status-hero__ring sub-status-hero__ring--muted" aria-hidden="true">
+                <svg class="sub-status-hero__lock" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
               </div>
+              <p class="sub-status-hero__title">Подписка не оформлена</p>
+              <p class="sub-status-hero__meta">Без тарифа VPN-серверы недоступны. Тарифы и оплата — в отдельном окне.</p>
             </div>
             <div class="gap-12"></div>
             <button class="btn-primary" onclick="window.showModal('modalPlan')">Выбрать тариф</button>
@@ -2086,10 +2101,7 @@ window.AppConfig = {
       });
     }
 
-    /**
-     * Экран подарков: только данные из /api/user (поле referral).
-     * Не вызываем /api/referral — нет лишних 400 в консоли.
-     */
+    /** Плейсхолдеры экрана «Подарки» (без технических деталей для пользователя). */
     function setReferralScreenPlaceholder(mode) {
       const refDesc = document.getElementById('refDesc');
       const refL = document.getElementById('refLinkText');
@@ -2107,8 +2119,7 @@ window.AppConfig = {
       if (mode === 'guest') {
         if (refDesc) {
           refDesc.textContent =
-            'Чтобы получить персональную ссылку, войдите на сайте через email и пароль (вкладка входа). ' +
-            'Реферальная ссылка приходит с сервера вместе с профилем — отдельный запрос к API не используется.';
+            'Войдите в аккаунт (email и пароль на экране входа) — здесь появится ваша ссылка для приглашения друзей и бонусные дни.';
         }
         if (refL) refL.textContent = '—';
         if (refC) refC.textContent = '—';
@@ -2118,7 +2129,7 @@ window.AppConfig = {
       if (mode === 'pending') {
         if (refDesc) {
           refDesc.textContent =
-            'Профиль загружен, но блок рефералки в ответе сервера пустой. Обновите страницу или напишите в поддержку — на стороне API должно быть поле referral в /api/user.';
+            'Не удалось загрузить ссылку. Обновите страницу (потяните вниз в приложении) или зайдите в раздел позже. Если проблема останется — напишите в поддержку.';
         }
         if (refL) refL.textContent = '—';
         if (refC) refC.textContent = '0 чел.';
@@ -2161,7 +2172,7 @@ window.AppConfig = {
 
     addClick('btnCopyRef', function () {
       if (!refLink) {
-        showToast('Сначала загрузите реферальную ссылку (обновите экран или войдите на сайте).', 4000);
+        showToast('Ссылка ещё не готова — обновите экран или войдите в аккаунт.', 4000);
         return;
       }
       copyText(refLink, this);

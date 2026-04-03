@@ -53,10 +53,10 @@
   <link rel="preload" as="font" href="need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="need/assets/index_v111.css" />
-  <link rel="stylesheet" href="need/app_v124.css?v=128" />
-  <link rel="stylesheet" href="need/desktop-pc.css?v=15" />
+  <link rel="stylesheet" href="need/app_v124.css?v=129" />
+  <link rel="stylesheet" href="need/desktop-pc.css?v=16" />
 
-  <script defer src="need/app_v124.js?v=139"></script>
+  <script defer src="need/app_v124.js?v=143"></script>
 
   <style>
   /* Auth Screen — Exact Mobile Style */
@@ -669,6 +669,51 @@
       </div>
     </div>
 
+    <!-- ═══ SCREEN: REFERRAL (внутри .app — иначе body overflow:hidden обрезает экран) ═══ -->
+    <div id="screenReferral" class="screen">
+      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
+
+        <div class="referral-hero" style="margin-top: 0;">
+          <div class="referral-hero__outer">
+            <div class="referral-hero__inner">
+              <svg width="40" height="40" viewBox="0 0 73 73">
+                <use href="#referral"></use>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-16"></div>
+        <p class="title-s text-center">Приглашайте друзей —<br>получайте бонусные дни</p>
+        <div class="gap-8"></div>
+        <p id="refDesc" class="body text-muted text-center" style="padding:0 8px;">Загрузка…</p>
+
+        <div class="gap-16"></div>
+
+        <div class="card referral-card" style="width:100%;">
+          <p class="caption text-muted" style="margin-bottom:4px;">Ваша реферальная ссылка</p>
+          <p id="refLinkText" class="body" style="word-break:break-all;margin-bottom:8px;">—</p>
+          <div style="display:flex;gap:16px;">
+            <div>
+              <p class="caption text-muted">Приглашено</p>
+              <p id="refCount" class="subtitle">—</p>
+            </div>
+            <div>
+              <p class="caption text-muted">Бонусных дней</p>
+              <p id="refBonus" class="subtitle">—</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-16"></div>
+
+        <button id="btnCopyRef" class="btn-primary">Скопировать ссылку</button>
+        <div class="gap-8"></div>
+        <button id="btnShareRef" class="btn-share">Поделиться</button>
+
+      </div>
+    </div>
+
     <!-- ═══ TAB BAR ═══ -->
     <nav id="tabBar" class="tab-bar">
       <button class="tab active" data-screen="screenVpn">
@@ -746,54 +791,6 @@
 
     </div>
   </div>
-
-  <!-- ═══ SCREEN: REFERRAL ═══ -->
-  <div id="screenReferral" class="screen">
-    <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
-
-      <!-- Hero icon -->
-      <div class="referral-hero" style="margin-top: 0;">
-        <div class="referral-hero__outer">
-          <div class="referral-hero__inner">
-            <svg width="40" height="40" viewBox="0 0 73 73">
-              <use href="#referral"></use>
-            </svg>
-          </div>
-        </div>
-      </div>
-
-      <div class="gap-16"></div>
-      <p class="title-s text-center">Приглашайте друзей —<br>получайте бонусные дни</p>
-      <div class="gap-8"></div>
-      <p id="refDesc" class="body text-muted text-center" style="padding:0 8px;">Загрузка…</p>
-
-      <div class="gap-16"></div>
-
-      <!-- Ref link + stats block -->
-      <div class="card referral-card" style="width:100%;">
-        <p class="caption text-muted" style="margin-bottom:4px;">Ваша реферальная ссылка</p>
-        <p id="refLinkText" class="body" style="word-break:break-all;margin-bottom:8px;">—</p>
-        <div style="display:flex;gap:16px;">
-          <div>
-            <p class="caption text-muted">Приглашено</p>
-            <p id="refCount" class="subtitle">—</p>
-          </div>
-          <div>
-            <p class="caption text-muted">Бонусных дней</p>
-            <p id="refBonus" class="subtitle">—</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="gap-16"></div>
-
-      <button id="btnCopyRef" class="btn-primary">Скопировать ссылку</button>
-      <div class="gap-8"></div>
-      <button id="btnShareRef" class="btn-share">Поделиться</button>
-
-    </div>
-  </div>
-
 
   <!-- ═══ MODAL: ADD NEWS (ADMIN) ═══ -->
   <div id="modalAddNews" class="modal">
