@@ -43,9 +43,9 @@
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/miniapp/need/assets/index_v111.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v124.css?v=132" />
+  <link rel="stylesheet" href="/miniapp/need/app_v124.css?v=133" />
 
-  <script defer src="/miniapp/need/app_v124.js?v=133"></script>
+  <script defer src="/miniapp/need/app_v124.js?v=134"></script>
 </head>
 
 <body>
@@ -347,9 +347,7 @@
         </div>
         <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px; display:none;">—</p>
 
-        <div id="profileAuthLinkBox" style="display:none;width:100%;max-width:400px;padding:0 8px;box-sizing:border-box;"></div>
-
-        <div class="copy-field">
+        <div class="copy-field profile-copy-field">
           <input id="subUrlProfile" type="text" placeholder="—" readonly />
           <button id="btnCopyProfile" class="btn-copy" aria-label="Скопировать">
             <svg viewBox="0 0 24 24">
@@ -359,12 +357,9 @@
           </button>
         </div>
 
-        <div id="newsSection" class="profile-announce-wrap" style="width: 100%; margin-top: 12px; margin-bottom: 0; display: none;">
-          <p id="profileAnnounceHeading" class="caption text-muted profile-announce-heading">Актуально</p>
-          <div id="profileAnnounceList" class="profile-announce-list"></div>
-        </div>
+        <div id="profileAuthLinkBox" class="profile-auth-slot" style="display:none" aria-live="polite"></div>
 
-        <div class="link-list">
+        <div class="link-list profile-link-list-below-auth">
 
           <div class="link-card" id="btnChannel">
             <div class="link-icon">
@@ -578,36 +573,6 @@
 
 
 
-
-  <!-- ═══ MODAL: ADD NEWS (ADMIN) ═══ -->
-  <div id="modalAddNews" class="modal">
-    <div class="modal-backdrop" onclick="window.hideModal('modalAddNews')"></div>
-    <div class="modal-content">
-      <button class="modal-close" onclick="window.hideModal('modalAddNews')">✕</button>
-      <p class="title-s">Добавить новость</p>
-      <div class="gap-16"></div>
-
-      <div id="dropZone" class="upload-zone">
-        <div class="upload-icon">📁</div>
-        <p class="body text-muted">Перетащите фото или нажмите для выбора</p>
-        <input type="file" id="fileInput" accept="image/*" style="display:none;" />
-        <img id="uploadPreview" class="upload-preview" style="display:none;" />
-      </div>
-
-      <div class="gap-12"></div>
-      <div class="input-field">
-        <input type="text" id="newsTitle" placeholder="Заголовок новости" />
-      </div>
-      <div class="gap-8"></div>
-      <div class="input-field" style="height: auto; min-height: 80px; padding: 0;">
-        <textarea id="newsDesc" placeholder="Подтекст (подробности)" rows="3"
-          style="width: 100%; height: 100%; min-height: 80px; background: none; border: none; padding: 12px; color: var(--text_color); font-family: inherit; outline: none; resize: none;"></textarea>
-      </div>
-
-      <div class="gap-16"></div>
-      <button id="btnSaveNews" class="btn-primary">Опубликовать</button>
-    </div>
-  </div>
 
   <!-- Success Overlay -->
   <div id="successOverlay" class="success-overlay" style="display:none;">

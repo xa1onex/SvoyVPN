@@ -32,7 +32,6 @@
     tariffs: [],
     paymentMethods: [],
     servers: [],
-    news: [],
     selectedTariff: null,
     selectedPM: null,
   };
@@ -584,7 +583,7 @@
       if (masked) {
         box.style.display = 'block';
         box.innerHTML =
-          '<div class="card" style="padding:12px 14px;width:100%;box-sizing:border-box;"><p class="body text-muted" style="margin:0;font-size:13px;line-height:1.4;">Привязанная почта: <strong>' +
+          '<div class="card profile-auth-card"><p class="body text-muted profile-auth-card__text">Привязанная почта: <strong>' +
           escapeHtml(masked) +
           '</strong></p></div>';
       } else {
@@ -593,7 +592,7 @@
       return;
     }
     box.style.display = 'block';
-    let inner = '<div class="card" style="padding:12px 14px;width:100%;box-sizing:border-box;">';
+    let inner = '<div class="card profile-auth-card">';
     if (needE && tg && tg.initData) {
       inner +=
         '<p class="subtitle" style="margin:0 0 6px;">Привяжите почту</p>' +
@@ -978,9 +977,6 @@
       updateTotal();
     }
 
-    // Load News separately
-    loadNews();
-
     if (Array.isArray(servers)) {
       S.servers = servers;
       renderServers();
@@ -1035,7 +1031,6 @@
         S.subscription = d.subscription;
         S.referral = normalizeReferralFromApi(d.referral);
         renderUser();
-        renderNews();
         const isActive = S.subscription && S.subscription.isActive;
         const newEnd = S.subscription && S.subscription.endDate;
         const pendingTime = localStorage.getItem('pending_payment_time');
@@ -1073,7 +1068,6 @@
         } catch (_) { }
       }
       renderUser();
-      renderNews();
 
       const isActive = S.subscription && S.subscription.isActive;
       const newEnd = S.subscription && S.subscription.endDate;
@@ -1089,223 +1083,6 @@
           hideModal('modalPlan');
         }
       }
-    }
-  }
-
-  /* ═══════ Объявления в профиле (список, без карусели) ═══════ */
-  function renderNews() {
-    const newsSection = document.getElementById('newsSection');
-    const list = document.getElementById('profileAnnounceList');
-    const heading = document.getElementById('profileAnnounceHeading');
-    if (!list || !newsSection) return;
-
-    list.innerHTML = '';
-
-    const isAdmin = S.user && S.user.isAdmin;
-    let hasContent = false;
-
-    const imgUrl = (u) => {
-      if (!u) return '';
-      const s = String(u);
-      if (s.startsWith('/miniapp/')) return 'https://xdoublegroup.online' + s;
-      return s;
-    };
-
-    if (S.news && S.news.length > 0) {
-      hasContent = true;
-      S.news.forEach((item) => {
-        const row = document.createElement('div');
-        const iu = item.image_url ? imgUrl(item.image_url) : '';
-        row.className = 'profile-announce-item' + (iu ? ' profile-announce-item--thumb' : '');
-        const delBtn = isAdmin
-          ? `<button type="button" class="profile-announce-del" aria-label="Удалить">✕</button>`
-          : '';
-        if (iu) {
-          row.innerHTML =
-            delBtn +
-            `<img class="profile-announce-item__img" src="${iu.replace(/"/g, '')}" alt="" loading="lazy" />` +
-            '<div class="profile-announce-item__text">' +
-            `<p class="profile-announce-item__title">${escapeHtml(item.title)}</p>` +
-            (item.description
-              ? `<p class="profile-announce-item__desc">${escapeHtml(item.description)}</p>`
-              : '') +
-            '</div>';
-        } else {
-          row.innerHTML =
-            delBtn +
-            '<div class="profile-announce-item__text">' +
-            `<p class="profile-announce-item__title">${escapeHtml(item.title)}</p>` +
-            (item.description
-              ? `<p class="profile-announce-item__desc">${escapeHtml(item.description)}</p>`
-              : '') +
-            '</div>';
-        }
-        const del = row.querySelector('.profile-announce-del');
-        if (del) {
-          del.addEventListener('click', (e) => {
-            e.stopPropagation();
-            haptic('medium');
-            if (confirm('Удалить эту новость?')) deleteNews(item.id);
-          });
-        }
-        list.appendChild(row);
-      });
-    }
-
-    if (isAdmin) {
-      hasContent = true;
-      const add = document.createElement('button');
-      add.type = 'button';
-      add.className = 'profile-announce-add';
-      add.innerHTML =
-        '<span class="profile-announce-add__icon" aria-hidden="true">+</span><span>Добавить новость</span>';
-      add.addEventListener('click', () => {
-        haptic('medium');
-        window.showModal('modalAddNews');
-      });
-      list.appendChild(add);
-    }
-
-    newsSection.style.display = hasContent ? 'block' : 'none';
-    newsSection.classList.toggle('has-announce', hasContent);
-
-    if (heading) {
-      if (S.news && S.news.length > 0) {
-        heading.textContent = 'Актуально';
-        heading.style.display = 'block';
-      } else if (isAdmin) {
-        heading.textContent = 'Новости';
-        heading.style.display = 'block';
-      } else {
-        heading.style.display = 'none';
-      }
-    }
-  }
-
-  async function deleteNews(newsId) {
-    const d = await api('/miniapp/api/news/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        initData: tg.initData,
-        newsId: newsId
-      })
-    });
-    if (d && d.status === 'ok') {
-      showToast('Новость удалена');
-      await loadNews();
-    } else {
-      showToast('Ошибка удаления');
-    }
-  }
-
-  async function loadNews() {
-    const d = await api('/miniapp/api/news');
-    if (Array.isArray(d)) {
-      S.news = d;
-      renderNews();
-    }
-  }
-
-  function initAdminNews() {
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('fileInput');
-    const uploadPreview = document.getElementById('uploadPreview');
-    const btnSave = document.getElementById('btnSaveNews');
-
-    if (!dropZone || !fileInput) return;
-
-    dropZone.onclick = () => fileInput.click();
-
-    dropZone.ondragover = (e) => {
-      e.preventDefault();
-      dropZone.classList.add('dragover');
-    };
-    dropZone.ondragleave = () => dropZone.classList.remove('dragover');
-    dropZone.ondrop = (e) => {
-      e.preventDefault();
-      dropZone.classList.remove('dragover');
-      if (e.dataTransfer.files && e.dataTransfer.files.length) {
-        fileInput.files = e.dataTransfer.files;
-        handleFile(e.dataTransfer.files[0]);
-      }
-    };
-
-    fileInput.onchange = () => {
-      if (fileInput.files.length) handleFile(fileInput.files[0]);
-    };
-
-    function handleFile(file) {
-      if (!file.type.startsWith('image/')) {
-        showToast('Только изображения!');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        uploadPreview.src = e.target.result;
-        uploadPreview.style.display = 'block';
-        const icon = dropZone.querySelector('.upload-icon');
-        const text = dropZone.querySelector('p');
-        if (icon) icon.style.display = 'none';
-        if (text) text.style.display = 'none';
-      };
-      reader.readAsDataURL(file);
-    }
-
-    if (btnSave) {
-      btnSave.onclick = async () => {
-        const titleEl = document.getElementById('newsTitle');
-        const descEl = document.getElementById('newsDesc');
-        const title = titleEl ? titleEl.value : '';
-        const desc = descEl ? descEl.value : '';
-        const file = fileInput.files[0];
-
-        if (!title) {
-          showToast('Укажите заголовок');
-          return;
-        }
-
-        btnSave.disabled = true;
-        btnSave.textContent = 'Публикация...';
-
-        const formData = new FormData();
-        formData.append('initData', tg.initData);
-        formData.append('title', title);
-        formData.append('description', desc);
-        if (file) formData.append('image', file);
-
-        try {
-          // Use direct fetch for FormData
-          const resp = await fetch('/miniapp/api/news/add', {
-            method: 'POST',
-            body: formData
-          });
-          const d = await resp.json();
-          if (d.status === 'ok') {
-            showToast('Новость добавлена!');
-            haptic('success');
-            window.hideModal('modalAddNews');
-            // Reset fields
-            if (titleEl) titleEl.value = '';
-            if (descEl) descEl.value = '';
-            fileInput.value = '';
-            uploadPreview.style.display = 'none';
-            const icon = dropZone.querySelector('.upload-icon');
-            const text = dropZone.querySelector('p');
-            if (icon) icon.style.display = 'block';
-            if (text) text.style.display = 'block';
-
-            await loadNews();
-          } else {
-            showToast('Ошибка: ' + (d.error || 'Неизвестно'));
-          }
-        } catch (e) {
-          showToast('Ошибка сети');
-        } finally {
-          btnSave.disabled = false;
-          btnSave.textContent = 'Опубликовать';
-        }
-      };
     }
   }
 
@@ -1570,9 +1347,6 @@
     // Load data
     loadData();
     loadUser();
-
-    // Init Admin News Logic
-    initAdminNews();
 
     window._pendingLinkEmail = '';
     window.openLinkEmailModal = function () {

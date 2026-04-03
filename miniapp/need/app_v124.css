@@ -1148,6 +1148,39 @@ body {
     transform: scale(.95);
 }
 
+/* ── Profile: привязка почты / Telegram (под полем ссылки подписки) ── */
+#screenProfile .profile-copy-field {
+    margin-bottom: 0;
+}
+
+.profile-auth-slot {
+    width: 100%;
+    max-width: 400px;
+    margin: 14px auto 18px;
+    padding: 0 12px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    min-width: 0;
+    align-self: stretch;
+}
+
+.profile-auth-slot .profile-auth-card {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+}
+
+.profile-auth-slot .profile-auth-card__text {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+#screenProfile .profile-link-list-below-auth {
+    margin-top: 0;
+}
+
 /* ── Steps ── */
 .steps {
     display: flex;

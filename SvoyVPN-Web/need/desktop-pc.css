@@ -128,16 +128,6 @@
     line-height: 1.25 !important;
   }
 
-  #modalAddNews .btn-primary {
-    width: auto !important;
-    max-width: 320px !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-    display: block !important;
-    padding: var(--pc-btn-py) 24px !important;
-    font-size: var(--pc-font-btn) !important;
-  }
-
   /* Two-button row from JS (.sub-actions-row) */
   .sub-actions-row {
     display: flex !important;
@@ -239,7 +229,7 @@
 
   #screenProfile .link-list,
   #screenProfile .copy-field,
-  #screenProfile #newsSection {
+  #screenProfile #profileAuthLinkBox {
     width: 100% !important;
     max-width: var(--pc-max-narrow) !important;
   }
