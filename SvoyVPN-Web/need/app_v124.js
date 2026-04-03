@@ -2489,6 +2489,10 @@ window.AppConfig = {
       renderUser();
     }
 
+    try {
+      localStorage.setItem(PRODUCT_KEY, 'vpn');
+    } catch (_) {}
+
     applyProductSwitchUI();
 
     maybeShowServersRelocatedHint();
