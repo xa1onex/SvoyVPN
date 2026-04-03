@@ -249,7 +249,7 @@ TEST_PACKAGES_BY_LOCATION = {
         {
             "packageCode": "TEST_DE_1GB_7",
             "name": "Germany 1 GB — 7 days",
-            "retailPrice": 800,
+            "retailPrice": 10,
             "price": 400,
             "currencyCode": "USD",
             "volume": 1073741824,
