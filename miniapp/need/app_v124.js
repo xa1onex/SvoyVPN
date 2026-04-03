@@ -1077,13 +1077,26 @@
   }
 
   function userIsEsimAdmin() {
-    return !!(S.user && S.user.isAdmin === true);
+    return !!(
+      S.user &&
+      (S.user.isAdmin === true || S.user.esimBetaAccess === true)
+    );
   }
 
   function syncEsimBetaGate() {
     const admin = userIsEsimAdmin();
     document.querySelectorAll('.esim-beta-gate').forEach((el) => {
       el.hidden = admin;
+    });
+    const needMail = !!(S.user && S.user.needLinkEmail);
+    document.querySelectorAll('.esim-beta-gate__hint--need-mail').forEach((el) => {
+      el.hidden = !needMail;
+    });
+    document.querySelectorAll('.esim-beta-gate__hint--has-mail').forEach((el) => {
+      el.hidden = needMail;
+    });
+    document.querySelectorAll('.esim-beta-gate__link-email').forEach((el) => {
+      el.hidden = !needMail;
     });
   }
 
@@ -1866,7 +1879,7 @@
       try {
         const d = await api(ESIM_API_PREFIX + '/esim/beta-notify', opts);
         if (d && d.status === 'ok') {
-          showToast('Готово! Мы напишем на указанный email.', 4000);
+          showToast(d.message || 'Заявка отправлена.', 4500);
         } else {
           showToast((d && d.error) || 'Не удалось отправить');
         }

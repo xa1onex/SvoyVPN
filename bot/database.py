@@ -105,6 +105,12 @@ async def init_db() -> None:
             if 'utm_source' not in existing_columns:
                 await conn.execute("ALTER TABLE users ADD COLUMN utm_source TEXT")
                 logging.info("Added utm_source column to users table")
+
+            if 'esim_beta_access' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN esim_beta_access BOOLEAN DEFAULT FALSE"
+                )
+                logging.info("Added esim_beta_access column to users table")
         except Exception as e:
             logging.warning(f"Could not add columns to users table: {e}")
         
@@ -475,6 +481,30 @@ async def init_db() -> None:
             )
         except Exception as e:
             logging.warning(f"Could not create esim_beta_waitlist table: {e}")
+
+        try:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS esim_beta_requests (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                    email TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'approved', 'rejected')),
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    resolved_at TIMESTAMPTZ,
+                    resolved_by BIGINT
+                )
+                """
+            )
+            await conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS esim_beta_one_pending_per_user
+                ON esim_beta_requests (user_id) WHERE (status = 'pending')
+                """
+            )
+        except Exception as e:
+            logging.warning(f"Could not create esim_beta_requests table: {e}")
 
         # news
         try:

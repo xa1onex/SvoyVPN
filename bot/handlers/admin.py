@@ -1,6 +1,7 @@
 """
 Админ-панель - все обработчики для администраторов
 """
+import html as html_std
 import logging
 import asyncio
 import pytz
@@ -18,6 +19,7 @@ from ..config import AppConfig
 from ..plans import SUBSCRIPTION_PLANS_BASE, RENEWAL_PLANS_BASE, format_price_rub, format_price_stars, format_price_both, get_renewal_plans
 from ..subscriptions import create_or_activate_keys_for_all_servers, create_keys_for_specific_server, update_vless_links_for_server
 from ..xui_client import XUIClient
+from ..webhook_server import WebhookServer
 
 logger = logging.getLogger(__name__)
 
@@ -3856,6 +3858,64 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
         await safe_callback_answer(callback)
 
+    # ─── eSIM beta: одобрение заявок (кнопки в личке админу) ───
+    @dp.callback_query(F.data.startswith("ebya:"))
+    async def esim_beta_approve_callback(callback: CallbackQuery):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "Нет доступа", show_alert=True)
+            return
+        try:
+            rid = int(callback.data.split(":", 1)[1])
+        except (IndexError, ValueError):
+            await safe_callback_answer(callback, "Некорректные данные", show_alert=True)
+            return
+        ws = WebhookServer.get_instance()
+        if not ws:
+            await safe_callback_answer(callback, "Webhook-сервер не готов", show_alert=True)
+            return
+        msg = await ws.resolve_esim_beta_request(rid, True, callback.from_user.id)
+        await safe_callback_answer(callback)
+        try:
+            orig = callback.message.html_text or callback.message.text or ""
+            await callback.message.edit_text(
+                orig + "\n\n✅ <b>" + html_std.escape(msg) + "</b>",
+                parse_mode="HTML",
+                reply_markup=None,
+            )
+        except TelegramBadRequest:
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+
+    @dp.callback_query(F.data.startswith("ebyr:"))
+    async def esim_beta_reject_callback(callback: CallbackQuery):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "Нет доступа", show_alert=True)
+            return
+        try:
+            rid = int(callback.data.split(":", 1)[1])
+        except (IndexError, ValueError):
+            await safe_callback_answer(callback, "Некорректные данные", show_alert=True)
+            return
+        ws = WebhookServer.get_instance()
+        if not ws:
+            await safe_callback_answer(callback, "Webhook-сервер не готов", show_alert=True)
+            return
+        msg = await ws.resolve_esim_beta_request(rid, False, callback.from_user.id)
+        await safe_callback_answer(callback)
+        try:
+            orig = callback.message.html_text or callback.message.text or ""
+            await callback.message.edit_text(
+                orig + "\n\n⛔ <b>" + html_std.escape(msg) + "</b>",
+                parse_mode="HTML",
+                reply_markup=None,
+            )
+        except TelegramBadRequest:
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
 
     # Инфо о пользователе
     @dp.callback_query(F.data == "admin_user_info")

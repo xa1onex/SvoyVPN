@@ -130,10 +130,12 @@
           </div>
 
           <div class="gap-8"></div>
-          <div class="esim-beta-badge-wrap">
-            <span class="esim-beta-badge">beta</span>
+          <div class="text-center" style="margin-top:6px;">
+            <span class="esim-title-with-beta title">
+              <span class="esim-title-with-beta__text">Svoy eSIM</span>
+              <span class="esim-beta-corner" aria-hidden="true">beta</span>
+            </span>
           </div>
-          <p class="title text-center" style="margin:6px 0 0;">Svoy eSIM</p>
           <p class="body text-muted text-center" style="margin-top:6px;">Тариф по стране — оплата как у подписки (Stars, карта, Crypto Pay)</p>
           <p id="esimModeHint" class="caption text-muted text-center" style="margin-top:8px;opacity:0.85;"></p>
 
@@ -182,9 +184,12 @@
                 eSIM позволяет пользоваться <strong>зарубежным интернетом</strong> без необходимости включать VPN и
                 зависеть от ограничений в стране.
               </p>
-              <p class="caption text-muted" style="margin:12px 0 0;line-height:1.4;">
-                Хотите попробовать — <strong>свяжите аккаунт с почтой</strong> и укажите email ниже: мы пришлём
-                уведомление, когда откроем beta-доступ.
+              <p class="esim-beta-gate__hint esim-beta-gate__hint--need-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;">
+                Хотите попробовать — <strong>свяжите аккаунт с почтой</strong> и укажите email ниже. Заявку рассматривает администратор;
+                после одобрения придёт письмо на этот адрес.
+              </p>
+              <p class="esim-beta-gate__hint esim-beta-gate__hint--has-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;" hidden>
+                Укажите email для уведомления. Заявку рассматривает администратор; после одобрения мы пришлём письмо на этот адрес.
               </p>
               <button type="button" class="btn-secondary esim-beta-gate__link-email" style="width:100%;margin-top:14px;">
                 Привязать почту
@@ -193,7 +198,7 @@
               <input type="email" id="esimBetaEmailMain" class="esim-select esim-beta-email-input" placeholder="name@example.com"
                 autocomplete="email" inputmode="email" />
               <button type="button" class="btn-primary esim-beta-notify-btn" style="width:100%;margin-top:12px;">
-                Уведомить о запуске beta
+                Отправить заявку
               </button>
             </div>
           </div>
@@ -218,9 +223,12 @@
               eSIM позволяет пользоваться <strong>зарубежным интернетом</strong> без необходимости включать VPN и
               зависеть от ограничений в стране.
             </p>
-            <p class="caption text-muted" style="margin:12px 0 0;line-height:1.4;">
-              Хотите попробовать — <strong>свяжите аккаунт с почтой</strong> и укажите email ниже: мы пришлём
-              уведомление, когда откроем beta-доступ.
+            <p class="esim-beta-gate__hint esim-beta-gate__hint--need-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;">
+              Хотите попробовать — <strong>свяжите аккаунт с почтой</strong> и укажите email ниже. Заявку рассматривает администратор;
+              после одобрения придёт письмо на этот адрес.
+            </p>
+            <p class="esim-beta-gate__hint esim-beta-gate__hint--has-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;" hidden>
+              Укажите email для уведомления. Заявку рассматривает администратор; после одобрения мы пришлём письмо на этот адрес.
             </p>
             <button type="button" class="btn-secondary esim-beta-gate__link-email" style="width:100%;margin-top:14px;">
               Привязать почту
@@ -229,7 +237,7 @@
             <input type="email" id="esimBetaEmailMine" class="esim-select esim-beta-email-input" placeholder="name@example.com"
               autocomplete="email" inputmode="email" />
             <button type="button" class="btn-primary esim-beta-notify-btn" style="width:100%;margin-top:12px;">
-              Уведомить о запуске beta
+              Отправить заявку
             </button>
           </div>
         </div>

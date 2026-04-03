@@ -138,25 +138,35 @@ html[data-theme="light"] {
     box-sizing: border-box;
 }
 
-.esim-beta-badge-wrap {
-    display: flex;
-    justify-content: center;
-    width: 100%;
+/* Заголовок Svoy eSIM + «beta» в углу без заливки */
+.esim-title-with-beta {
+    position: relative;
+    display: inline-block;
+    padding-right: 0.35em;
+    vertical-align: middle;
 }
 
-.esim-beta-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 3px 11px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
+.esim-title-with-beta__text {
+    display: inline;
+}
+
+.esim-beta-corner {
+    position: absolute;
+    top: 0;
+    right: 0;
+    transform: translate(72%, -42%);
+    font-size: 0.5em;
+    font-weight: 700;
+    letter-spacing: 0.04em;
     text-transform: lowercase;
-    background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
-    color: #fff;
-    box-shadow: 0 1px 6px rgba(37, 99, 235, 0.35);
+    color: var(--link_color, var(--accent_text_color, #3b82f6));
+    line-height: 1;
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    margin: 0;
+    white-space: nowrap;
 }
 
 .esim-beta-gate {

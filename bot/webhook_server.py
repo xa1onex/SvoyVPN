@@ -16,10 +16,11 @@ import asyncio
 import bcrypt
 import jwt as pyjwt
 from aiohttp import web, web_request
+from asyncpg.exceptions import UniqueViolationError
 from email.utils import formatdate, make_msgid
 from aiohttp.web_exceptions import HTTPBadRequest, HTTPNotFound, HTTPMethodNotAllowed
 from aiohttp.http_exceptions import BadStatusLine, BadHttpMessage
-from aiogram.types import LabeledPrice, InlineKeyboardButton
+from aiogram.types import LabeledPrice, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .config import FlyerConfig, YooKassaConfig
@@ -131,6 +132,11 @@ class WebhookServer:
 
     # Для security-уведомлений из async classmethod (привязка Telegram)
     _notify_bot = None
+    _instance: Optional["WebhookServer"] = None
+
+    @classmethod
+    def get_instance(cls) -> Optional["WebhookServer"]:
+        return cls._instance
 
     def __init__(
         self,
@@ -150,6 +156,7 @@ class WebhookServer:
         self.yookassa_client = yookassa_client
         self.payment_processor = payment_processor
         self.admin_ids = admin_ids or []
+        WebhookServer._instance = self
         self.app = web.Application(middlewares=[cors_middleware])
         
         # Core routes
@@ -935,7 +942,8 @@ class WebhookServer:
             # Получаем данные пользователя из БД
             async with get_connection() as conn:
                 user = await conn.fetchrow(
-                    "SELECT user_id, pay_subscribed, subscription_end, subscription_token, trial_used FROM users WHERE user_id = $1",
+                    "SELECT user_id, pay_subscribed, subscription_end, subscription_token, trial_used, "
+                    "COALESCE(esim_beta_access, FALSE) AS esim_beta_access FROM users WHERE user_id = $1",
                     user_id
                 )
                 
@@ -1009,6 +1017,7 @@ class WebhookServer:
                         "trialAvailable": trial_available,
                         "trialDays": trial_days,
                         "isAdmin": is_admin,
+                        "esimBetaAccess": bool(user["esim_beta_access"]),
                         "supportLink": support_link,
                         **auth_snap,
                     },
@@ -1954,7 +1963,13 @@ class WebhookServer:
 </body>
 </html>"""
 
-    def _send_email(self, to_email: str, subject: str, html_body: str) -> None:
+    def _send_email(
+        self,
+        to_email: str,
+        subject: str,
+        html_body: str,
+        plain_body: Optional[str] = None,
+    ) -> None:
         """Send HTML email via SMTP (supports port 465 SSL and 587 STARTTLS)."""
         import smtplib
         import ssl
@@ -1973,10 +1988,10 @@ class WebhookServer:
         msg["To"] = to_email
         msg["Date"] = formatdate(localtime=True)
         msg["Message-ID"] = make_msgid(domain=smtp_host.split('.')[-2] + '.' + smtp_host.split('.')[-1] if '.' in smtp_host else "svoyvpn.online")
-        msg.attach(MIMEText(
-            f"Ваш код подтверждения SvoyVPN.\nКод действителен 10 минут.\nНикому не сообщайте этот код.",
-            "plain", "utf-8"
-        ))
+        plain_default = (
+            "Ваш код подтверждения SvoyVPN.\nКод действителен 10 минут.\nНикому не сообщайте этот код."
+        )
+        msg.attach(MIMEText(plain_body if plain_body is not None else plain_default, "plain", "utf-8"))
         msg.attach(MIMEText(html_body, "html", "utf-8"))
         ctx = ssl.create_default_context()
         if smtp_port == 465:
@@ -2722,7 +2737,8 @@ class WebhookServer:
         try:
             async with get_connection() as conn:
                 user = await conn.fetchrow(
-                    "SELECT user_id, username, first_name, pay_subscribed, subscription_end, subscription_token, trial_used FROM users WHERE user_id = $1",
+                    "SELECT user_id, username, first_name, pay_subscribed, subscription_end, subscription_token, trial_used, "
+                    "COALESCE(esim_beta_access, FALSE) AS esim_beta_access FROM users WHERE user_id = $1",
                     user_id
                 )
                 if not user:
@@ -2763,6 +2779,7 @@ class WebhookServer:
                         "trialAvailable": trial_available,
                         "trialDays": trial_days,
                         "isAdmin": is_admin,
+                        "esimBetaAccess": bool(user["esim_beta_access"]),
                         "supportLink": support_link,
                         **auth_snap,
                     },
@@ -2798,11 +2815,24 @@ class WebhookServer:
         parsed = self.parse_telegram_init_data(init_data)
         return telegram_user_id_from_parsed_init(parsed) or None
 
+    async def _esim_full_access_for_user(self, conn, uid: int) -> bool:
+        """Полный eSIM в приложении: админы из конфига или одобренный beta."""
+        if uid in self.admin_ids:
+            return True
+        v = await conn.fetchval(
+            "SELECT COALESCE(esim_beta_access, FALSE) FROM users WHERE user_id = $1",
+            uid,
+        )
+        return bool(v)
+
     async def api_esim_countries(self, request: web_request.Request) -> web.Response:
         try:
             uid = self._auth_user_id_from_miniapp_request(request, None)
             if not uid:
                 return web.json_response({"error": "Unauthorized"}, status=401)
+            async with get_connection() as conn:
+                if not await self._esim_full_access_for_user(conn, uid):
+                    return web.json_response({"error": "Forbidden"}, status=403)
             locs = await esim_service.public_locations()
             slim = [{"code": x.get("code"), "name": x.get("name"), "type": x.get("type")} for x in locs]
             return web.json_response(
@@ -2817,6 +2847,9 @@ class WebhookServer:
             uid = self._auth_user_id_from_miniapp_request(request, None)
             if not uid:
                 return web.json_response({"error": "Unauthorized"}, status=401)
+            async with get_connection() as conn:
+                if not await self._esim_full_access_for_user(conn, uid):
+                    return web.json_response({"error": "Forbidden"}, status=403)
             code = (request.query.get("country") or request.query.get("location") or "").strip().upper()
             if not code:
                 return web.json_response({"error": "country required"}, status=400)
@@ -2845,6 +2878,8 @@ class WebhookServer:
                 return web.json_response({"error": "Missing required parameters"}, status=400)
 
             async with get_connection() as conn:
+                if not await self._esim_full_access_for_user(conn, user_id):
+                    return web.json_response({"error": "Forbidden"}, status=403)
                 urow = await conn.fetchrow("SELECT user_id FROM users WHERE user_id = $1", user_id)
                 if not urow:
                     return web.json_response({"error": "User not found"}, status=404)
@@ -3028,6 +3063,8 @@ class WebhookServer:
             if not uid:
                 return web.json_response({"error": "Unauthorized"}, status=401)
             async with get_connection() as conn:
+                if not await self._esim_full_access_for_user(conn, uid):
+                    return web.json_response({"error": "Forbidden"}, status=403)
                 row = await conn.fetchrow(
                     """
                     SELECT delivery_json, transaction_id, status
@@ -3058,6 +3095,8 @@ class WebhookServer:
             if not uid:
                 return web.json_response({"error": "Unauthorized"}, status=401)
             async with get_connection() as conn:
+                if not await self._esim_full_access_for_user(conn, uid):
+                    return web.json_response({"error": "Forbidden"}, status=403)
                 rows = await conn.fetch(
                     """
                     SELECT transaction_id, package_code, location_code, status,
@@ -3095,8 +3134,88 @@ class WebhookServer:
             logger.error("api_esim_mine: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
+    async def resolve_esim_beta_request(
+        self, request_id: int, approve: bool, admin_tg_id: int
+    ) -> str:
+        """Одобрить/отклонить заявку на beta eSIM. Возвращает текст для ответа админу."""
+        if admin_tg_id not in self.admin_ids:
+            return "Нет прав"
+        try:
+            async with get_connection() as conn:
+                row = await conn.fetchrow(
+                    """
+                    SELECT id, user_id, email, status
+                    FROM esim_beta_requests WHERE id = $1
+                    """,
+                    request_id,
+                )
+                if not row:
+                    return "Заявка не найдена"
+                if row["status"] != "pending":
+                    return "Уже обработана"
+                st = "approved" if approve else "rejected"
+                await conn.execute(
+                    """
+                    UPDATE esim_beta_requests
+                    SET status = $1, resolved_at = NOW(), resolved_by = $2
+                    WHERE id = $3
+                    """,
+                    st,
+                    admin_tg_id,
+                    request_id,
+                )
+                notify_email = (row["email"] or "").strip().lower()
+                uid = int(row["user_id"])
+                if approve and notify_email:
+                    await conn.execute(
+                        "UPDATE users SET esim_beta_access = TRUE WHERE user_id = $1",
+                        uid,
+                    )
+                    await conn.execute(
+                        """
+                        INSERT INTO esim_beta_waitlist (user_id, email)
+                        VALUES ($1, $2)
+                        ON CONFLICT (user_id) DO UPDATE
+                        SET email = EXCLUDED.email, updated_at = NOW()
+                        """,
+                        uid,
+                        notify_email,
+                    )
+        except Exception as e:
+            logger.error("resolve_esim_beta_request: %s", e, exc_info=True)
+            return "Ошибка БД"
+
+        if not approve:
+            return "Отклонено"
+
+        subject = "Svoy eSIM — доступ к beta"
+        plain = (
+            "Здравствуйте!\n\n"
+            "Ваша заявка на участие в beta Svoy eSIM одобрена. "
+            "Откройте приложение SvoyVPN, раздел eSIM — там станет доступен полный функционал.\n\n"
+            "С уважением,\nкоманда SvoyVPN"
+        )
+        html_body = f"""<!DOCTYPE html><html><body style="font-family:sans-serif;line-height:1.5">
+<p>Здравствуйте!</p>
+<p>Ваша заявка на участие в <b>beta Svoy eSIM</b> <b>одобрена</b>.</p>
+<p>Откройте приложение SvoyVPN, раздел eSIM — там станет доступен полный функционал.</p>
+<p style="color:#64748b;font-size:13px">С уважением,<br/>команда SvoyVPN</p>
+</body></html>"""
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda em=notify_email: self._send_email(em, subject, html_body, plain),
+            )
+        except Exception as e:
+            logger.error("esim beta approval email: %s", e, exc_info=True)
+            return (
+                "Одобрено, но письмо не отправилось (проверьте SMTP). Email: " + notify_email
+            )
+        return f"Одобрено, письмо отправлено на {notify_email}"
+
     async def api_esim_beta_notify(self, request: web_request.Request) -> web.Response:
-        """Заявка на уведомление об открытии eSIM beta (email + user_id)."""
+        """Заявка на beta eSIM: запись pending + кнопки админу; письмо пользователю только после одобрения."""
         import html as html_mod
         import re
 
@@ -3115,35 +3234,57 @@ class WebhookServer:
         if not uid:
             return web.json_response({"error": "Unauthorized"}, status=401)
 
+        req_id: Optional[int] = None
         try:
             async with get_connection() as conn:
-                await conn.execute(
+                req_id = await conn.fetchval(
                     """
-                    INSERT INTO esim_beta_waitlist (user_id, email)
-                    VALUES ($1, $2)
-                    ON CONFLICT (user_id) DO UPDATE
-                    SET email = EXCLUDED.email, updated_at = NOW()
+                    INSERT INTO esim_beta_requests (user_id, email, status)
+                    VALUES ($1, $2, 'pending')
+                    RETURNING id
                     """,
                     uid,
                     email,
                 )
+        except UniqueViolationError:
+            return web.json_response(
+                {"error": "Заявка уже на рассмотрении. Дождитесь решения администратора."},
+                status=409,
+            )
         except Exception as e:
             logger.error("api_esim_beta_notify db: %s", e, exc_info=True)
             return web.json_response({"error": "Сохранить не удалось"}, status=500)
 
-        if self.bot and self.admin_ids:
+        if self.bot and self.admin_ids and req_id is not None:
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="Одобрить", callback_data=f"ebya:{req_id}"),
+                        InlineKeyboardButton(text="Отклонить", callback_data=f"ebyr:{req_id}"),
+                    ]
+                ]
+            )
             text = (
                 "📧 <b>eSIM beta — заявка</b>\n"
+                f"id: <code>{req_id}</code>\n"
                 f"user_id: <code>{uid}</code>\n"
-                f"email: <code>{html_mod.escape(email)}</code>"
+                f"email: <code>{html_mod.escape(email)}</code>\n\n"
+                "<i>Одобрить → письмо на указанный email. Отклонить → без письма.</i>"
             )
             for aid in self.admin_ids:
                 try:
-                    await self.bot.send_message(chat_id=aid, text=text, parse_mode="HTML")
+                    await self.bot.send_message(
+                        chat_id=aid, text=text, parse_mode="HTML", reply_markup=kb
+                    )
                 except Exception as ex:
                     logger.warning("beta-notify admin %s: %s", aid, ex)
 
-        return web.json_response({"status": "ok"})
+        return web.json_response(
+            {
+                "status": "ok",
+                "message": "Заявка отправлена. После одобрения администратором придёт письмо на указанный email.",
+            }
+        )
 
     async def handle_esim_webhook(self, request: web_request.Request) -> web.Response:
         """Уведомления eSIM Access: статусы, данные, ошибки (GET query или POST JSON/form)."""
