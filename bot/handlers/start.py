@@ -313,7 +313,8 @@ async def get_main_keyboard(user_id: int, config):
     # Получаем URL для miniapp из APP_URL
     miniapp_url = None
     if config.app_url:
-        miniapp_url = f"{config.app_url}/miniapp?v=106"
+        # v= — смена заставляет Telegram/WebView перезагрузить оболочку (иначе кэш по URL)
+        miniapp_url = f"{config.app_url}/miniapp?v=131"
     else:
         # Fallback на localhost для разработки
         import os

@@ -26,6 +26,7 @@
   const S = {
     user: null,
     subscription: null,
+    referral: null,
     tariffs: [],
     paymentMethods: [],
     servers: [],
@@ -33,6 +34,19 @@
     selectedTariff: null,
     selectedPM: null,
   };
+
+  function normalizeReferralFromApi(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const code = raw.referralCode || raw.referral_code;
+    if (!code) return null;
+    return {
+      referralCode: String(code),
+      referralCount: Number(raw.referralCount ?? raw.referral_count ?? 0) || 0,
+      inviterBonusDays: Number(raw.inviterBonusDays ?? raw.inviter_bonus_days ?? 5) || 5,
+      invitedBonusDays: Number(raw.invitedBonusDays ?? raw.invited_bonus_days ?? 3) || 3,
+      refLink: String(raw.refLink || raw.ref_link || ''),
+    };
+  }
 
   /* ═══════ Helpers ═══════ */
   const MW = ['месяц', 'месяца', 'месяцев'];
@@ -89,7 +103,7 @@
 
   function haptic(style) {
     try {
-      if (tg && tg.HapticFeedback) {
+      if (tg && tg.HapticFeedback && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')) {
         tg.HapticFeedback.impactOccurred(style);
       } else if (window.haptic && typeof window.haptic === 'function') {
         window.haptic(style);
@@ -629,25 +643,36 @@
           pStatus.textContent = '';
         }
 
+        const endHuman = fmtDate(sub.endDate);
+        const daysMeta =
+          daysLeft > 0
+            ? `Осталось ${daysLeft} ${dw(daysLeft)} полного доступа к серверам.`
+            : 'Срок окончания указан ниже — подключайтесь в любой момент.';
+        const warnSoon = daysLeft > 0 && daysLeft <= 7;
+        const heroMod = warnSoon ? ' sub-status-hero--warn' : '';
+
         let statusHtml = `
-            <div class="card status-card">
-              <div class="status-row">
-                <span class="subtitle">Статус</span>
-                <span class="caption" style="color:var(--accent_text_color, #3aa8fc); font-weight: 600;">Активна</span>
+            <div class="card sub-status-hero sub-status-hero--active${heroMod}" role="status">
+              <div class="sub-status-hero__ring" aria-hidden="true">
+                <svg class="sub-status-hero__check" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
               </div>
-              <div class="status-row">
-                <span class="body text-muted">Действует до</span>
-                <span class="body">${daysLeft > 0 ? 'Осталось ' + daysLeft + ' дн.' : fmtDate(sub.endDate)}</span>
-              </div>
+              <p class="sub-status-hero__title">Подписка активна</p>
+              <p class="sub-status-hero__date">Действует до ${endHuman}</p>
+              <p class="sub-status-hero__meta">${daysMeta}</p>
+              ${
+                warnSoon
+                  ? '<p class="sub-status-hero__urgent">Скоро окончание — продлить можно в окне тарифов из профиля.</p>'
+                  : ''
+              }
             </div>
             <div class="gap-12"></div>
         `;
 
         statusHtml += `
-          <div style="display: flex; gap: 8px; width: 100%;">
-            <button class="btn-primary" style="flex:1;" onclick="window.showScreen('screenSetup')">Подключиться</button>
-            <button class="btn-secondary" style="flex:1;" onclick="window.showModal('modalPlan')">Продлить</button>
-          </div>
+          <button class="btn-primary" onclick="window.showModal('modalPlan')">Продлить</button>
         `;
         subBlockBox.innerHTML = statusHtml;
 
@@ -721,11 +746,15 @@
 
         } else {
           subBlockBox.innerHTML = `
-            <div class="card status-card">
-              <div class="status-row">
-                <span class="subtitle">Подписка</span>
-                <span class="caption text-danger">Неактивна</span>
+            <div class="card sub-status-hero sub-status-hero--inactive" role="status">
+              <div class="sub-status-hero__ring sub-status-hero__ring--muted" aria-hidden="true">
+                <svg class="sub-status-hero__lock" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
               </div>
+              <p class="sub-status-hero__title">Подписка не оформлена</p>
+              <p class="sub-status-hero__meta">Без тарифа VPN-серверы недоступны. Тарифы и оплата — в отдельном окне.</p>
             </div>
             <div class="gap-12"></div>
             <button class="btn-primary" onclick="window.showModal('modalPlan')">Выбрать тариф</button>
@@ -894,6 +923,7 @@
       if (d && d.user) {
         S.user = d.user;
         S.subscription = d.subscription;
+        S.referral = normalizeReferralFromApi(d.referral);
         renderUser();
         renderNews();
         const isActive = S.subscription && S.subscription.isActive;
@@ -925,6 +955,12 @@
     if (d && d.user) {
       S.user = d.user;
       S.subscription = d.subscription;
+      S.referral = normalizeReferralFromApi(d.referral);
+      if (tg && tg.initData) {
+        try {
+          sessionStorage.setItem('svoy_tg_init_data', String(tg.initData));
+        } catch (_) { }
+      }
       renderUser();
       renderNews();
 
@@ -954,9 +990,6 @@
     newsCarousel.innerHTML = '';
 
     const isAdmin = S.user && S.user.isAdmin;
-
-    // Debug: log to help user see if they are admin (they can see console in some web inspectors)
-    console.log('[News] renderNews, isAdmin:', isAdmin, 'news count:', S.news.length);
 
     // If admin is logged in, show "Add News" card AT THE END (as requested)
     // Wait, user said "at the very end", so we add news cards first
@@ -1377,19 +1410,35 @@
     // btnReferral is handled via tab bar now
 
     let refLink = '';
+
+    function applyReferralPayload(d) {
+      const n = normalizeReferralFromApi(d);
+      if (!n) return false;
+      S.referral = n;
+      refLink = n.refLink;
+      d = n;
+      const refL = document.getElementById('refLinkText');
+      if (refL) refL.textContent = d.refLink;
+      const refC = document.getElementById('refCount');
+      if (refC) refC.textContent = d.referralCount + ' чел.';
+      const refB = document.getElementById('refBonus');
+      if (refB) refB.textContent = d.inviterBonusDays + ' дн. за друга';
+      const refDEl = document.getElementById('refDesc');
+      if (refDEl) {
+        refDEl.textContent =
+          `Дарим ${d.inviterBonusDays} дней Вам и ${d.invitedBonusDays} дня другу за каждое успешное приглашение.`;
+      }
+      return true;
+    }
+
     async function loadReferral() {
-      if (!tg || !tg.initData) return;
-      const d = await api('/miniapp/api/referral?initData=' + encodeURIComponent(tg.initData));
-      if (d && d.referralCode) {
-        refLink = d.refLink;
-        const refL = document.getElementById('refLinkText');
-        if (refL) refL.textContent = d.refLink;
-        const refC = document.getElementById('refCount');
-        if (refC) refC.textContent = d.referralCount + ' чел.';
-        const refB = document.getElementById('refBonus');
-        if (refB) refB.textContent = d.inviterBonusDays + ' дн. за друга';
-        const refD = document.getElementById('refDesc');
-        if (refD) refD.textContent = `Дарим ${d.inviterBonusDays} дней Вам и ${d.invitedBonusDays} дня другу за каждое успешное приглашение.`;
+      const refDesc = document.getElementById('refDesc');
+      if (applyReferralPayload(S.referral)) return;
+      await loadUser(true);
+      if (applyReferralPayload(S.referral)) return;
+      if (refDesc) {
+        refDesc.textContent =
+          'Подарки доступны после входа. Потяните экран вниз для обновления или откройте приложение из бота ещё раз.';
       }
     }
 

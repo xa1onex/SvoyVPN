@@ -78,6 +78,36 @@ async def cors_middleware(request, handler):
         ex.headers["Access-Control-Allow-Origin"] = "*"
         raise
 
+
+def telegram_user_id_from_parsed_init(parsed_data: dict) -> int:
+    """
+    user_id из полей WebApp initData после parse_telegram_init_data:
+    user → receiver → chat (только type=private).
+    """
+    def _obj(raw):
+        if not raw:
+            return {}
+        try:
+            return json.loads(raw) if isinstance(raw, str) else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    ud = _obj(parsed_data.get("user", "{}"))
+    uid = int(ud.get("id") or 0)
+    if uid:
+        return uid
+    rd = _obj(parsed_data.get("receiver", "{}"))
+    uid = int(rd.get("id") or 0)
+    if uid:
+        return uid
+    ch = _obj(parsed_data.get("chat", "{}"))
+    if isinstance(ch, dict) and ch.get("type") == "private":
+        uid = int(ch.get("id") or 0)
+        if uid:
+            return uid
+    return 0
+
+
 class WebhookServer:
     """HTTP сервер для вебхуков и subscription endpoint"""
     
@@ -134,6 +164,7 @@ class WebhookServer:
             ('/api/servers', self.api_get_servers, 'GET'),
             ('/api/ping', self.api_ping_server, 'GET'),
             ('/api/referral', self.api_get_referral, 'GET'),
+            ('/api/referral', self.api_get_referral, 'POST'),
             ('/api/trial/activate', self.api_activate_trial, 'POST'),
             ('/api/news', self.api_get_news, 'GET'),
             ('/api/news/add', self.api_add_news, 'POST'),
@@ -679,7 +710,15 @@ class WebhookServer:
         try:
             with open(miniapp_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            return web.Response(text=content, content_type='text/html', charset='utf-8')
+            return web.Response(
+                text=content,
+                content_type='text/html',
+                charset='utf-8',
+                headers={
+                    "Cache-Control": "no-store, no-cache, must-revalidate",
+                    "Pragma": "no-cache",
+                },
+            )
         except FileNotFoundError:
             logger.error(f"Miniapp file not found: {miniapp_path}")
             return web.Response(text="Miniapp not found", status=404)
@@ -729,6 +768,9 @@ class WebhookServer:
                 elif file_path.endswith('.ttf'):
                     guessed_type = 'font/ttf'
             content_type = guessed_type or "application/octet-stream"
+            static_headers = {}
+            if content_type in {"application/javascript", "text/javascript", "text/css"}:
+                static_headers["Cache-Control"] = "no-cache"
             # Add charset for text-like assets.
             if content_type.startswith("text/") or content_type in {
                 "application/javascript",
@@ -737,8 +779,13 @@ class WebhookServer:
                 "image/svg+xml",
                 "application/xml",
             }:
-                return web.Response(body=content, content_type=content_type, charset="utf-8")
-            return web.Response(body=content, content_type=content_type)
+                return web.Response(
+                    body=content,
+                    content_type=content_type,
+                    charset="utf-8",
+                    headers=static_headers or None,
+                )
+            return web.Response(body=content, content_type=content_type, headers=static_headers or None)
         except FileNotFoundError:
             logger.error(f"Static file not found: {file_path} (requested path: {path})")
             return web.Response(text=f"File not found: {path}", status=404)
@@ -820,10 +867,12 @@ class WebhookServer:
             
             # Парсим данные пользователя
             parsed_data = self.parse_telegram_init_data(init_data)
-            user_str = parsed_data.get('user', '{}')
-            user_data = json.loads(user_str) if user_str else {}
-            user_id = int(user_data.get('id', 0))
-            
+            user_str = parsed_data.get("user", "{}")
+            try:
+                user_data = json.loads(user_str) if user_str else {}
+            except (json.JSONDecodeError, TypeError):
+                user_data = {}
+            user_id = telegram_user_id_from_parsed_init(parsed_data)
             if not user_id:
                 return web.json_response({"error": "User ID not found"}, status=400)
             
@@ -894,6 +943,8 @@ class WebhookServer:
                 from .database import get_support_link
                 support_link = await get_support_link() or "https://t.me/SvoyVPN_support" # Fallback
 
+                referral = await self._referral_bundle_for_user(conn, user_id)
+
                 return web.json_response({
                     "user": {
                         "id": user_id,
@@ -911,7 +962,8 @@ class WebhookServer:
                         "endDate": end_date_str,
                         "subscriptionUrl": subscription_url,
                         "token": user['subscription_token']
-                    }
+                    },
+                    "referral": referral,
                 })
                 
         except Exception as e:
@@ -1095,10 +1147,7 @@ class WebhookServer:
             
             # Парсим данные пользователя
             parsed_data = self.parse_telegram_init_data(init_data)
-            user_str = parsed_data.get('user', '{}')
-            user_data = json.loads(user_str) if user_str else {}
-            user_id = int(user_data.get('id', 0))
-            
+            user_id = telegram_user_id_from_parsed_init(parsed_data)
             if not user_id:
                 return web.json_response({"error": "User ID not found"}, status=400)
             
@@ -1395,67 +1444,84 @@ class WebhookServer:
             except Exception as e:
                 logger.error(f"Error stopping webhook server: {e}")
 
+    async def _referral_bundle_for_user(self, conn, user_id: int) -> dict:
+        """Те же поля, что у GET/POST /api/referral, для уже известного user_id."""
+        row = await conn.fetchrow(
+            "SELECT referral_code, referral_count FROM users WHERE user_id = $1",
+            user_id,
+        )
+        if not row:
+            return {}
+        referral_code = row["referral_code"] or ""
+        referral_count = row["referral_count"] or 0
+        if not referral_code:
+            referral_code = secrets.token_hex(4)
+            await conn.execute(
+                "UPDATE users SET referral_code = $1 WHERE user_id = $2",
+                referral_code,
+                user_id,
+            )
+        ref_settings = await conn.fetchrow(
+            "SELECT inviter_bonus_days, invited_bonus_days FROM referral_settings ORDER BY id DESC LIMIT 1"
+        )
+        inviter_days = ref_settings["inviter_bonus_days"] if ref_settings else 5
+        invited_days = ref_settings["invited_bonus_days"] if ref_settings else 3
+        bot_username = "SvoyVPN_bot"
+        try:
+            if self.bot:
+                me = await self.bot.get_me()
+                if me and me.username:
+                    bot_username = me.username
+        except Exception:
+            pass
+        ref_link = f"https://t.me/{bot_username}?start=ref_{referral_code}"
+        return {
+            "referralCode": referral_code,
+            "referralCount": referral_count,
+            "inviterBonusDays": inviter_days,
+            "invitedBonusDays": invited_days,
+            "refLink": ref_link,
+        }
+
     async def api_get_referral(self, request: web_request.Request) -> web.Response:
-        """API: Получить реферальную информацию пользователя"""
-        init_data = request.query.get('initData', '')
-        if not init_data:
-            return web.json_response({"error": "initData required"}, status=400)
+        """API: Реферальная информация — Telegram initData (GET query или POST JSON) или Bearer JWT."""
+        init_data = (request.query.get('initData') or '').strip()
+        if not init_data and request.method == 'POST':
+            try:
+                body = await request.json()
+                if isinstance(body, dict):
+                    init_data = (body.get('initData') or '').strip()
+            except (json.JSONDecodeError, TypeError, ValueError, UnicodeDecodeError):
+                pass
+        user_id = None
 
         try:
+            # Сначала подписанный initData: не даём просроченному JWT из браузера перекрыть Telegram
+            if init_data:
+                if not self.bot:
+                    return web.json_response({"error": "Bot not initialized"}, status=500)
+                bot_token = self.bot.token
+                if not self.verify_telegram_webapp_data(init_data, bot_token):
+                    return web.json_response({"error": "Invalid initData"}, status=403)
+                parsed_data = self.parse_telegram_init_data(init_data)
+                user_id = telegram_user_id_from_parsed_init(parsed_data)
+                if not user_id:
+                    return web.json_response({"error": "User ID not found"}, status=400)
+            else:
+                jwt_uid = self._get_jwt_user_id(request)
+                if jwt_uid:
+                    user_id = jwt_uid
+                else:
+                    return web.json_response({"error": "initData or Authorization required"}, status=400)
+
             if not self.bot:
                 return web.json_response({"error": "Bot not initialized"}, status=500)
 
-            bot_token = self.bot.token
-            if not self.verify_telegram_webapp_data(init_data, bot_token):
-                return web.json_response({"error": "Invalid initData"}, status=403)
-
-            parsed_data = self.parse_telegram_init_data(init_data)
-            user_str = parsed_data.get('user', '{}')
-            user_data = json.loads(user_str) if user_str else {}
-            user_id = int(user_data.get('id', 0))
-            if not user_id:
-                return web.json_response({"error": "User ID not found"}, status=400)
-
             async with get_connection() as conn:
-                row = await conn.fetchrow(
-                    "SELECT referral_code, referral_count FROM users WHERE user_id = $1",
-                    user_id
-                )
-                if not row:
-                    return web.json_response({"error": "User not found"}, status=404)
-
-                referral_code = row['referral_code'] or ''
-                referral_count = row['referral_count'] or 0
-
-                if not referral_code:
-                    import secrets as _sec
-                    referral_code = _sec.token_hex(4)
-                    await conn.execute(
-                        "UPDATE users SET referral_code = $1 WHERE user_id = $2",
-                        referral_code, user_id
-                    )
-
-                ref_settings = await conn.fetchrow(
-                    'SELECT inviter_bonus_days, invited_bonus_days FROM referral_settings ORDER BY id DESC LIMIT 1'
-                )
-                inviter_days = ref_settings['inviter_bonus_days'] if ref_settings else 5
-                invited_days = ref_settings['invited_bonus_days'] if ref_settings else 3
-
-            try:
-                me = await self.bot.get_me()
-                bot_username = me.username
-            except Exception:
-                bot_username = 'SvoyVPN_bot'
-
-            ref_link = f"https://t.me/{bot_username}?start=ref_{referral_code}"
-
-            return web.json_response({
-                "referralCode": referral_code,
-                "referralCount": referral_count,
-                "inviterBonusDays": inviter_days,
-                "invitedBonusDays": invited_days,
-                "refLink": ref_link,
-            })
+                bundle = await self._referral_bundle_for_user(conn, user_id)
+            if not bundle.get("referralCode"):
+                return web.json_response({"error": "User not found"}, status=404)
+            return web.json_response(bundle)
 
         except Exception as e:
             logger.error(f"Error in api_get_referral: {e}", exc_info=True)
@@ -2069,6 +2135,8 @@ class WebhookServer:
                 from .database import get_support_link
                 support_link = await get_support_link() or "https://t.me/SvoyVPN_support"
 
+                referral = await self._referral_bundle_for_user(conn, user_id)
+
                 return web.json_response({
                     "user": {
                         "id": user_id,
@@ -2086,7 +2154,8 @@ class WebhookServer:
                         "endDate": end_date_str,
                         "subscriptionUrl": subscription_url,
                         "token": user["subscription_token"],
-                    }
+                    },
+                    "referral": referral,
                 })
 
         except Exception as e:
