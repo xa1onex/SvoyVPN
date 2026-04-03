@@ -8,7 +8,8 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from ..payments import process_telegram_stars_payment
+from ..esim_invoice_payload import parse_stars_or_yoo_esim_payload
+from ..payments import process_esim_telegram_invoice_payment, process_telegram_stars_payment
 from ..plans import get_subscription_plans, get_renewal_plans, PAYMENT_METHODS
 from ..config import AppConfig
 
@@ -29,7 +30,25 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
         try:
             payload = message.successful_payment.invoice_payload
             logger.info(f"Processing successful payment with payload: {payload}")
-            
+
+            esim_parsed = parse_stars_or_yoo_esim_payload(payload or "")
+            if esim_parsed:
+                kind, uid_enc, loc, pkg = esim_parsed
+                if int(uid_enc) != int(message.from_user.id):
+                    raise ValueError("user mismatch eSIM invoice")
+                method_id = "stars" if kind == "stars" else "yookassa"
+                source = "miniapp" if (payload or "").endswith("_miniapp") else "bot"
+                await process_esim_telegram_invoice_payment(
+                    message=message,
+                    bot=bot,
+                    config=config,
+                    method_id=method_id,
+                    source=source,
+                    location_code=loc,
+                    package_code=pkg,
+                )
+                return
+
             source = 'bot'
             if payload.startswith("stars_"):
                 method_id = "stars"

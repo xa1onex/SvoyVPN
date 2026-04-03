@@ -392,6 +392,7 @@ window.AppConfig = {
     esimSelectedPackage: null,
     esimMode: 'test',
     esimLoadedCountries: false,
+    esimSelectedPM: null,
   };
 
   const PRODUCT_KEY = 'svoy_product';
@@ -423,13 +424,6 @@ window.AppConfig = {
     applyProductSwitchUI();
     if (navigate) showScreen(product === 'esim' ? 'screenEsim' : 'screenVpn');
     if (product === 'esim') ensureEsimCountriesLoaded();
-  }
-
-  function updateEsimBalanceLine() {
-    const el = document.getElementById('esimBalanceLine');
-    if (!el) return;
-    const rub = S.user && S.user.balanceRub != null ? Number(S.user.balanceRub) : null;
-    el.textContent = rub != null && !isNaN(rub) ? 'Баланс: ' + rub.toFixed(2) + ' ₽' : 'Баланс: —';
   }
 
   function escapeHtml(s) {
@@ -1741,7 +1735,6 @@ window.AppConfig = {
 
     // Refresh servers layout (pageSize may change if trial block appeared)
     renderServers();
-    updateEsimBalanceLine();
   }
 
   function fmtBytes(n) {
@@ -1782,7 +1775,7 @@ window.AppConfig = {
     const hint = document.getElementById('esimModeHint');
     if (hint) {
       hint.textContent =
-        S.esimMode === 'live' ? '' : 'Режим теста: оплата с баланса, выдача демо eSIM (без провайдера).';
+        S.esimMode === 'live' ? '' : 'Режим теста: после оплаты выдаётся демо eSIM (без провайдера).';
     }
   }
 
@@ -1833,6 +1826,8 @@ window.AppConfig = {
           btn.classList.add('esim-pkg--selected');
           S.esimSelectedPackage = pkg;
           if (buy) buy.disabled = false;
+          const m = document.getElementById('modalEsimPay');
+          if (m && m.classList.contains('active')) updateEsimPayTotal();
           haptic('light');
         };
         wrap.appendChild(btn);
@@ -1866,6 +1861,168 @@ window.AppConfig = {
       } else {
         img.style.display = 'none';
       }
+    }
+  }
+
+  let checkEsimInterval = null;
+  function stopEsimPaymentPolling() {
+    if (checkEsimInterval) {
+      clearInterval(checkEsimInterval);
+      checkEsimInterval = null;
+    }
+  }
+  function startEsimPaymentPolling() {
+    if (checkEsimInterval) return;
+    if (!localStorage.getItem('pending_esim_time')) {
+      localStorage.setItem('pending_esim_time', Date.now().toString());
+    }
+    checkEsimInterval = setInterval(async () => {
+      const pendingTime = localStorage.getItem('pending_esim_time');
+      if (!pendingTime) {
+        stopEsimPaymentPolling();
+        return;
+      }
+      if (Date.now() - parseInt(pendingTime, 10) > 15 * 60 * 1000) {
+        stopEsimPaymentPolling();
+        localStorage.removeItem('pending_esim_time');
+        return;
+      }
+      await tryFetchEsimDelivery();
+    }, 3500);
+  }
+
+  async function tryFetchEsimDelivery() {
+    let url = '/api/esim/latest';
+    const opts = { method: 'GET', silentError: true };
+    if (IS_ANDROID) {
+      opts.headers = { 'Authorization': 'Bearer ' + ANDROID_JWT };
+    } else if (tg && tg.initData) {
+      url += '?initData=' + encodeURIComponent(tg.initData);
+      opts.skipWebJwt = true;
+    } else {
+      return false;
+    }
+    const d = await api(url, opts);
+    const delivery = d && d.delivery;
+    const code = delivery && (delivery.activationCode || delivery.ac);
+    if (!code) return false;
+    localStorage.removeItem('pending_esim_time');
+    stopEsimPaymentPolling();
+    window.hideModal('modalEsimPay');
+    showEsimDelivery(delivery);
+    showSuccessOverlay('eSIM готов', 'QR и данные также отправлены вам в Telegram.');
+    return true;
+  }
+
+  function renderEsimPM() {
+    const w = document.getElementById('esimPmWrap');
+    if (!w || !S.paymentMethods.length) return;
+    if (!S.esimSelectedPM) S.esimSelectedPM = S.paymentMethods[0];
+    w.innerHTML = '';
+    S.paymentMethods.forEach((m) => {
+      const sel = S.esimSelectedPM && S.esimSelectedPM.id === m.id;
+      const el = document.createElement('div');
+      el.className = 'pm-item' + (sel ? ' selected' : '');
+      const n = m.name ? m.name.toLowerCase() : '';
+      let svgIcon;
+      if (m.id === 'stars' || n.includes('star')) {
+        svgIcon = `<svg viewBox="0 0 24 24" class="icon-star"><path d="M12 2.3l2.4 7.4 7.6.6-5.8 4.7 1.8 7.3-6-4.3-6 4.3 1.8-7.3-5.8-4.7 7.6-.6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" class="star-shape"/><circle class="sparkle sp-1" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-2" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-3" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-4" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-5" cx="12" cy="12" r="1.5"/></svg>`;
+      } else if (m.id === 'cryptopay' || n.includes('crypto')) {
+        svgIcon = `<svg viewBox="0 0 77 42" class="icon-crypto" style="width:32px;height:18px;display:block;">
+          <path d="M2.72194715,0 L26.6266393,0 C28.4220313,0 30.0735687,0.988569903 30.9307924,2.57636085 L52.2150034,42 L23.7342299,42 C21.9388379,42 20.2873006,41.0114301 19.4300769,39.4236391 L0.330751009,4.04694928 C-0.386869546,2.71773798 0.101959028,1.05466888 1.42258019,0.332380469 C1.82138733,0.114260557 2.26806337,0 2.72194715,0 Z" fill="#25A3F2"/>
+          <path d="M73.643684,0 C74.0975678,0 74.5442438,0.114260557 74.943051,0.332380469 C76.2236533,1.03278135 76.7221109,2.61780981 76.0968053,3.92522764 L76.0348801,4.04694928 L56.9355543,39.4236391 C56.1059829,40.960211 54.5325175,41.9355978 52.8046779,41.996927 L52.6314012,42 L24.5945392,42 L23.7342299,42 L45.4348388,2.57636085 C46.2644101,1.03978897 47.8378756,0.0644022425 49.5657151,0.00307299695 L49.7389918,0 L73.643684,0 Z" fill="#25A3F2" fill-opacity="0.85"/>
+        </svg>`;
+      } else if (m.id === 'yookassa' || n.includes('юkassa') || n.includes('юкасса') || n.includes('юк') || n.includes('yoo') || n.includes('yuk') || n.includes('карт') || n.includes('card')) {
+        svgIcon = `<svg viewBox="0 0 24 24" class="icon-card"><rect x="2" y="5" width="20" height="14" rx="2" ry="2" fill="none" class="card-outline"></rect><line x1="2" y1="10" x2="22" y2="10" class="card-line"></line></svg>`;
+      } else {
+        svgIcon = escapeHtml(String(m.icon || '💳'));
+      }
+      el.innerHTML =
+        `<span class="pm-icon flex-center">${svgIcon}</span>` +
+        `<span class="pm-name">${escapeHtml(m.name || '')}</span>`;
+      el.addEventListener('click', () => {
+        S.esimSelectedPM = m;
+        renderEsimPM();
+        updateEsimPayTotal();
+        haptic('light');
+      });
+      w.appendChild(el);
+    });
+    updateEsimPayTotal();
+  }
+
+  function updateEsimPayTotal() {
+    const el = document.getElementById('esimTotalPrice');
+    const btn = document.getElementById('btnPayEsim');
+    if (!el || !btn) return;
+    const pkg = S.esimSelectedPackage;
+    if (!pkg) {
+      el.textContent = '—';
+      btn.disabled = true;
+      return;
+    }
+    const k = pkg.salePriceKopecks != null ? Number(pkg.salePriceKopecks) : 0;
+    const isStars = S.esimSelectedPM && S.esimSelectedPM.id === 'stars';
+    const starIcon = `<svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em;fill:var(--accent_text_color, #3aa8fc)"><path d="M12 2.3l2.4 7.4 7.6.6-5.8 4.7 1.8 7.3-6-4.3-6 4.3 1.8-7.3-5.8-4.7 7.6-.6z" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linejoin="round"/></svg>`;
+    if (isStars) {
+      const stars = Math.max(1, Math.ceil(k / 100));
+      el.innerHTML = fmtPrice(stars) + ' ' + starIcon;
+    } else {
+      el.textContent = (k / 100).toFixed(k % 100 === 0 ? 0 : 2) + ' ₽';
+    }
+    btn.disabled = !S.esimSelectedPM;
+  }
+
+  async function handleEsimPay() {
+    const pkg = S.esimSelectedPackage;
+    const esimSel = document.getElementById('esimCountry');
+    const loc = S.esimSelectedCountry || (esimSel && esimSel.value);
+    if (!pkg || !loc || !S.esimSelectedPM) return;
+    if (!IS_ANDROID && (!tg || !tg.initData)) {
+      showToast('Оплата доступна только в Telegram');
+      return;
+    }
+    const payBody = IS_ANDROID
+      ? { locationCode: loc, packageCode: pkg.packageCode, paymentMethod: S.esimSelectedPM.id }
+      : { initData: tg.initData, locationCode: loc, packageCode: pkg.packageCode, paymentMethod: S.esimSelectedPM.id };
+    const payHeaders = IS_ANDROID
+      ? { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ANDROID_JWT }
+      : { 'Content-Type': 'application/json' };
+    const d = await api('/api/esim/payment/create', {
+      method: 'POST',
+      headers: payHeaders,
+      body: JSON.stringify(payBody),
+      skipWebJwt: !IS_ANDROID && !!(tg && tg.initData),
+    });
+    if (d && (d.paymentUrl || d.invoiceUrl)) {
+      localStorage.setItem('pending_esim_time', Date.now().toString());
+      startEsimPaymentPolling();
+      const url = d.paymentUrl || d.invoiceUrl;
+      const isNativeInvoice = url.includes('t.me/$') || url.includes('t.me/invoice');
+      const isCryptoPay = url.includes('CryptoBot') || url.includes('CryptoTestnetBot');
+      if (isNativeInvoice) {
+        if (tg && tg.openInvoice) {
+          tg.openInvoice(url, function (status) {
+            if (status === 'paid') {
+              setTimeout(function () { tryFetchEsimDelivery(); }, 1500);
+            } else if (status === 'failed') {
+              localStorage.removeItem('pending_esim_time');
+              stopEsimPaymentPolling();
+              showToast('Ошибка при оплате');
+            }
+          });
+        } else {
+          tg && tg.openLink ? tg.openLink(url) : window.open(url, '_blank');
+        }
+      } else if (isCryptoPay) {
+        if (tg && tg.openLink) tg.openLink(url);
+        else window.open(url, '_blank');
+      } else {
+        if (tg && tg.openLink) tg.openLink(url, { try_instant_view: false });
+        else window.open(url, '_blank');
+      }
+    } else {
+      showToast('Ошибка создания платежа');
     }
   }
 
@@ -1955,6 +2112,7 @@ window.AppConfig = {
         S.subscription = d.subscription;
         S.referral = normalizeReferralFromApi(d.referral);
         renderUser();
+        if (localStorage.getItem('pending_esim_time')) tryFetchEsimDelivery();
         const isActive = S.subscription && S.subscription.isActive;
         const newEnd = S.subscription && S.subscription.endDate;
         const pendingTime = localStorage.getItem('pending_payment_time');
@@ -1981,6 +2139,7 @@ window.AppConfig = {
         S.subscription = d.subscription;
         S.referral = normalizeReferralFromApi(d.referral);
         renderUser();
+        if (localStorage.getItem('pending_esim_time')) tryFetchEsimDelivery();
         if (!silent) showScreen(productHomeScreenId());
       } else {
         S.authViaWebJwt = false;
@@ -2011,6 +2170,7 @@ window.AppConfig = {
           sessionStorage.setItem('svoy_tg_init_data', String(tg.initData));
         } catch (_) { }
         renderUser();
+        if (localStorage.getItem('pending_esim_time')) tryFetchEsimDelivery();
         if (!silent) showScreen(productHomeScreenId());
 
         const isActive = S.subscription && S.subscription.isActive;
@@ -2163,6 +2323,7 @@ window.AppConfig = {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
           loadUser();
+          if (localStorage.getItem('pending_esim_time')) tryFetchEsimDelivery();
         }
       });
     }
@@ -2190,6 +2351,9 @@ window.AppConfig = {
     // If there was a pending payment from previous session, resume polling
     if (localStorage.getItem('pending_payment_time')) {
       startPaymentPolling();
+    }
+    if (localStorage.getItem('pending_esim_time')) {
+      startEsimPaymentPolling();
     }
 
     // Pre-fill user info from tg immediately (before API call)
@@ -2238,43 +2402,19 @@ window.AppConfig = {
 
     const btnEsimBuy = document.getElementById('btnEsimBuy');
     if (btnEsimBuy) {
-      btnEsimBuy.addEventListener('click', async () => {
-        const pkg = S.esimSelectedPackage;
-        const loc = S.esimSelectedCountry || (esimCountry && esimCountry.value);
-        if (!pkg || !loc) return;
-        btnEsimBuy.disabled = true;
-        const body = { packageCode: pkg.packageCode, locationCode: loc };
-        if (tg && tg.initData) body.initData = tg.initData;
-        const headers = { 'Content-Type': 'application/json' };
-        if (IS_ANDROID) headers['Authorization'] = 'Bearer ' + ANDROID_JWT;
-        const skipJwt = !!(tg && tg.initData);
-        try {
-          const d = await api('/api/esim/purchase', {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(body),
-            skipWebJwt: skipJwt,
-            silentError: true,
-          });
-          if (d && d.ok && d.delivery) {
-            if (S.user) {
-              if (d.balanceRub != null) S.user.balanceRub = d.balanceRub;
-              if (d.balanceKopecks != null) S.user.balanceKopecks = d.balanceKopecks;
-            }
-            updateEsimBalanceLine();
-            showEsimDelivery(d.delivery);
-            showToast('Готово! Установите eSIM по QR или коду.');
-            haptic('success');
-          } else if (d && d.error === 'insufficient_balance') {
-            const need = d.needKopecks != null ? (Number(d.needKopecks) / 100).toFixed(2) : '';
-            showToast('Недостаточно средств на балансе' + (need ? ' (нужно ' + need + ' ₽)' : ''), 4000);
-          } else {
-            showToast((d && d.error) || 'Ошибка покупки', 3000);
-          }
-        } catch (e) {
-          showToast('Ошибка сети', 2000);
+      btnEsimBuy.addEventListener('click', () => {
+        if (!S.esimSelectedPackage) return;
+        if (!IS_ANDROID && (!tg || !tg.initData)) {
+          showToast('Оплата доступна только в Telegram');
+          return;
         }
-        btnEsimBuy.disabled = false;
+        if (!S.paymentMethods.length) {
+          showToast('Подождите загрузки способов оплаты и повторите');
+          return;
+        }
+        renderEsimPM();
+        updateEsimPayTotal();
+        window.showModal('modalEsimPay');
       });
     }
 
@@ -2398,6 +2538,7 @@ window.AppConfig = {
 
     // Pay
     addClick('btnPay', handlePay);
+    addClick('btnPayEsim', handleEsimPay);
 
     // Links
     addClick('btnChannel', () => {

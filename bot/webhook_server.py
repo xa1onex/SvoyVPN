@@ -33,6 +33,7 @@ from .database import (
 from .subscriptions import create_or_activate_keys_for_all_servers, get_user_subscription_url
 from .plans import get_subscription_plans, get_renewal_plans
 from . import esim_service
+from .esim_invoice_payload import encode_esim_blob
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +206,8 @@ class WebhookServer:
             ('/api/auth/link-telegram/poll', self.api_link_telegram_poll, 'GET'),
             ('/api/esim/countries', self.api_esim_countries, 'GET'),
             ('/api/esim/packages', self.api_esim_packages, 'GET'),
-            ('/api/esim/purchase', self.api_esim_purchase, 'POST'),
+            ('/api/esim/payment/create', self.api_esim_create_payment, 'POST'),
+            ('/api/esim/latest', self.api_esim_latest, 'GET'),
         ]
         
         for path, handler, method in api_routes:
@@ -713,11 +715,23 @@ class WebhookServer:
                     except:
                         if meta_payload and ":" in meta_payload:
                             parts = meta_payload.split(":")
-                            metadata = {
-                                "user_id": int(parts[0]),
-                                "plan_id": parts[1],
-                                "method_id": parts[2] if len(parts) > 2 else "cryptopay"
-                            }
+                            if len(parts) >= 5 and parts[1] == "esim":
+                                metadata = {
+                                    "user_id": int(parts[0]),
+                                    "product_type": "esim",
+                                    "location_code": parts[2],
+                                    "package_code": parts[3],
+                                    "method_id": parts[4] if len(parts) > 4 else "cryptopay",
+                                    "payment_source": "miniapp"
+                                    if parts[-1] == "miniapp"
+                                    else "bot",
+                                }
+                            else:
+                                metadata = {
+                                    "user_id": int(parts[0]),
+                                    "plan_id": parts[1],
+                                    "method_id": parts[2] if len(parts) > 2 else "cryptopay"
+                                }
                         else:
                             metadata = {}
                         
@@ -983,10 +997,6 @@ class WebhookServer:
                 referral = await self._referral_bundle_for_user(conn, user_id)
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
 
-                bal_row = await conn.fetchval("SELECT balance FROM user_balances WHERE user_id = $1", user_id)
-                bal = int(bal_row or 0)
-                balance_snap = {"balanceKopecks": bal, "balanceRub": round(bal / 100.0, 2)}
-
                 return web.json_response({
                     "user": {
                         "id": user_id,
@@ -999,7 +1009,6 @@ class WebhookServer:
                         "isAdmin": is_admin,
                         "supportLink": support_link,
                         **auth_snap,
-                        **balance_snap,
                     },
                     "subscription": {
                         "isActive": is_active,
@@ -2742,10 +2751,6 @@ class WebhookServer:
                 referral = await self._referral_bundle_for_user(conn, user_id)
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
 
-                bal_row = await conn.fetchval("SELECT balance FROM user_balances WHERE user_id = $1", user_id)
-                bal = int(bal_row or 0)
-                balance_snap = {"balanceKopecks": bal, "balanceRub": round(bal / 100.0, 2)}
-
                 return web.json_response({
                     "user": {
                         "id": user_id,
@@ -2758,7 +2763,6 @@ class WebhookServer:
                         "isAdmin": is_admin,
                         "supportLink": support_link,
                         **auth_snap,
-                        **balance_snap,
                     },
                     "subscription": {
                         "isActive": is_active,
@@ -2822,7 +2826,8 @@ class WebhookServer:
             logger.error("api_esim_packages: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
-    async def api_esim_purchase(self, request: web_request.Request) -> web.Response:
+    async def api_esim_create_payment(self, request: web_request.Request) -> web.Response:
+        """Создать оплату eSIM (Stars / ЮKassa / Crypto Pay) — как подписка."""
         try:
             data = await request.json()
         except Exception:
@@ -2831,10 +2836,22 @@ class WebhookServer:
             user_id = self._auth_user_id_from_miniapp_request(request, data)
             if not user_id:
                 return web.json_response({"error": "Unauthorized"}, status=401)
+            payment_method = data.get("paymentMethod")
             package_code = (data.get("packageCode") or "").strip()
             location_code = (data.get("locationCode") or data.get("country") or "").strip().upper()
-            if not package_code or not location_code:
-                return web.json_response({"error": "packageCode and locationCode required"}, status=400)
+            if not payment_method or not package_code or not location_code:
+                return web.json_response({"error": "Missing required parameters"}, status=400)
+
+            async with get_connection() as conn:
+                urow = await conn.fetchrow("SELECT user_id FROM users WHERE user_id = $1", user_id)
+                if not urow:
+                    return web.json_response({"error": "User not found"}, status=404)
+
+            from .plans import PAYMENT_METHODS
+
+            method_data = PAYMENT_METHODS.get(payment_method)
+            if not method_data:
+                return web.json_response({"error": "Payment method not found"}, status=404)
 
             packages = await esim_service.public_packages(location_code)
             pkg = next((p for p in packages if p.get("packageCode") == package_code), None)
@@ -2842,110 +2859,194 @@ class WebhookServer:
                 return web.json_response({"error": "Package not found for this country"}, status=404)
 
             price_k = int(pkg.get("salePriceKopecks") or esim_service.package_sale_price_kopecks(pkg))
-            mode = esim_service._cfg_mode()
-            tx_id = f"svoy_{user_id}_{uuid.uuid4().hex}"
+            total_amount_cents = price_k
+            title_short = (pkg.get("name") or pkg.get("description") or package_code)[: 60]
+            b64 = encode_esim_blob(location_code, package_code)
+            ts = int(datetime.now().timestamp())
 
-            async with get_connection() as conn:
-                urow = await conn.fetchrow("SELECT user_id FROM users WHERE user_id = $1", user_id)
-                if not urow:
-                    return web.json_response({"error": "User not found"}, status=404)
+            if not self.bot:
+                return web.json_response({"error": "Bot not initialized"}, status=500)
 
-                await conn.execute(
-                    """
-                    INSERT INTO user_balances (user_id, balance, updated_at)
-                    VALUES ($1, 0, CURRENT_TIMESTAMP)
-                    ON CONFLICT (user_id) DO NOTHING
-                    """,
-                    user_id,
-                )
-
-                async with conn.transaction():
-                    brow = await conn.fetchrow(
-                        "SELECT balance FROM user_balances WHERE user_id = $1 FOR UPDATE",
-                        user_id,
+            if payment_method == "stars":
+                price_stars = max(1, (price_k + 99) // 100)
+                payload = f"stars_esim.{user_id}.{b64}.{ts}_miniapp"
+                labeled_prices = [LabeledPrice(label=f"eSIM: {title_short}", amount=price_stars)]
+                try:
+                    invoice_link = await self.bot.create_invoice_link(
+                        title=f"eSIM: {title_short}",
+                        description=f"Мобильный интернет ({location_code})",
+                        payload=payload,
+                        provider_token="",
+                        currency="XTR",
+                        prices=labeled_prices,
                     )
-                    bal = int(brow["balance"] if brow else 0)
-                    if bal < price_k:
+                    return web.json_response(
+                        {
+                            "invoiceUrl": invoice_link,
+                            "paymentId": f"esim_stars_{user_id}_{ts}",
+                            "priceRub": round(price_k / 100.0, 2),
+                            "priceStars": price_stars,
+                        }
+                    )
+                except Exception as e:
+                    logger.error("esim Stars invoice: %s", e, exc_info=True)
+                    return web.json_response({"error": "invoice_failed"}, status=500)
+
+            if payment_method == "yookassa":
+                if not self.yookassa_config or not self.yookassa_config.enabled:
+                    return web.json_response({"error": "YooKassa not configured"}, status=500)
+                if self.yookassa_config.provider_token:
+                    try:
+                        payload_inv = f"yoo_esim.{user_id}.{b64}.{ts}_miniapp"
+                        labeled_prices = [LabeledPrice(label=f"eSIM: {title_short}", amount=total_amount_cents)]
+                        invoice_link = await self.bot.create_invoice_link(
+                            title=f"eSIM: {title_short}",
+                            description=f"Мобильный интернет ({location_code})",
+                            payload=payload_inv,
+                            provider_token=self.yookassa_config.provider_token,
+                            currency="RUB",
+                            prices=labeled_prices,
+                        )
                         return web.json_response(
                             {
-                                "error": "insufficient_balance",
-                                "needKopecks": price_k,
-                                "balanceKopecks": bal,
-                            },
-                            status=402,
+                                "invoiceUrl": invoice_link,
+                                "paymentId": f"esim_yoo_{user_id}_{ts}",
+                                "priceRub": round(price_k / 100.0, 2),
+                            }
                         )
-                    await conn.execute(
-                        """
-                        UPDATE user_balances
-                        SET balance = balance - $2, updated_at = CURRENT_TIMESTAMP
-                        WHERE user_id = $1 AND balance >= $2
-                        """,
-                        user_id,
-                        price_k,
-                    )
+                    except Exception as e:
+                        logger.error("esim native YooKassa invoice: %s", e, exc_info=True)
+                if not self.yookassa_client:
+                    return web.json_response({"error": "YooKassa client not initialized"}, status=500)
+                amount_rub = total_amount_cents / 100.0
+                bot_username = (await self.bot.get_me()).username
+                payment_data = self.yookassa_client.create_payment(
+                    amount=amount_rub,
+                    description=f"eSIM — {title_short}",
+                    return_url=f"https://t.me/{bot_username}?start=payment_success",
+                    metadata={
+                        "user_id": str(user_id),
+                        "product_type": "esim",
+                        "location_code": location_code,
+                        "package_code": package_code,
+                        "payment_source": "miniapp",
+                    },
+                )
+                return web.json_response(
+                    {
+                        "paymentUrl": payment_data.get("confirmation_url"),
+                        "paymentId": payment_data.get("id"),
+                        "priceRub": round(price_k / 100.0, 2),
+                    }
+                )
 
-                delivery: dict[str, Any]
-                provider_raw: Optional[dict] = None
-                batch_no: Optional[str] = None
+            if payment_method == "cryptopay":
+                if not self.cryptopay_config or not self.cryptopay_config.enabled:
+                    return web.json_response({"error": "Crypto Pay not configured"}, status=500)
+                amount_rub = total_amount_cents / 100.0
+                api_url = (
+                    "https://testnet-pay.crypt.bot/api/createInvoice"
+                    if self.cryptopay_config.testnet
+                    else "https://pay.crypt.bot/api/createInvoice"
+                )
+                payload_str = f"{user_id}:esim:{location_code}:{package_code}:cryptopay:1:miniapp"
+                import aiohttp
 
-                if mode == "live":
-                    ok, err, extra = await esim_service.fulfill_order_live(tx_id, package_code)
-                    provider_raw = extra.get("providerResponse") if isinstance(extra, dict) else None
-                    batch_no = (extra or {}).get("batchOrderNo") if isinstance(extra, dict) else None
-                    if not ok:
-                        await conn.execute(
-                            """
-                            UPDATE user_balances
-                            SET balance = balance + $2, updated_at = CURRENT_TIMESTAMP
-                            WHERE user_id = $1
-                            """,
-                            user_id,
-                            price_k,
-                        )
-                        return web.json_response(
-                            {"error": err or "esim_order_failed", "details": extra},
-                            status=502,
-                        )
-                    delivery = {k: v for k, v in extra.items() if k != "providerResponse"}
-                else:
-                    delivery = esim_service.test_fake_delivery(package_code)
+                async with aiohttp.ClientSession() as session:
+                    headers = {"Crypto-Pay-API-Token": self.cryptopay_config.api_token}
+                    data_pay = {
+                        "currency_type": "fiat",
+                        "fiat": "RUB",
+                        "amount": f"{amount_rub:.2f}",
+                        "description": f"eSIM — {title_short}",
+                        "payload": payload_str,
+                    }
+                    async with session.post(api_url, headers=headers, json=data_pay) as resp:
+                        res = await resp.json()
+                        if res.get("ok"):
+                            invoice_url = res["result"].get(
+                                "mini_app_invoice_url", res["result"]["bot_invoice_url"]
+                            )
+                            invoice_id = res["result"]["invoice_id"]
+                            try:
+                                async with get_connection() as conn:
+                                    await conn.execute(
+                                        """
+                                        INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id, payment_source)
+                                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                                        """,
+                                        user_id,
+                                        int(round(amount_rub * 100)),
+                                        "RUB",
+                                        f"esim:{location_code}:{package_code}",
+                                        "esim",
+                                        "pending",
+                                        str(invoice_id),
+                                        "miniapp",
+                                    )
+                            except Exception as db_e:
+                                logger.error("esim cryptopay pending DB: %s", db_e)
+                            try:
+                                builder = InlineKeyboardBuilder()
+                                builder.row(
+                                    InlineKeyboardButton(text="💎 Перейти к оплате", url=invoice_url)
+                                )
+                                builder.row(
+                                    InlineKeyboardButton(
+                                        text="🔄 Проверить оплату",
+                                        callback_data=f"check_crypto:{invoice_id}",
+                                    )
+                                )
+                                await self.bot.send_message(
+                                    user_id,
+                                    f"🚀 <b>Счёт eSIM</b>\n\n"
+                                    f"Цена: <b>{amount_rub:.2f} ₽</b>\n"
+                                    f"Тариф: <b>{title_short}</b>\n\n"
+                                    f"После оплаты eSIM придёт в этот чат.",
+                                    parse_mode="HTML",
+                                    reply_markup=builder.as_markup(),
+                                )
+                            except Exception as msg_e:
+                                logger.error("esim cryptopay TG msg: %s", msg_e)
+                            return web.json_response(
+                                {"paymentUrl": invoice_url, "paymentId": invoice_id}
+                            )
+                        logger.error("Crypto Pay eSIM error: %s", res)
+                        return web.json_response({"error": "Crypto Pay error"}, status=500)
 
-                await conn.execute(
+            return web.json_response({"error": "Payment method not supported"}, status=400)
+        except Exception as e:
+            logger.error("api_esim_create_payment: %s", e, exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_esim_latest(self, request: web_request.Request) -> web.Response:
+        """Последний выданный eSIM (для опроса после оплаты в приложении)."""
+        try:
+            uid = self._auth_user_id_from_miniapp_request(request, None)
+            if not uid:
+                return web.json_response({"error": "Unauthorized"}, status=401)
+            async with get_connection() as conn:
+                row = await conn.fetchrow(
                     """
-                    INSERT INTO esim_orders
-                    (user_id, transaction_id, package_code, location_code, price_kopecks,
-                     mode, batch_order_no, status, delivery_json, provider_raw)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,'completed',$8,$9)
+                    SELECT delivery_json, transaction_id, status
+                    FROM esim_orders
+                    WHERE user_id = $1 AND status = 'completed'
+                      AND created_at > NOW() - INTERVAL '45 minutes'
+                    ORDER BY id DESC
+                    LIMIT 1
                     """,
-                    user_id,
-                    tx_id,
-                    package_code,
-                    location_code,
-                    price_k,
-                    mode,
-                    batch_no,
-                    delivery,
-                    provider_raw,
+                    uid,
                 )
-
-                new_bal = await conn.fetchval(
-                    "SELECT balance FROM user_balances WHERE user_id = $1", user_id
-                )
-                new_bal = int(new_bal or 0)
-
+            if not row or not row["delivery_json"]:
+                return web.json_response({"delivery": None})
+            delivery = row["delivery_json"]
+            if isinstance(delivery, str):
+                delivery = json.loads(delivery)
             return web.json_response(
-                {
-                    "ok": True,
-                    "transactionId": tx_id,
-                    "esimMode": mode,
-                    "priceKopecks": price_k,
-                    "balanceKopecks": new_bal,
-                    "balanceRub": round(new_bal / 100.0, 2),
-                    "delivery": delivery,
-                }
+                {"delivery": delivery, "transactionId": row["transaction_id"]}
             )
         except Exception as e:
-            logger.error("api_esim_purchase: %s", e, exc_info=True)
+            logger.error("api_esim_latest: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def handle_esim_webhook(self, request: web_request.Request) -> web.Response:

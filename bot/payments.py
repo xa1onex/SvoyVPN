@@ -2,18 +2,337 @@
 Модуль для обработки платежей (Telegram Stars и YooKassa)
 С исправлениями: проверка дубликатов, идемпотентность, транзакции
 """
+import base64
+import json
 import logging
+import uuid
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
+
 from aiogram import Bot
-from aiogram.types import Message, InlineKeyboardButton
+from aiogram.types import BufferedInputFile, Message, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from .database import get_connection
-from .subscriptions import set_new_subscription, extend_subscription, create_or_activate_keys_for_all_servers
+from . import esim_service
 from .config import AppConfig
+from .database import get_connection
+from .subscriptions import create_or_activate_keys_for_all_servers, extend_subscription, set_new_subscription
 
 logger = logging.getLogger(__name__)
+
+
+def _payment_amount_rub_cents(payment_obj: dict) -> int:
+    amt = payment_obj.get("amount")
+    if isinstance(amt, dict):
+        v = amt.get("value")
+    else:
+        v = amt
+    if v is not None:
+        try:
+            return int(round(float(v) * 100))
+        except (TypeError, ValueError):
+            pass
+    for key in ("paid_amount", "paid_fiat_amount"):
+        x = payment_obj.get(key)
+        if x is not None:
+            try:
+                return int(round(float(x) * 100))
+            except (TypeError, ValueError):
+                pass
+    return 0
+
+
+async def _finalize_esim_delivery(
+    conn,
+    *,
+    user_id: int,
+    location_code: str,
+    package_code: str,
+    price_kopecks: int,
+    payment_ref: str,
+    payment_source: str,
+    amount_cents: int,
+    currency: str,
+    telegram_charge_id: Optional[str],
+    provider_charge_id: Optional[str],
+    method_label: str,
+    bot: Optional[Bot],
+    config: AppConfig,
+) -> dict[str, Any]:
+    """Создаёт заказ eSIM, пишет payments + esim_orders, шлёт пользователю QR/код."""
+    mode = esim_service._cfg_mode()
+    tx_id = f"svoy_{user_id}_{uuid.uuid4().hex[:16]}"
+
+    delivery: dict[str, Any]
+    provider_raw: Optional[dict] = None
+    batch_no: Optional[str] = None
+    ok = True
+    err_msg = ""
+
+    if mode == "live":
+        ok_live, err_msg, extra = await esim_service.fulfill_order_live(tx_id, package_code)
+        provider_raw = extra.get("providerResponse") if isinstance(extra, dict) else None
+        batch_no = (extra or {}).get("batchOrderNo") if isinstance(extra, dict) else None
+        if ok_live:
+            delivery = {k: v for k, v in extra.items() if k != "providerResponse"}
+        else:
+            ok = False
+            delivery = {"error": err_msg or "esim_failed", "details": extra}
+    else:
+        delivery = esim_service.test_fake_delivery(package_code)
+
+    plan_key = f"esim:{location_code}:{package_code}"
+    yk_slot = provider_charge_id or payment_ref
+    if telegram_charge_id and not yk_slot:
+        yk_slot = telegram_charge_id
+
+    async with conn.transaction():
+        if telegram_charge_id:
+            await conn.execute(
+                """
+                INSERT INTO payments
+                (user_id, amount, currency, plan_id, plan_type, status,
+                 telegram_payment_charge_id, yookassa_payment_id, payment_source)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                """,
+                user_id,
+                amount_cents,
+                currency,
+                plan_key,
+                "esim",
+                "completed",
+                telegram_charge_id,
+                yk_slot,
+                payment_source,
+            )
+        else:
+            await conn.execute(
+                """
+                INSERT INTO payments
+                (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id, payment_source)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """,
+                user_id,
+                amount_cents,
+                currency,
+                plan_key,
+                "esim",
+                "completed",
+                payment_ref,
+                payment_source,
+            )
+
+        await conn.execute(
+            """
+            INSERT INTO esim_orders
+            (user_id, transaction_id, package_code, location_code, price_kopecks,
+             mode, batch_order_no, status, delivery_json, provider_raw)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            """,
+            user_id,
+            tx_id,
+            package_code,
+            location_code,
+            price_kopecks,
+            mode,
+            batch_no,
+            "completed" if ok else "failed",
+            delivery,
+            provider_raw,
+        )
+
+    if bot:
+        try:
+            if ok and delivery.get("activationCode"):
+                cap = (
+                    f"✅ <b>eSIM готов</b>\n\n"
+                    f"Код активации:\n<code>{delivery.get('activationCode', '')}</code>\n\n"
+                    f"SMDP+:\n<code>{delivery.get('smdpAddress', '')}</code>"
+                )
+                b64 = delivery.get("qrImagePngBase64")
+                if b64:
+                    raw = base64.b64decode(b64)
+                    await bot.send_photo(
+                        user_id,
+                        BufferedInputFile(raw, filename="esim.png"),
+                        caption=cap,
+                        parse_mode="HTML",
+                    )
+                else:
+                    await bot.send_message(user_id, cap, parse_mode="HTML")
+            else:
+                await bot.send_message(
+                    user_id,
+                    "✅ Оплата получена. Оформление eSIM временно не удалось — напишите в поддержку, пришлите скрин оплаты.",
+                    parse_mode="HTML",
+                )
+        except Exception as e:
+            logger.error("eSIM notify user %s: %s", user_id, e, exc_info=True)
+
+    return delivery
+
+
+async def process_esim_webhook_payment(
+    payment_id: str,
+    payment_obj: dict,
+    metadata: dict,
+    bot: Optional[Bot],
+    config: AppConfig,
+    payment_methods: dict,
+) -> bool:
+    """ЮKassa / Crypto Pay: оплата eSIM (metadata.product_type=esim)."""
+    user_id = metadata.get("user_id")
+    loc = metadata.get("location_code") or metadata.get("esim_location")
+    pkg = metadata.get("package_code") or metadata.get("esim_package")
+    method_id = metadata.get("method_id", "yookassa")
+    payment_source = metadata.get("payment_source", "miniapp")
+
+    logger.info(
+        "Processing eSIM webhook payment: id=%s user=%s loc=%s pkg=%s",
+        payment_id,
+        user_id,
+        loc,
+        pkg,
+    )
+
+    if user_id is None or not loc or not pkg:
+        logger.warning("eSIM webhook %s missing metadata", payment_id)
+        return False
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        return False
+    if user_id <= 0:
+        return False
+
+    method_data = payment_methods.get(method_id, {"title": "Онлайн-оплата", "currency": "RUB"})
+    amount_cents = _payment_amount_rub_cents(payment_obj)
+    if amount_cents <= 0:
+        amount_cents = 1
+
+    pkgs = await esim_service.public_packages(str(loc).upper())
+    package_row = next((p for p in pkgs if p.get("packageCode") == pkg), None)
+    if not package_row:
+        logger.error("eSIM webhook: unknown package %s / %s", loc, pkg)
+        return False
+    price_k = int(
+        package_row.get("salePriceKopecks") or esim_service.package_sale_price_kopecks(package_row)
+    )
+
+    async with get_connection() as conn:
+        existing = await conn.fetchrow(
+            "SELECT id, status FROM payments WHERE yookassa_payment_id = $1",
+            payment_id,
+        )
+        if existing and existing["status"] == "completed":
+            logger.warning("eSIM payment %s already done", payment_id)
+            return False
+        user_exists = await conn.fetchval("SELECT user_id FROM users WHERE user_id = $1", user_id)
+        if not user_exists:
+            logger.error("eSIM webhook: user %s missing", user_id)
+            return False
+
+        await _finalize_esim_delivery(
+            conn,
+            user_id=user_id,
+            location_code=str(loc).upper(),
+            package_code=str(pkg),
+            price_kopecks=price_k,
+            payment_ref=payment_id,
+            payment_source=payment_source,
+            amount_cents=amount_cents,
+            currency="RUB",
+            telegram_charge_id=None,
+            provider_charge_id=None,
+            method_label=method_data.get("title", method_id),
+            bot=bot,
+            config=config,
+        )
+
+    logger.info("eSIM webhook payment %s completed for user %s", payment_id, user_id)
+    return True
+
+
+async def process_esim_telegram_invoice_payment(
+    message: Message,
+    bot: Bot,
+    config: AppConfig,
+    method_id: str,
+    source: str,
+    location_code: str,
+    package_code: str,
+) -> bool:
+    """Успешная оплата инвойса Telegram (Stars / нативная ЮKassa) для eSIM."""
+    user_id = message.from_user.id
+    charge_id = message.successful_payment.telegram_payment_charge_id
+    provider_charge_id = message.successful_payment.provider_payment_charge_id
+    currency = message.successful_payment.currency
+    total_amount = message.successful_payment.total_amount
+
+    pkgs = await esim_service.public_packages(location_code.upper())
+    package_row = next((p for p in pkgs if p.get("packageCode") == package_code), None)
+    if not package_row:
+        logger.error("eSIM telegram: bad package %s %s", location_code, package_code)
+        await message.answer("❌ Тариф не найден. Обратитесь в поддержку.")
+        return False
+
+    price_k = int(
+        package_row.get("salePriceKopecks") or esim_service.package_sale_price_kopecks(package_row)
+    )
+    if currency == "XTR":
+        expected = max(1, (price_k + 99) // 100)
+        if int(total_amount) != int(expected):
+            logger.error(
+                "eSIM stars amount mismatch: got %s expected %s", total_amount, expected
+            )
+            await message.answer("❌ Сумма платежа не совпадает с тарифом.")
+            return False
+        amount_cents = int(total_amount)
+    else:
+        expected_k = price_k
+        if int(total_amount) != int(expected_k):
+            logger.error(
+                "eSIM rub invoice mismatch: got %s expected %s", total_amount, expected_k
+            )
+            await message.answer("❌ Сумма платежа не совпадает с тарифом.")
+            return False
+        amount_cents = int(total_amount)
+
+    async with get_connection() as conn:
+        if provider_charge_id:
+            existing_payment = await conn.fetchrow(
+                "SELECT id, status FROM payments WHERE telegram_payment_charge_id = $1 OR yookassa_payment_id = $2",
+                charge_id,
+                provider_charge_id,
+            )
+        else:
+            existing_payment = await conn.fetchrow(
+                "SELECT id, status FROM payments WHERE telegram_payment_charge_id = $1",
+                charge_id,
+            )
+        if existing_payment and existing_payment["status"] == "completed":
+            await message.answer("✅ Этот платёж уже был обработан.")
+            return False
+
+        await _finalize_esim_delivery(
+            conn,
+            user_id=user_id,
+            location_code=location_code.upper(),
+            package_code=package_code,
+            price_kopecks=price_k,
+            payment_ref=charge_id,
+            payment_source=source,
+            amount_cents=amount_cents,
+            currency=currency,
+            telegram_charge_id=charge_id,
+            provider_charge_id=provider_charge_id,
+            method_label=method_id,
+            bot=bot,
+            config=config,
+        )
+
+    await message.answer("✅ Оплата принята! eSIM отправлен вам в отдельном сообщении.")
+    return True
 
 
 async def process_telegram_stars_payment(
@@ -204,7 +523,17 @@ async def process_webhook_payment(
     payment_source = metadata.get("payment_source", "bot")
     
     logger.info(f"Processing webhook payment: id={payment_id}, method={method_id}, user={user_id}, plan={plan_id}, source={payment_source}")
-    
+
+    if str(metadata.get("product_type") or "").lower() == "esim":
+        return await process_esim_webhook_payment(
+            payment_id=payment_id,
+            payment_obj=payment_obj,
+            metadata=metadata,
+            bot=bot,
+            config=config,
+            payment_methods=payment_methods,
+        )
+
     if user_id is None or plan_id is None:
         logger.warning(f"Webhook payment {payment_id} missing required metadata")
         return False
