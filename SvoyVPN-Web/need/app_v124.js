@@ -384,7 +384,7 @@ window.AppConfig = {
     selectedPM: null,
   };
 
-  /** Единый формат рефералки из /api/user или /api/referral (camelCase / snake_case). */
+  /** Единый формат рефералки только из ответа /api/user (camelCase / snake_case). */
   function normalizeReferralFromApi(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const code = raw.referralCode || raw.referral_code;
@@ -1582,8 +1582,29 @@ window.AppConfig = {
       return;
     }
 
-    // Telegram WebApp: ВСЕГДА раньше web-JWT из того же WebView (иначе чужой JWT + лишние запросы /api/referral → 400)
-    if (tg && tg.initData) {
+    const inTelegramWithData = !!(tg && tg.initData);
+
+    // Обычный браузер / нет initData: только email-JWT (подарки не зависят от Telegram WebApp)
+    if (!inTelegramWithData && !IS_MOBILE_APP && localStorage.getItem('svoyvpn_web_jwt')) {
+      const d = await api('/api/user', { method: 'GET' });
+      if (d && d.user) {
+        S.authViaWebJwt = true;
+        S.user = d.user;
+        S.subscription = d.subscription;
+        S.referral = normalizeReferralFromApi(d.referral);
+        renderUser();
+        renderNews();
+        if (!silent) showScreen('screenVpn');
+      } else {
+        S.authViaWebJwt = false;
+        localStorage.removeItem('svoyvpn_web_jwt');
+        showScreen('screenAuth');
+      }
+      return;
+    }
+
+    // Telegram WebApp: вход только по initData (тот же /api/user, поле referral — без отдельного /api/referral)
+    if (inTelegramWithData) {
       const wasActive = S.subscription && S.subscription.isActive;
       const oldEnd = S.subscription && S.subscription.endDate;
 
@@ -1617,25 +1638,6 @@ window.AppConfig = {
             hideModal('modalPlan');
           }
         }
-      }
-      return;
-    }
-
-    // Браузер без Telegram: JWT из localStorage
-    if (!IS_MOBILE_APP && localStorage.getItem('svoyvpn_web_jwt')) {
-      const d = await api('/api/user', { method: 'GET' });
-      if (d && d.user) {
-        S.authViaWebJwt = true;
-        S.user = d.user;
-        S.subscription = d.subscription;
-        S.referral = normalizeReferralFromApi(d.referral);
-        renderUser();
-        renderNews();
-        if (!silent) showScreen('screenVpn');
-      } else {
-        S.authViaWebJwt = false;
-        localStorage.removeItem('svoyvpn_web_jwt');
-        showScreen('screenAuth');
       }
       return;
     }
@@ -2074,99 +2076,96 @@ window.AppConfig = {
 
     let refLink = '';
 
+    function setReferralActionButtons(enabled) {
+      ['btnCopyRef', 'btnShareRef'].forEach(function (id) {
+        const b = document.getElementById(id);
+        if (!b) return;
+        b.disabled = !enabled;
+        b.style.opacity = enabled ? '1' : '0.5';
+        b.style.pointerEvents = enabled ? '' : 'none';
+      });
+    }
+
+    /**
+     * Экран подарков: только данные из /api/user (поле referral).
+     * Не вызываем /api/referral — нет лишних 400 в консоли.
+     */
+    function setReferralScreenPlaceholder(mode) {
+      const refDesc = document.getElementById('refDesc');
+      const refL = document.getElementById('refLinkText');
+      const refC = document.getElementById('refCount');
+      const refB = document.getElementById('refBonus');
+      refLink = '';
+      setReferralActionButtons(false);
+      if (mode === 'loading') {
+        if (refDesc) refDesc.textContent = 'Загружаем…';
+        if (refL) refL.textContent = '…';
+        if (refC) refC.textContent = '…';
+        if (refB) refB.textContent = '…';
+        return;
+      }
+      if (mode === 'guest') {
+        if (refDesc) {
+          refDesc.textContent =
+            'Чтобы получить персональную ссылку, войдите на сайте через email и пароль (вкладка входа). ' +
+            'Реферальная ссылка приходит с сервера вместе с профилем — отдельный запрос к API не используется.';
+        }
+        if (refL) refL.textContent = '—';
+        if (refC) refC.textContent = '—';
+        if (refB) refB.textContent = '—';
+        return;
+      }
+      if (mode === 'pending') {
+        if (refDesc) {
+          refDesc.textContent =
+            'Профиль загружен, но блок рефералки в ответе сервера пустой. Обновите страницу или напишите в поддержку — на стороне API должно быть поле referral в /api/user.';
+        }
+        if (refL) refL.textContent = '—';
+        if (refC) refC.textContent = '0 чел.';
+        if (refB) refB.textContent = '—';
+      }
+    }
+
     function applyReferralPayload(d) {
       const n = normalizeReferralFromApi(d);
       if (!n) return false;
       S.referral = n;
       refLink = n.refLink;
-      d = n;
       const refL = document.getElementById('refLinkText');
-      if (refL) refL.textContent = d.refLink;
+      if (refL) refL.textContent = n.refLink;
       const refC = document.getElementById('refCount');
-      if (refC) refC.textContent = d.referralCount + ' чел.';
+      if (refC) refC.textContent = n.referralCount + ' чел.';
       const refB = document.getElementById('refBonus');
-      if (refB) refB.textContent = d.inviterBonusDays + ' дн. за друга';
+      if (refB) refB.textContent = n.inviterBonusDays + ' дн. за друга';
       const refDEl = document.getElementById('refDesc');
       if (refDEl) {
         refDEl.textContent =
-          `Дарим ${d.inviterBonusDays} дней Вам и ${d.invitedBonusDays} дня другу за каждое успешное приглашение.`;
+          `Дарим ${n.inviterBonusDays} дней Вам и ${n.invitedBonusDays} дня другу за каждое успешное приглашение.`;
       }
+      setReferralActionButtons(true);
       return true;
     }
 
     async function loadReferral() {
-      const refDesc = document.getElementById('refDesc');
-
-      async function fetchReferralPostInit(initDataStr) {
-        try {
-          const r = await fetch('/api/referral', {
-            method: 'POST',
-            skipWebJwt: true,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ initData: initDataStr }),
-          });
-          if (!r.ok) return null;
-          return await r.json().catch(() => null);
-        } catch (_) {
-          return null;
-        }
+      setReferralScreenPlaceholder('loading');
+      if (!applyReferralPayload(S.referral)) {
+        await loadUser(true);
       }
-
-      async function fetchReferralGetJwt(token) {
-        try {
-          const r = await fetch('/api/referral', {
-            method: 'GET',
-            skipWebJwt: true,
-            headers: { Authorization: 'Bearer ' + token },
-          });
-          if (!r.ok) return null;
-          return await r.json().catch(() => null);
-        } catch (_) {
-          return null;
-        }
-      }
-
       if (applyReferralPayload(S.referral)) return;
-      await loadUser(true);
-      if (applyReferralPayload(S.referral)) return;
-
-      if (tg && tg.initData) {
-        const j = await fetchReferralPostInit(String(tg.initData));
-        const n = normalizeReferralFromApi(j);
-        if (n) {
-          S.referral = n;
-          if (applyReferralPayload(S.referral)) return;
-        }
+      if (!S.user) {
+        setReferralScreenPlaceholder('guest');
+        return;
       }
-
-      if (S.authViaWebJwt) {
-        const tok = localStorage.getItem('svoyvpn_web_jwt');
-        if (tok) {
-          const j = await fetchReferralGetJwt(tok);
-          const n = normalizeReferralFromApi(j);
-          if (n) {
-            S.referral = n;
-            if (applyReferralPayload(S.referral)) return;
-          }
-        }
-      }
-
-      if (IS_ANDROID && ANDROID_JWT) {
-        const j = await fetchReferralGetJwt(ANDROID_JWT);
-        const n = normalizeReferralFromApi(j);
-        if (n) {
-          S.referral = n;
-          if (applyReferralPayload(S.referral)) return;
-        }
-      }
-
-      if (refDesc) {
-        refDesc.textContent =
-          'Не удалось загрузить подарки. Потяните экран вниз для обновления или откройте приложение из бота снова.';
-      }
+      setReferralScreenPlaceholder('pending');
     }
 
-    addClick('btnCopyRef', function () { copyText(refLink, this); });
+    addClick('btnCopyRef', function () {
+      if (!refLink) {
+        showToast('Сначала загрузите реферальную ссылку (обновите экран или войдите на сайте).', 4000);
+        return;
+      }
+      copyText(refLink, this);
+    });
     addClick('btnShareRef', function () {
       if (!refLink) return;
       const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent('Попробуй этот отличный VPN! Дают бонусные дни при регистрации по ссылке 🎁')}`;
