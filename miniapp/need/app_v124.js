@@ -664,7 +664,7 @@
               <p class="sub-status-hero__meta">${daysMeta}</p>
               ${
                 warnSoon
-                  ? '<p class="sub-status-hero__urgent">Скоро окончание — продлить можно в окне тарифов из профиля.</p>'
+                  ? '<p class="sub-status-hero__urgent">Скоро окончание — продлите подписку, чтобы оставться в сети!</p>'
                   : ''
               }
             </div>
