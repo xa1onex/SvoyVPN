@@ -208,6 +208,7 @@ class WebhookServer:
             ('/api/esim/packages', self.api_esim_packages, 'GET'),
             ('/api/esim/payment/create', self.api_esim_create_payment, 'POST'),
             ('/api/esim/latest', self.api_esim_latest, 'GET'),
+            ('/api/esim/mine', self.api_esim_mine, 'GET'),
         ]
         
         for path, handler, method in api_routes:
@@ -3047,6 +3048,50 @@ class WebhookServer:
             )
         except Exception as e:
             logger.error("api_esim_latest: %s", e, exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_esim_mine(self, request: web_request.Request) -> web.Response:
+        """Список выданных eSIM пользователя (данные для установки)."""
+        try:
+            uid = self._auth_user_id_from_miniapp_request(request, None)
+            if not uid:
+                return web.json_response({"error": "Unauthorized"}, status=401)
+            async with get_connection() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT transaction_id, package_code, location_code, status,
+                           delivery_json, created_at
+                    FROM esim_orders
+                    WHERE user_id = $1 AND status = 'completed'
+                      AND delivery_json IS NOT NULL
+                    ORDER BY id DESC
+                    LIMIT 50
+                    """,
+                    uid,
+                )
+            orders = []
+            for row in rows:
+                delivery = row["delivery_json"]
+                if isinstance(delivery, str):
+                    try:
+                        delivery = json.loads(delivery)
+                    except Exception:
+                        delivery = None
+                if not delivery or not isinstance(delivery, dict):
+                    continue
+                created = row["created_at"]
+                orders.append(
+                    {
+                        "transactionId": row["transaction_id"],
+                        "packageCode": row["package_code"],
+                        "locationCode": row["location_code"],
+                        "createdAt": created.isoformat() if created else None,
+                        "delivery": delivery,
+                    }
+                )
+            return web.json_response({"orders": orders})
+        except Exception as e:
+            logger.error("api_esim_mine: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def handle_esim_webhook(self, request: web_request.Request) -> web.Response:

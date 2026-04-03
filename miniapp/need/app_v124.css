@@ -82,8 +82,9 @@ html[data-theme="light"] {
     display: none;
 }
 
-/* VPN home: лого → переключатель → середина (подсказка) → подписка; без «растягивания» пустоты между блоками */
-#screenVpn .screen-content.vpn-screen-layout {
+/* Главная VPN / eSIM: лого с «дыханием» → заголовки → переключатель → контент */
+#screenVpn .screen-content.vpn-screen-layout,
+#screenEsim .screen-content.vpn-screen-layout {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -92,7 +93,8 @@ html[data-theme="light"] {
     padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
 }
 
-#screenVpn .vpn-screen__top {
+#screenVpn .vpn-screen__top,
+#screenEsim .vpn-screen__top {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -109,6 +111,17 @@ html[data-theme="light"] {
     align-items: center;
 }
 
+#screenEsim .vpn-screen__mid.esim-screen__form {
+    flex: 0 1 auto;
+    min-height: 0;
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    box-sizing: border-box;
+}
+
 #screenVpn .vpn-screen__bottom {
     width: 100%;
     flex-shrink: 0;
@@ -116,6 +129,54 @@ html[data-theme="light"] {
 
 #screenVpn .vpn-screen__sub-box {
     width: 100%;
+}
+
+.tab-bar:not(.tab-bar--esim) .tab--esim-only {
+    display: none !important;
+}
+
+.tab-bar.tab-bar--esim .tab--vpn-only {
+    display: none !important;
+}
+
+@media (max-width: 1023px) {
+    html[data-product="esim"] #profileServersBlock {
+        display: none !important;
+    }
+}
+
+.esim-mine-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.esim-mine-card {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--separator_color, rgba(0, 0, 0, .08));
+    background: var(--section_bg_color, var(--tg-theme-section-bg-color, #f7f9fb));
+    text-align: left;
+}
+
+.esim-mine-card__meta {
+    margin: 0 0 10px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--subtitle_text_color, #8e9db0);
+}
+
+.esim-mine-card__qr {
+    max-width: 180px;
+    margin: 8px auto;
+    display: block;
+    border-radius: 8px;
+}
+
+.esim-mine-card .esim-code-row {
+    margin-top: 8px;
 }
 
 /* ── Tab Bar ── */

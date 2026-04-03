@@ -410,6 +410,10 @@ window.AppConfig = {
     try {
       p = localStorage.getItem(PRODUCT_KEY) || 'vpn';
     } catch (_) {}
+    document.documentElement.setAttribute('data-product', p);
+    const bar = document.getElementById('tabBar');
+    if (bar) bar.classList.toggle('tab-bar--esim', p === 'esim');
+
     document.querySelectorAll('.product-switch__btn').forEach((btn) => {
       const on = btn.dataset.product === p;
       btn.classList.toggle('product-switch__btn--active', on);
@@ -689,6 +693,7 @@ window.AppConfig = {
     if (tab) tab.classList.add('active');
 
     if (id === 'screenEsim') ensureEsimCountriesLoaded();
+    if (id === 'screenEsimMine') loadEsimMineList();
     if (id === 'screenVpn') maybeShowServersRelocatedHint();
     if (id === 'screenProfile') dismissServersRelocatedHint();
 
@@ -1837,6 +1842,110 @@ window.AppConfig = {
         img.style.display = 'none';
       }
     }
+  }
+
+  function fmtEsimMineWhen(iso) {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (_) {
+      return String(iso);
+    }
+  }
+
+  function esimMineQrHtml(del) {
+    if (!del || typeof del !== 'object') return '';
+    const b64 = del.qrImagePngBase64;
+    if (b64 && typeof b64 === 'string') {
+      const clean = b64.replace(/\s/g, '');
+      if (/^[A-Za-z0-9+/=]+$/.test(clean)) {
+        return (
+          '<img class="esim-mine-card__qr" alt="" src="data:image/png;base64,' + clean + '"/>'
+        );
+      }
+    }
+    if (del.qrCodeUrl && isSafeHttpsUrl(del.qrCodeUrl)) {
+      return (
+        '<img class="esim-mine-card__qr" alt="" src="' + escapeHtml(del.qrCodeUrl) + '"/>'
+      );
+    }
+    return '';
+  }
+
+  async function loadEsimMineList() {
+    const wrap = document.getElementById('esimMineList');
+    if (!wrap) return;
+    wrap.innerHTML = '<p class="body text-muted text-center">Загрузка…</p>';
+    let url = '/api/esim/mine';
+    const opts = { method: 'GET', silentError: true };
+    if (IS_ANDROID) {
+      opts.headers = { Authorization: 'Bearer ' + ANDROID_JWT };
+    } else if (tg && tg.initData) {
+      url += '?initData=' + encodeURIComponent(tg.initData);
+      opts.skipWebJwt = true;
+    } else {
+      wrap.innerHTML =
+        '<p class="body text-muted text-center" style="padding:12px 8px;">Войдите через приложение Telegram.</p>';
+      return;
+    }
+    let d;
+    try {
+      d = await api(url, opts);
+    } catch (_) {
+      wrap.innerHTML =
+        '<p class="body text-muted text-center" style="padding:12px 8px;">Не удалось загрузить список.</p>';
+      return;
+    }
+    if (!d || d.error) {
+      wrap.innerHTML =
+        '<p class="body text-muted text-center" style="padding:12px 8px;">Не удалось загрузить список.</p>';
+      return;
+    }
+    const orders = (d.orders || []).filter((o) => o && o.delivery);
+    if (!orders.length) {
+      wrap.innerHTML =
+        '<p class="body text-muted text-center" style="padding:12px 8px;">Пока нет готовых eSIM. Оформите тариф на вкладке «Главная».</p>';
+      return;
+    }
+    wrap.innerHTML = '';
+    orders.forEach((o) => {
+      const del = o.delivery || {};
+      const ac = del.activationCode || del.ac || '—';
+      const smdp = del.smdpAddress || del.smdp || '—';
+      const loc = o.locationCode ? 'Регион: ' + escapeHtml(String(o.locationCode)) + ' · ' : '';
+      const meta = loc + escapeHtml(fmtEsimMineWhen(o.createdAt));
+      const card = document.createElement('div');
+      card.className = 'esim-mine-card';
+      card.innerHTML =
+        '<p class="esim-mine-card__meta">' +
+        meta +
+        '</p>' +
+        esimMineQrHtml(del) +
+        '<p class="caption text-muted" style="margin:8px 0 4px;">Код активации</p>' +
+        '<div class="esim-code-row">' +
+        '<code class="esim-ac">' +
+        escapeHtml(String(ac)) +
+        '</code>' +
+        '<button type="button" class="btn-secondary esim-copy-btn esim-mine-copy-ac">Копировать</button></div>' +
+        '<p class="caption text-muted" style="margin:12px 0 4px;">SMDP+ адрес</p>' +
+        '<code class="esim-ac esim-ac--sm">' +
+        escapeHtml(String(smdp)) +
+        '</code>';
+      wrap.appendChild(card);
+      const copyBtn = card.querySelector('.esim-mine-copy-ac');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+          copyText(String(ac), this);
+        });
+      }
+    });
   }
 
   let checkEsimInterval = null;

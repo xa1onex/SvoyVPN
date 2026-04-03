@@ -115,47 +115,71 @@
 
     <!-- ═══ SCREEN: eSIM ═══ -->
     <div id="screenEsim" class="screen">
-      <div class="screen-content esim-screen" style="display:flex;flex-direction:column;align-items:stretch;width:100%;max-width:420px;margin:0 auto;">
+      <div class="screen-content vpn-screen-layout">
 
-        <div class="product-switch" role="tablist" aria-label="Продукт">
-          <button type="button" class="product-switch__btn" data-product="vpn" aria-selected="false">VPN</button>
-          <button type="button" class="product-switch__btn product-switch__btn--active" data-product="esim" aria-selected="true">eSIM</button>
-        </div>
-        <div class="gap-8"></div>
-
-        <p class="title text-center" style="margin:0;">eSIM интернет</p>
-        <p class="body text-muted text-center" style="margin-top:6px;">Тариф по стране — оплата как у подписки (Stars, карта, Crypto Pay)</p>
-        <p id="esimModeHint" class="caption text-muted text-center" style="margin-top:8px;opacity:0.85;"></p>
-
-        <div class="gap-12"></div>
-
-        <label class="esim-label" for="esimCountry">Страна / регион</label>
-        <select id="esimCountry" class="esim-select">
-          <option value="">Загрузка…</option>
-        </select>
-
-        <div class="gap-12"></div>
-        <p class="section-title" style="margin:0 0 8px 0;">Тарифы</p>
-        <div id="esimPackages" class="esim-packages">
-          <div class="esim-packages-placeholder text-muted body">Выберите страну</div>
-        </div>
-
-        <div class="gap-16"></div>
-        <button type="button" id="btnEsimBuy" class="btn-primary" style="width:100%;" disabled>Оплатить</button>
-
-        <div id="esimResult" class="esim-result" style="display:none;">
-          <p class="section-title" style="margin-top:20px;">Ваш eSIM</p>
-          <div class="esim-qr-wrap">
-            <img id="esimQrImg" alt="QR eSIM" class="esim-qr-img" />
+        <div class="vpn-screen__top">
+          <div class="logo-anim">
+            <div class="ring" style="--ring-opacity:.15;"></div>
+            <div class="ring" style="--ring-opacity:.25;"></div>
+            <div class="ring" style="--ring-opacity:.35;"></div>
+            <div class="logo-core">
+              <svg viewBox="0 0 1024 1024" fill="currentColor" style="width:75px;height:75px;">
+                <use href="#svoy-logo-path" />
+              </svg>
+            </div>
           </div>
-          <p class="caption text-muted" style="margin-top:8px;">Код активации</p>
-          <div class="esim-code-row">
-            <code id="esimAcCode" class="esim-ac"></code>
-            <button type="button" id="btnEsimCopyAc" class="btn-secondary esim-copy-btn">Копировать</button>
+
+          <div class="gap-8"></div>
+          <p class="title text-center" style="margin:0;">eSIM интернет</p>
+          <p class="body text-muted text-center" style="margin-top:6px;">Тариф по стране — оплата как у подписки (Stars, карта, Crypto Pay)</p>
+          <p id="esimModeHint" class="caption text-muted text-center" style="margin-top:8px;opacity:0.85;"></p>
+
+          <div class="gap-10"></div>
+          <div class="product-switch" role="tablist" aria-label="Продукт">
+            <button type="button" class="product-switch__btn" data-product="vpn" aria-selected="false">VPN</button>
+            <button type="button" class="product-switch__btn product-switch__btn--active" data-product="esim" aria-selected="true">eSIM</button>
           </div>
-          <p class="caption text-muted" style="margin-top:12px;">SMDP+ адрес</p>
-          <code id="esimSmdpCode" class="esim-ac esim-ac--sm"></code>
         </div>
+
+        <div class="vpn-screen__mid esim-screen__form">
+          <label class="esim-label" for="esimCountry">Страна / регион</label>
+          <select id="esimCountry" class="esim-select">
+            <option value="">Загрузка…</option>
+          </select>
+
+          <div class="gap-12"></div>
+          <p class="section-title" style="margin:0 0 8px 0;">Тарифы</p>
+          <div id="esimPackages" class="esim-packages">
+            <div class="esim-packages-placeholder text-muted body">Выберите страну</div>
+          </div>
+
+          <div class="gap-16"></div>
+          <button type="button" id="btnEsimBuy" class="btn-primary" style="width:100%;" disabled>Оплатить</button>
+
+          <div id="esimResult" class="esim-result" style="display:none;">
+            <p class="section-title" style="margin-top:20px;">Ваш eSIM</p>
+            <div class="esim-qr-wrap">
+              <img id="esimQrImg" alt="QR eSIM" class="esim-qr-img" />
+            </div>
+            <p class="caption text-muted" style="margin-top:8px;">Код активации</p>
+            <div class="esim-code-row">
+              <code id="esimAcCode" class="esim-ac"></code>
+              <button type="button" id="btnEsimCopyAc" class="btn-secondary esim-copy-btn">Копировать</button>
+            </div>
+            <p class="caption text-muted" style="margin-top:12px;">SMDP+ адрес</p>
+            <code id="esimSmdpCode" class="esim-ac esim-ac--sm"></code>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: МОИ eSIM ═══ -->
+    <div id="screenEsimMine" class="screen">
+      <div class="screen-content esim-mine-screen" style="display:flex;flex-direction:column;align-items:center;width:100%;max-width:420px;margin:0 auto;box-sizing:border-box;">
+        <p class="title text-center" style="margin:0;">Мои eSIM</p>
+        <p class="body text-muted text-center" style="margin-top:8px;">Купленные тарифы, QR и коды активации</p>
+        <div class="gap-12"></div>
+        <div id="esimMineList" class="esim-mine-list" style="width:100%;"></div>
       </div>
     </div>
 
@@ -523,7 +547,7 @@
         </svg>
         <span class="tab-label">Главная</span>
       </button>
-      <button class="tab" data-screen="screenSetup">
+      <button type="button" class="tab tab--vpn-only" data-screen="screenSetup">
         <svg class="tab-icon tab-icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3" />
@@ -532,7 +556,15 @@
         </svg>
         <span class="tab-label">Подключиться</span>
       </button>
-      <button class="tab" data-screen="screenReferral">
+      <button type="button" class="tab tab--esim-only" data-screen="screenEsimMine">
+        <svg class="tab-icon tab-icon-esim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+          <path d="M9 6h6M9 10h6M9 14h4" />
+        </svg>
+        <span class="tab-label">Мои eSIM</span>
+      </button>
+      <button type="button" class="tab tab--vpn-only" data-screen="screenReferral">
         <svg class="tab-icon tab-icon-gift" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
