@@ -354,14 +354,6 @@
         </div>
 
         <div class="vpn-screen__mid">
-          <!-- Моб.: подсказка после обновления — сервера в Профиль -->
-          <div id="serversRelocatedHint" class="servers-relocated-hint" role="status" aria-live="polite">
-            <div class="servers-relocated-hint__inner">
-              <p class="servers-relocated-hint__text">Сервера для проверки пинга теперь во вкладке <strong>Профиль</strong> — откройте её внизу экрана.</p>
-              <button type="button" class="btn-secondary servers-relocated-hint__btn" id="btnServersRelocatedHintOk">Понятно</button>
-            </div>
-          </div>
-
           <!-- Десктоп (≥1024px): карта на главной VPN; моб. — скрыто в CSS -->
           <div class="vpn-desktop-map-block">
             <div class="vpn-desktop-map-block__toolbar">
@@ -819,12 +811,15 @@
         </svg>
         <span class="tab-label">Подарки</span>
       </button>
-      <button class="tab" data-screen="screenProfile">
-        <svg class="tab-icon tab-icon-profile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="8" r="4" class="profile-head" />
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" class="profile-body" />
-        </svg>
+      <button type="button" class="tab" data-screen="screenProfile">
+        <span class="tab-icon-clip" aria-hidden="true">
+          <svg class="tab-icon tab-icon-profile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4" class="profile-head" />
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" class="profile-body" />
+          </svg>
+          <span id="profileServersHintDot" class="tab-hint-dot" hidden></span>
+        </span>
         <span class="tab-label">Профиль</span>
       </button>
     </nav>

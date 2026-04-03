@@ -372,10 +372,6 @@
     display: none !important;
   }
 
-  .servers-relocated-hint {
-    display: none !important;
-  }
-
   /* Карта на главной VPN (моб. скрыта в app_v124.css) */
   .vpn-desktop-map-block {
     display: block !important;

@@ -637,6 +637,7 @@ window.AppConfig = {
   }
 
   const SERVERS_PROFILE_HINT_KEY = 'svoy_hint_servers_profile_v2';
+  const PROFILE_TAB_SERVERS_HINT_TITLE = 'Сервера и пинг — во вкладке «Профиль»';
   const DESKTOP_MAP_MIN = 1024;
 
   function isDesktopMapServers() {
@@ -644,21 +645,33 @@ window.AppConfig = {
   }
 
   function dismissServersRelocatedHint() {
-    const el = document.getElementById('serversRelocatedHint');
-    if (el) el.classList.remove('servers-relocated-hint--visible');
+    const dot = document.getElementById('profileServersHintDot');
+    if (dot) dot.hidden = true;
+    const tab = document.querySelector('.tab[data-screen="screenProfile"]');
+    if (tab) tab.removeAttribute('title');
     try {
       localStorage.setItem(SERVERS_PROFILE_HINT_KEY, '1');
     } catch (_) {}
   }
 
   function maybeShowServersRelocatedHint() {
-    if (isDesktopMapServers()) return;
+    const dot = document.getElementById('profileServersHintDot');
+    if (isDesktopMapServers()) {
+      if (dot) dot.hidden = true;
+      const tab = document.querySelector('.tab[data-screen="screenProfile"]');
+      if (tab) tab.removeAttribute('title');
+      return;
+    }
     try {
-      if (localStorage.getItem(SERVERS_PROFILE_HINT_KEY)) return;
+      if (localStorage.getItem(SERVERS_PROFILE_HINT_KEY)) {
+        if (dot) dot.hidden = true;
+        return;
+      }
     } catch (_) {}
-    const el = document.getElementById('serversRelocatedHint');
-    if (!el) return;
-    el.classList.add('servers-relocated-hint--visible');
+    if (!dot) return;
+    dot.hidden = false;
+    const tab = document.querySelector('.tab[data-screen="screenProfile"]');
+    if (tab) tab.setAttribute('title', PROFILE_TAB_SERVERS_HINT_TITLE);
   }
 
   /* ═══════ Navigation ═══════ */
@@ -677,6 +690,7 @@ window.AppConfig = {
 
     if (id === 'screenEsim') ensureEsimCountriesLoaded();
     if (id === 'screenVpn') maybeShowServersRelocatedHint();
+    if (id === 'screenProfile') dismissServersRelocatedHint();
 
     haptic('light');
   }
@@ -2332,8 +2346,6 @@ window.AppConfig = {
     applyProductSwitchUI();
 
     maybeShowServersRelocatedHint();
-    const btnSrvHint = document.getElementById('btnServersRelocatedHintOk');
-    if (btnSrvHint) btnSrvHint.addEventListener('click', dismissServersRelocatedHint);
 
     let _serversResizeTimer;
     window.addEventListener('resize', function () {
@@ -2341,6 +2353,7 @@ window.AppConfig = {
       _serversResizeTimer = setTimeout(function () {
         renderServers();
         startPingRefresh();
+        maybeShowServersRelocatedHint();
       }, 280);
     });
 
