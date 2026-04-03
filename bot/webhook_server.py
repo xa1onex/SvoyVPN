@@ -209,6 +209,7 @@ class WebhookServer:
             ('/api/esim/payment/create', self.api_esim_create_payment, 'POST'),
             ('/api/esim/latest', self.api_esim_latest, 'GET'),
             ('/api/esim/mine', self.api_esim_mine, 'GET'),
+            ('/api/esim/beta-notify', self.api_esim_beta_notify, 'POST'),
         ]
         
         for path, handler, method in api_routes:
@@ -3093,6 +3094,56 @@ class WebhookServer:
         except Exception as e:
             logger.error("api_esim_mine: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
+
+    async def api_esim_beta_notify(self, request: web_request.Request) -> web.Response:
+        """Заявка на уведомление об открытии eSIM beta (email + user_id)."""
+        import html as html_mod
+        import re
+
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        email_raw = (body.get("email") or "").strip()
+        email = email_raw.lower()
+        if not email or len(email) > 254:
+            return web.json_response({"error": "Укажите email"}, status=400)
+        if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
+            return web.json_response({"error": "Некорректный email"}, status=400)
+
+        uid = self._auth_user_id_from_miniapp_request(request, body)
+        if not uid:
+            return web.json_response({"error": "Unauthorized"}, status=401)
+
+        try:
+            async with get_connection() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO esim_beta_waitlist (user_id, email)
+                    VALUES ($1, $2)
+                    ON CONFLICT (user_id) DO UPDATE
+                    SET email = EXCLUDED.email, updated_at = NOW()
+                    """,
+                    uid,
+                    email,
+                )
+        except Exception as e:
+            logger.error("api_esim_beta_notify db: %s", e, exc_info=True)
+            return web.json_response({"error": "Сохранить не удалось"}, status=500)
+
+        if self.bot and self.admin_ids:
+            text = (
+                "📧 <b>eSIM beta — заявка</b>\n"
+                f"user_id: <code>{uid}</code>\n"
+                f"email: <code>{html_mod.escape(email)}</code>"
+            )
+            for aid in self.admin_ids:
+                try:
+                    await self.bot.send_message(chat_id=aid, text=text, parse_mode="HTML")
+                except Exception as ex:
+                    logger.warning("beta-notify admin %s: %s", aid, ex)
+
+        return web.json_response({"status": "ok"})
 
     async def handle_esim_webhook(self, request: web_request.Request) -> web.Response:
         """Уведомления eSIM Access: статусы, данные, ошибки (GET query или POST JSON/form)."""

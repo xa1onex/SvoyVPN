@@ -462,6 +462,20 @@ async def init_db() -> None:
         except Exception as e:
             logging.warning(f"Could not create esim_webhook_events table: {e}")
 
+        try:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS esim_beta_waitlist (
+                    user_id BIGINT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+                    email TEXT NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+                """
+            )
+        except Exception as e:
+            logging.warning(f"Could not create esim_beta_waitlist table: {e}")
+
         # news
         try:
             await conn.execute('''

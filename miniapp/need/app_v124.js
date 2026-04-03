@@ -80,7 +80,10 @@
     } catch (_) {}
     applyProductSwitchUI();
     if (navigate) showScreen(product === 'esim' ? 'screenEsim' : 'screenVpn');
-    if (product === 'esim') ensureEsimCountriesLoaded();
+    if (product === 'esim') {
+      syncEsimBetaGate();
+      if (userIsEsimAdmin()) ensureEsimCountriesLoaded();
+    }
   }
 
   function escapeHtml(s) {
@@ -337,8 +340,14 @@
     }
     if (tab) tab.classList.add('active');
 
-    if (id === 'screenEsim') ensureEsimCountriesLoaded();
-    if (id === 'screenEsimMine') loadEsimMineList();
+    if (id === 'screenEsim') {
+      syncEsimBetaGate();
+      if (userIsEsimAdmin()) ensureEsimCountriesLoaded();
+    }
+    if (id === 'screenEsimMine') {
+      syncEsimBetaGate();
+      if (userIsEsimAdmin()) loadEsimMineList();
+    }
     if (id === 'screenVpn') maybeShowServersRelocatedHint();
     if (id === 'screenProfile') dismissServersRelocatedHint();
 
@@ -1064,6 +1073,18 @@
 
     // Refresh servers layout (pageSize may change if trial block appeared)
     renderServers();
+    syncEsimBetaGate();
+  }
+
+  function userIsEsimAdmin() {
+    return !!(S.user && S.user.isAdmin === true);
+  }
+
+  function syncEsimBetaGate() {
+    const admin = userIsEsimAdmin();
+    document.querySelectorAll('.esim-beta-gate').forEach((el) => {
+      el.hidden = admin;
+    });
   }
 
   function fmtBytes(n) {
@@ -1076,6 +1097,7 @@
   const ESIM_API_PREFIX = '/miniapp/api';
 
   async function ensureEsimCountriesLoaded() {
+    if (!userIsEsimAdmin()) return;
     if (S.esimLoadedCountries) return;
     const sel = document.getElementById('esimCountry');
     if (!sel) return;
@@ -1111,6 +1133,7 @@
   }
 
   async function loadEsimPackages(country) {
+    if (!userIsEsimAdmin()) return;
     const wrap = document.getElementById('esimPackages');
     const buy = document.getElementById('btnEsimBuy');
     S.esimSelectedPackage = null;
@@ -1231,6 +1254,7 @@
   }
 
   async function loadEsimMineList() {
+    if (!userIsEsimAdmin()) return;
     const wrap = document.getElementById('esimMineList');
     if (!wrap) return;
     wrap.innerHTML = '<p class="body text-muted text-center">Загрузка…</p>';
@@ -1806,7 +1830,63 @@
       });
     });
 
+    document.querySelectorAll('.esim-beta-email-input').forEach((inp) => {
+      inp.addEventListener('input', function () {
+        const v = this.value;
+        document.querySelectorAll('.esim-beta-email-input').forEach((o) => {
+          if (o !== this) o.value = v;
+        });
+      });
+    });
+
+    async function submitEsimBetaNotifyRequest(btnEl) {
+      const first = document.querySelector('.esim-beta-email-input');
+      const email = String((first && first.value) || '').trim();
+      if (!email) {
+        showToast('Введите email');
+        return;
+      }
+      const body = { email };
+      const opts = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '',
+        silentError: true,
+      };
+      if (IS_ANDROID) {
+        opts.headers.Authorization = 'Bearer ' + ANDROID_JWT;
+      } else if (tg && tg.initData) {
+        body.initData = tg.initData;
+      } else {
+        showToast('Откройте мини-приложение в Telegram');
+        return;
+      }
+      opts.body = JSON.stringify(body);
+      if (btnEl) btnEl.disabled = true;
+      try {
+        const d = await api(ESIM_API_PREFIX + '/esim/beta-notify', opts);
+        if (d && d.status === 'ok') {
+          showToast('Готово! Мы напишем на указанный email.', 4000);
+        } else {
+          showToast((d && d.error) || 'Не удалось отправить');
+        }
+      } catch (_) {
+        showToast('Ошибка сети');
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
     document.querySelector('.app').addEventListener('click', (ev) => {
+      if (ev.target.closest('.esim-beta-gate__link-email')) {
+        window.showModal('modalLinkEmail');
+        return;
+      }
+      const nb = ev.target.closest('.esim-beta-notify-btn');
+      if (nb) {
+        submitEsimBetaNotifyRequest(nb);
+        return;
+      }
       const b = ev.target.closest('.product-switch__btn');
       if (!b || !b.dataset.product) return;
       const prod = b.dataset.product;
@@ -1820,7 +1900,7 @@
         const v = esimCountry.value;
         S.esimSelectedCountry = v;
         hideEsimResult();
-        loadEsimPackages(v);
+        if (userIsEsimAdmin()) loadEsimPackages(v);
       });
     }
 
