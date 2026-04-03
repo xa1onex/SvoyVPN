@@ -64,15 +64,18 @@ body {
 .tab-bar {
     display: flex;
     align-items: stretch;
-    justify-content: space-around;
+    justify-content: flex-start;
     flex-shrink: 0;
-    padding: 6px 0 calc(6px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+    gap: 8px;
+    padding: 6px 10px calc(6px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+    box-sizing: border-box;
     background: var(--section_bg_color, var(--tg-theme-section-bg-color, #f7f9fb));
     border-top: .5px solid var(--separator_color, rgba(0, 0, 0, .08));
 }
 
 .tab-bar .tab {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;

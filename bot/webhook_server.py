@@ -220,6 +220,11 @@ class WebhookServer:
             l = logging.getLogger(logger_name)
             l.addFilter(BadStatusLineFilter())
 
+        if not os.environ.get("SVOYVPN_JWT_SECRET"):
+            logger.warning(
+                "SVOYVPN_JWT_SECRET is not set — email/Android JWT uses a default secret; set the env var in production."
+            )
+
         logger.info(f"WebhookServer initialized with routes (POST): /webhook/flyer, /webhook/yookassa, /webhook/cryptopay")
         logger.info(f"WebhookServer initialized with routes (GET): /, /sub/{{token}}, /api/*, /webhook/cryptopay")
     
@@ -1689,7 +1694,7 @@ class WebhookServer:
     _link_email_otps: dict = {}
     # Привязка Telegram к email-аккаунту: {nonce: {"email_user_id", "expires", "completed_user_id"}}
     _link_tg_nonces: dict = {}
-    JWT_SECRET = "svoyvpn_jwt_secret_change_in_production"
+    JWT_SECRET = os.environ.get("SVOYVPN_JWT_SECRET", "svoyvpn_jwt_secret_change_in_production")
     JWT_ALGORITHM = "HS256"
     JWT_EXPIRY_DAYS = 365
 

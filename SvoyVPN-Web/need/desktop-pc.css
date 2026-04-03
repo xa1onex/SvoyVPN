@@ -42,9 +42,9 @@
     top: 0;
     z-index: 1100;
     height: 52px !important;
-    padding: 0 16px calc(0px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))) !important;
-    justify-content: center !important;
-    gap: 6px !important;
+    padding: 0 12px calc(0px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))) !important;
+    justify-content: stretch !important;
+    gap: 8px !important;
     border-top: none !important;
     border-bottom: 1px solid var(--separator_color, rgba(0, 0, 0, 0.08)) !important;
     background: color-mix(in srgb, var(--bg_color, #fff) 92%, transparent) !important;
@@ -52,10 +52,10 @@
   }
 
   .tab-bar .tab {
-    flex: 0 0 auto !important;
+    flex: 1 1 0 !important;
     min-width: 0 !important;
-    max-width: 200px;
-    padding: 0 14px !important;
+    max-width: none;
+    padding: 0 10px !important;
     flex-direction: row !important;
     align-items: center !important;
     justify-content: center !important;

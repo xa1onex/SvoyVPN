@@ -364,7 +364,12 @@ window.AppConfig = {
   window.onerror = function (msg, url, line, col, error) {
     const errDiv = document.createElement('div');
     errDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:red;color:white;z-index:9999;padding:10px;font-size:12px;line-height:1.2;';
-    errDiv.innerHTML = `<b>JS Error:</b> ${msg}<br>Line: ${line}:${col}`;
+    const b = document.createElement('b');
+    b.textContent = 'JS Error: ';
+    errDiv.appendChild(b);
+    errDiv.appendChild(
+      document.createTextNode(String(msg) + ' Line: ' + String(line) + ':' + String(col))
+    );
     document.body.appendChild(errDiv);
     return false;
   };
@@ -383,16 +388,71 @@ window.AppConfig = {
     selectedPM: null,
   };
 
+  function escapeHtml(s) {
+    if (s == null || s === '') return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  /** Только https (аватар, внешние картинки). */
+  function isSafeHttpsUrl(u) {
+    if (u == null || u === '') return false;
+    try {
+      return new URL(String(u).trim(), window.location.origin).protocol === 'https:';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /** https/http без javascript:/data: — для ссылок поддержки и т.п. */
+  function isSafeHttpUrl(u) {
+    if (u == null || u === '') return false;
+    try {
+      const p = new URL(String(u).trim());
+      return p.protocol === 'https:' || p.protocol === 'http:';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isSafeTelegramDeepLink(u) {
+    if (!u) return false;
+    try {
+      const p = new URL(String(u));
+      if (p.protocol !== 'https:') return false;
+      const h = p.hostname.toLowerCase();
+      return h === 't.me' || h === 'telegram.me' || h.endsWith('.t.me');
+    } catch (_) {
+      return false;
+    }
+  }
+
   /** Единый формат рефералки только из ответа /api/user (camelCase / snake_case). */
   function normalizeReferralFromApi(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const code = raw.referralCode || raw.referral_code;
     if (!code) return null;
+    const bot =
+      (window.AppConfig && window.AppConfig.referralBotUsername) || 'SvoyVPN_bot';
+    const fallback =
+      'https://t.me/' + bot + '?start=ref_' + encodeURIComponent(String(code));
     let refLink = String(raw.refLink || raw.ref_link || '').trim();
     if (!refLink) {
-      const bot =
-        (window.AppConfig && window.AppConfig.referralBotUsername) || 'SvoyVPN_bot';
-      refLink = 'https://t.me/' + bot + '?start=ref_' + encodeURIComponent(String(code));
+      refLink = fallback;
+    } else {
+      try {
+        const p = new URL(refLink);
+        const h = p.hostname.toLowerCase();
+        if (
+          (p.protocol !== 'https:' && p.protocol !== 'http:') ||
+          (h !== 't.me' && h !== 'telegram.me' && !h.endsWith('.t.me'))
+        ) {
+          refLink = fallback;
+        }
+      } catch (_) {
+        refLink = fallback;
+      }
     }
     return {
       referralCode: String(code),
@@ -701,8 +761,8 @@ window.AppConfig = {
       const el = document.createElement('div');
       el.className = 'pm-item' + (sel ? ' selected' : '');
 
-      let svgIcon = m.icon || '💳';
       const n = m.name ? m.name.toLowerCase() : '';
+      let svgIcon;
       if (m.id === 'stars' || n.includes('star')) {
         svgIcon = `<svg viewBox="0 0 24 24" class="icon-star"><path d="M12 2.3l2.4 7.4 7.6.6-5.8 4.7 1.8 7.3-6-4.3-6 4.3 1.8-7.3-5.8-4.7 7.6-.6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" class="star-shape"/><circle class="sparkle sp-1" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-2" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-3" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-4" cx="12" cy="12" r="1.5"/><circle class="sparkle sp-5" cx="12" cy="12" r="1.5"/></svg>`;
       } else if (m.id === 'cryptopay' || n.includes('crypto')) {
@@ -712,11 +772,13 @@ window.AppConfig = {
         </svg>`;
       } else if (m.id === 'yookassa' || n.includes('юkassa') || n.includes('юкасса') || n.includes('юк') || n.includes('yoo') || n.includes('yuk') || n.includes('карт') || n.includes('card')) {
         svgIcon = `<svg viewBox="0 0 24 24" class="icon-card"><rect x="2" y="5" width="20" height="14" rx="2" ry="2" fill="none" class="card-outline"></rect><line x1="2" y1="10" x2="22" y2="10" class="card-line"></line></svg>`;
+      } else {
+        svgIcon = escapeHtml(String(m.icon || '💳'));
       }
 
       el.innerHTML =
         `<span class="pm-icon flex-center">${svgIcon}</span>` +
-        `<span class="pm-name">${m.name}</span>`;
+        `<span class="pm-name">${escapeHtml(m.name || '')}</span>`;
       el.addEventListener('click', () => {
         S.selectedPM = m;
         renderPM();
@@ -784,12 +846,15 @@ window.AppConfig = {
     const el = document.createElement('div');
     el.className = 'server-card';
     el.setAttribute('data-server-id', s.id);
+    const flagOrEmoji = escapeHtml(String(s.emoji || getFlag(s.name) || ''));
+    const nameEsc = escapeHtml(String(s.name || ''));
+    const ipEsc = escapeHtml(String(maskIp(s.ip) || ''));
     el.innerHTML =
       '<div class="server-card__header">' +
-      '<span class="server-card__flag">' + (s.emoji || getFlag(s.name)) + '</span>' +
-      '<span class="server-card__name">' + s.name + '</span>' +
+      '<span class="server-card__flag">' + flagOrEmoji + '</span>' +
+      '<span class="server-card__name">' + nameEsc + '</span>' +
       '</div>' +
-      '<span class="server-card__ip">' + maskIp(s.ip) + '</span>' +
+      '<span class="server-card__ip">' + ipEsc + '</span>' +
       '<div class="server-card__ping-wrap"></div>';
 
     const pingWrap = el.querySelector('.server-card__ping-wrap');
@@ -1215,13 +1280,6 @@ window.AppConfig = {
     }
   }
 
-  function escapeHtml(s) {
-    if (s == null || s === '') return '';
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-  }
-
   function renderProfileAuthLinks() {
     const box = document.getElementById('profileAuthLinkBox');
     if (!box) return;
@@ -1286,6 +1344,10 @@ window.AppConfig = {
       return;
     }
     if (!d.botUrl || !d.nonce) return;
+    if (!isSafeTelegramDeepLink(d.botUrl)) {
+      showToast('Некорректная ссылка бота');
+      return;
+    }
     showModal('modalLinkTg');
     const a = document.getElementById('linkTgOpenBtn');
     if (a) a.href = d.botUrl;
@@ -1326,7 +1388,7 @@ window.AppConfig = {
       // Avatar: try photo from API, then from tg.initDataUnsafe, then letter fallback
       const photoUrl = S.user.photoUrl || S.user.photo_url ||
         (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.photo_url);
-      if (photoUrl && avatar) {
+      if (photoUrl && isSafeHttpsUrl(photoUrl) && avatar) {
         avatar.innerHTML = '';
         avatar.style.overflow = 'hidden';
         const img = document.createElement('img');
@@ -1334,7 +1396,10 @@ window.AppConfig = {
         img.alt = name;
         img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;';
         img.onerror = function () {
-          avatar.innerHTML = name.charAt(0).toUpperCase();
+          avatar.textContent = '';
+          avatar.appendChild(
+            document.createTextNode(name.charAt(0).toUpperCase())
+          );
           avatar.style.overflow = '';
         };
         avatar.appendChild(img);
@@ -1382,7 +1447,7 @@ window.AppConfig = {
     }
 
     // Support links update
-    if (S.user && S.user.supportLink) {
+    if (S.user && S.user.supportLink && isSafeHttpUrl(S.user.supportLink)) {
       const obLink = document.getElementById('obSupportLink');
       const obHandle = document.getElementById('obSupportHandle');
       if (obLink) obLink.href = S.user.supportLink;
@@ -1418,8 +1483,8 @@ window.AppConfig = {
                 </svg>
               </div>
               <p class="sub-status-hero__title">Подписка активна</p>
-              <p class="sub-status-hero__date">Действует до ${endHuman}</p>
-              <p class="sub-status-hero__meta">${daysMeta}</p>
+              <p class="sub-status-hero__date">Действует до ${escapeHtml(endHuman)}</p>
+              <p class="sub-status-hero__meta">${escapeHtml(daysMeta)}</p>
               ${
                 warnSoon
                   ? '<p class="sub-status-hero__urgent">Скоро окончание — продлите подписку, чтобы оставться в сети!</p>'
@@ -1441,6 +1506,7 @@ window.AppConfig = {
         }
 
         if (S.user && S.user.trialAvailable) {
+          const trialDays = Number(S.user.trialDays) || 0;
           subBlockBox.innerHTML = `
             <div class="card" style="padding:10px 16px; text-align:center; background: linear-gradient(135deg, rgba(58,168,252,0.1) 0%, rgba(58,168,252,0) 100%); border: 1px dashed var(--accent_text_color, #3aa8fc); border-radius: 12px;">
                <div style="margin-bottom: 4px;">
@@ -1468,8 +1534,8 @@ window.AppConfig = {
                  </style>
                </div>
                <p class="subtitle" style="color:var(--accent_text_color, #3aa8fc); margin-bottom:4px; font-weight: 700;">Попробуй бесплатно!</p>
-               <p class="body text-muted" style="margin-bottom:10px; font-size:12px; line-height: 1.3;">Доступно <b>${S.user.trialDays} дней</b> теста без привязки карты.</p>
-               <button class="btn-primary" id="btnActivateTrial" style="min-height: 40px; font-size: 14px; padding: 8px;">Забрать ${S.user.trialDays} дней</button>
+               <p class="body text-muted" style="margin-bottom:10px; font-size:12px; line-height: 1.3;">Доступно <b>${trialDays} дней</b> теста без привязки карты.</p>
+               <button class="btn-primary" id="btnActivateTrial" style="min-height: 40px; font-size: 14px; padding: 8px;">Забрать ${trialDays} дней</button>
             </div>
             <div class="gap-12"></div>
             <button class="btn-secondary" style="width:100%; min-height: 48px;" onclick="window.showModal('modalPlan')">Выбрать тариф</button>
@@ -1498,7 +1564,7 @@ window.AppConfig = {
             } else {
               showToast('Ошибка активации: ' + (d ? d.error : 'Неизвестная ошибка'));
               this.disabled = false;
-              this.textContent = `Забрать ${S.user.trialDays} дней`;
+              this.textContent = `Забрать ${trialDays} дней`;
             }
           });
 
@@ -1540,6 +1606,7 @@ window.AppConfig = {
             <p class="body" style="font-size:14px; margin:0 0 12px; line-height:1.4;">Для подключения устройств необходимо сначала приобрести подписку.</p>
         `;
         if (S.user && S.user.trialAvailable) {
+          const obTrialDays = Number(S.user.trialDays) || 0;
           checkHtml += `
               <div style="margin-bottom: 6px;">
                 <svg class="gift-anim" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1551,7 +1618,7 @@ window.AppConfig = {
                 </svg>
               </div>
               <p class="body text-muted" style="margin-bottom:12px; font-size:13px;">Или попробуйте бесплатно — заберите пробный период в подарок!</p>
-              <button class="btn-primary" id="obBtnTrial" style="min-height:40px; font-size:14px; width:100%;">Забрать ${S.user.trialDays} дней</button>
+              <button class="btn-primary" id="obBtnTrial" style="min-height:40px; font-size:14px; width:100%;">Забрать ${obTrialDays} дней</button>
             `;
           setTimeout(() => {
             const b = document.getElementById('obBtnTrial');
@@ -1566,7 +1633,7 @@ window.AppConfig = {
                 await loadUser();
               } else {
                 showToast('Ошибка: ' + (d ? d.error : '?'));
-                this.disabled = false; this.textContent = `Забрать ${S.user.trialDays} дней`;
+                this.disabled = false; this.textContent = `Забрать ${obTrialDays} дней`;
               }
             };
           }, 0);
@@ -1690,7 +1757,7 @@ window.AppConfig = {
           if ((!wasActive && isActive) || (oldEnd && newEnd && oldEnd !== newEnd)) {
             localStorage.removeItem('pending_payment_time');
             stopPaymentPolling();
-            showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.<br>Детальный чек отправлен вам в бот.');
+            showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.\nДетальный чек отправлен вам в бот.');
             hideModal('modalPlan');
           }
         }
@@ -1748,7 +1815,7 @@ window.AppConfig = {
           if ((!wasActive && isActive) || (oldEnd && newEnd && oldEnd !== newEnd)) {
             localStorage.removeItem('pending_payment_time');
             stopPaymentPolling();
-            showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.<br>Детальный чек отправлен вам в бот.');
+            showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.\nДетальный чек отправлен вам в бот.');
             hideModal('modalPlan');
           }
         }
@@ -1795,7 +1862,7 @@ window.AppConfig = {
             if (status === 'paid') {
               localStorage.removeItem('pending_payment_time');
               stopPaymentPolling();
-              showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.<br>Детальный чек отправлен вам в бот.');
+              showSuccessOverlay('Оплата успешна!', 'Ваша подписка активирована.\nДетальный чек отправлен вам в бот.');
             } else if (status === 'failed') {
               localStorage.removeItem('pending_payment_time');
               stopPaymentPolling();
@@ -1828,8 +1895,13 @@ window.AppConfig = {
   function showSuccessOverlay(title, sub) {
     const ov = document.getElementById('successOverlay');
     if (ov) {
-      if (title) ov.querySelector('.title-s').textContent = title;
-      if (sub) ov.querySelector('.body').innerHTML = sub;
+      const titleEl = ov.querySelector('.title-s');
+      const bodyEl = ov.querySelector('.body');
+      if (title && titleEl) titleEl.textContent = title;
+      if (sub && bodyEl) {
+        bodyEl.style.whiteSpace = 'pre-line';
+        bodyEl.textContent = sub;
+      }
       ov.style.display = 'flex';
       fireConfetti();
       haptic('success');
@@ -2044,7 +2116,8 @@ window.AppConfig = {
         : window.open(channel, '_blank');
     });
     addClick('btnSupport', () => {
-      const link = (S.user && S.user.supportLink) || 'https://t.me/SvoyVPN_support';
+      const raw = S.user && S.user.supportLink;
+      const link = isSafeHttpUrl(raw) ? raw : 'https://t.me/SvoyVPN_support';
       tg && tg.openTelegramLink
         ? tg.openTelegramLink(link)
         : window.open(link, '_blank');
