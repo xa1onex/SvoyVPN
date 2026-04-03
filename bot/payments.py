@@ -9,7 +9,6 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from asyncpg.types import Json
 from aiogram import Bot
 from aiogram.types import BufferedInputFile, Message, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -22,11 +21,12 @@ from .subscriptions import create_or_activate_keys_for_all_servers, extend_subsc
 logger = logging.getLogger(__name__)
 
 
-def _jsonb_bind(value: Any) -> Any:
-    """JSONB в asyncpg: сырой dict даёт jsonb_encode «expected str, got dict» — только Json()."""
+def _jsonb_bind(value: Any) -> Optional[str]:
+    """Сериализация для JSONB. Сырой dict + колонка jsonb в asyncpg даёт «expected str, got dict».
+    Передаём JSON-текст и в SQL явно кастуем $n::text::jsonb (без обёртки Json — её нет в части версий asyncpg)."""
     if value is None:
         return None
-    return Json(value)
+    return json.dumps(value, ensure_ascii=False, default=str)
 
 
 def _payment_amount_rub_cents(payment_obj: dict) -> int:
@@ -135,7 +135,7 @@ async def _finalize_esim_delivery(
             INSERT INTO esim_orders
             (user_id, transaction_id, package_code, location_code, price_kopecks,
              mode, batch_order_no, status, delivery_json, provider_raw)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8, $9::text::jsonb, $10::text::jsonb)
             """,
             user_id,
             tx_id,
