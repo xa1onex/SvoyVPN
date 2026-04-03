@@ -1486,6 +1486,160 @@ body {
     -webkit-tap-highlight-color: transparent;
 }
 
+/* ── Модалка «Привязка почты» (крупные поля, как на экране входа) ── */
+#modalLinkEmail .modal-content.modal-link-email {
+    padding-top: 20px;
+    padding-left: 18px;
+    padding-right: 18px;
+}
+
+#modalLinkEmail .modal-link-email__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+#modalLinkEmail .modal-link-email__title {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.25;
+    font-weight: 700;
+}
+
+#modalLinkEmail .modal-link-email__close {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--section_bg_color, rgba(255, 255, 255, 0.08));
+    border: 1px solid var(--section_separator_color, rgba(255, 255, 255, 0.1));
+    border-radius: 50%;
+    color: var(--subtitle_text_color, #aab4c0);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity 0.15s, transform 0.1s;
+}
+
+#modalLinkEmail .modal-link-email__close:active {
+    opacity: 0.85;
+    transform: scale(0.96);
+}
+
+#modalLinkEmail .modal-link-email__hint {
+    margin: 0 0 18px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--hint_color, #8e9db0);
+}
+
+#modalLinkEmail .modal-link-email__fields {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+#modalLinkEmail .modal-link-email__group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#modalLinkEmail .modal-link-email__label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--subtitle_text_color, #aab4c0);
+    margin-left: 2px;
+    line-height: 1.35;
+}
+
+#modalLinkEmail .modal-link-email__label-hint {
+    font-weight: 400;
+    opacity: 0.88;
+}
+
+#modalLinkEmail .link-email-input {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 52px;
+    padding: 14px 16px;
+    background: var(--secondary_bg_color, rgba(255, 255, 255, 0.07));
+    border: 1px solid var(--section_separator_color, rgba(255, 255, 255, 0.14));
+    border-radius: 14px;
+    color: var(--text_color, #fff);
+    font-size: 16px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+#modalLinkEmail .link-email-input::placeholder {
+    color: var(--hint_color, #8e9db0);
+    font-size: 15px;
+}
+
+#modalLinkEmail .link-email-input:focus {
+    border-color: rgba(58, 168, 252, 0.55);
+    background: var(--secondary_bg_color, rgba(255, 255, 255, 0.1));
+    box-shadow: 0 0 0 3px rgba(58, 168, 252, 0.15);
+}
+
+#modalLinkEmail .link-email-input--otp {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    font-variant-numeric: tabular-nums;
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+#modalLinkEmail .modal-link-email__submit {
+    margin-top: 20px;
+    min-height: 52px;
+    padding-top: 15px;
+    padding-bottom: 15px;
+    border-radius: 14px;
+    font-size: 16px;
+}
+
+html[data-theme="light"] #modalLinkEmail .link-email-input {
+    background: #f3f6fa;
+    color: #1f2937;
+    border-color: #d7e0ea;
+}
+
+html[data-theme="light"] #modalLinkEmail .link-email-input:focus {
+    border-color: #3aa8fc;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(58, 168, 252, 0.2);
+}
+
+html[data-theme="light"] #modalLinkEmail .link-email-input::placeholder {
+    color: #8a97a8;
+}
+
+html[data-theme="light"] #modalLinkEmail .modal-link-email__close {
+    background: #eef2f7;
+    border-color: #dbe3ec;
+    color: #556274;
+}
+
+html[data-theme="light"] #modalLinkEmail .modal-link-email__label {
+    color: #556274;
+}
+
+html[data-theme="light"] #modalLinkEmail .modal-link-email__hint {
+    color: #66758a;
+}
+
 /* ── Referral Screen Elements ── */
 .referral-hero {
     position: relative;
