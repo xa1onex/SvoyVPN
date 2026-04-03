@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+from asyncpg.types import Json
 from aiogram import Bot
 from aiogram.types import BufferedInputFile, Message, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -19,6 +20,13 @@ from .database import get_connection
 from .subscriptions import create_or_activate_keys_for_all_servers, extend_subscription, set_new_subscription
 
 logger = logging.getLogger(__name__)
+
+
+def _jsonb_bind(value: Any) -> Any:
+    """JSONB в asyncpg: сырой dict даёт jsonb_encode «expected str, got dict» — только Json()."""
+    if value is None:
+        return None
+    return Json(value)
 
 
 def _payment_amount_rub_cents(payment_obj: dict) -> int:
@@ -137,8 +145,8 @@ async def _finalize_esim_delivery(
             mode,
             batch_no,
             "completed" if ok else "failed",
-            delivery,
-            provider_raw,
+            _jsonb_bind(delivery),
+            _jsonb_bind(provider_raw),
         )
 
     if bot:

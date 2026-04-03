@@ -92,12 +92,20 @@ def _lpa_string(smdp: str, activation: str) -> str:
 
 
 def _qr_png_base64(data: str) -> str:
+    if not (data or "").strip():
+        return ""
     try:
         import segno  # type: ignore
 
         buf = io.BytesIO()
         segno.make(data, error="m").save(buf, kind="png", scale=6, border=2)
         return base64.b64encode(buf.getvalue()).decode("ascii")
+    except ModuleNotFoundError:
+        logger.warning(
+            "Пакет segno не установлен — QR для eSIM не генерируется. "
+            "На сервере: pip install segno  (или pip install -r requirements.txt)"
+        )
+        return ""
     except Exception as e:
         logger.warning("QR generation failed: %s", e)
         return ""
