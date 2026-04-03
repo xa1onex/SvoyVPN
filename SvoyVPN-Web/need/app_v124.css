@@ -26,6 +26,33 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Тёмная тема в браузере / по prefers-color-scheme: на html часто нет --tg-theme-*,
+ * а в стилях остаются «светлые» fallback для текста (#0f2438, #1a2632) — они нечитаемы на #18222d.
+ */
+html[data-theme="dark"] {
+    color-scheme: dark;
+    --text_color: #e8eef4;
+    --title_color: #f2f6fa;
+    --subtitle_text_color: #9eb0c4;
+    --bg_color: #18222d;
+    --section_bg_color: #21303f;
+    --secondary_bg_color: #273a4d;
+    --separator_color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-theme="light"] {
+    color-scheme: light;
+    /* Браузер / системная светлая тема: те же токены, что и раньше по смыслу (тёмный текст на светлом фоне). */
+    --text_color: #1a2632;
+    --title_color: #0f2438;
+    --subtitle_text_color: #6b7c8f;
+    --bg_color: #ffffff;
+    --section_bg_color: #f7f9fb;
+    --secondary_bg_color: #eef2f7;
+    --separator_color: rgba(0, 0, 0, 0.08);
+}
+
 /* ── Layout wrapper ── */
 .app {
     display: flex;
@@ -409,17 +436,35 @@ body {
     align-items: center;
 }
 
-/* Главный экран: блок статуса подписки (активна / не оформлена) */
+/* Главный экран: блок статуса подписки — компактная строка (иконка + текст) */
 .sub-status-hero {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
     gap: 8px;
-    margin-top: 12px;
+    margin-top: 8px;
     padding: 18px 16px 16px;
     border: 1px solid rgba(52, 199, 89, 0.35);
     background: linear-gradient(180deg, rgba(52, 199, 89, 0.09) 0%, transparent 52%);
+}
+
+.sub-status-hero.sub-status-hero--active,
+.sub-status-hero.sub-status-hero--inactive {
+    flex-direction: row;
+    align-items: center;
+    text-align: left;
+    gap: 12px;
+    padding: 13px 15px;
+}
+
+.sub-status-hero__body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
 }
 
 .sub-status-hero--warn {
@@ -433,51 +478,56 @@ body {
 }
 
 .sub-status-hero__ring {
-    width: 56px;
-    height: 56px;
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 2px;
+    margin-bottom: 0;
+    flex-shrink: 0;
     color: #22a059;
     background: linear-gradient(160deg, rgba(52, 199, 89, 0.22), rgba(52, 199, 89, 0.06));
-    box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.12);
+    box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.12);
     animation: sub-status-pulse 2.8s ease-in-out infinite;
 }
 
 .sub-status-hero--warn .sub-status-hero__ring {
     color: #c97800;
     background: linear-gradient(160deg, rgba(255, 159, 10, 0.28), rgba(255, 159, 10, 0.08));
-    box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.14);
+    box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.14);
+    animation-name: sub-status-pulse-warn;
 }
 
 .sub-status-hero__ring--muted {
     animation: none;
     color: #8b95a5;
     background: linear-gradient(160deg, rgba(120, 130, 145, 0.2), rgba(120, 130, 145, 0.06));
-    box-shadow: 0 0 0 4px rgba(120, 130, 145, 0.1);
+    box-shadow: 0 0 0 3px rgba(120, 130, 145, 0.1);
+}
+
+.sub-status-hero__check,
+.sub-status-hero__lock {
+    display: block;
+    width: 24px;
+    height: 24px;
 }
 
 @keyframes sub-status-pulse {
     0%, 100% {
-        box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.12);
+        box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.12);
     }
     50% {
-        box-shadow: 0 0 0 8px rgba(52, 199, 89, 0.06);
+        box-shadow: 0 0 0 6px rgba(52, 199, 89, 0.05);
     }
-}
-
-.sub-status-hero--warn .sub-status-hero__ring {
-    animation-name: sub-status-pulse-warn;
 }
 
 @keyframes sub-status-pulse-warn {
     0%, 100% {
-        box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.14);
+        box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.14);
     }
     50% {
-        box-shadow: 0 0 0 8px rgba(255, 159, 10, 0.07);
+        box-shadow: 0 0 0 6px rgba(255, 159, 10, 0.06);
     }
 }
 
@@ -492,7 +542,14 @@ body {
     font-size: 18px;
     font-weight: 700;
     line-height: 1.25;
+    /* --title_color задаётся на html для light/dark; последний fallback только для светлого фона */
     color: var(--title_color, var(--tg-theme-text-color, #0f2438));
+}
+
+.sub-status-hero--active .sub-status-hero__title,
+.sub-status-hero--inactive .sub-status-hero__title {
+    font-size: 16px;
+    line-height: 1.22;
 }
 
 .sub-status-hero__date {
@@ -503,12 +560,24 @@ body {
     color: var(--accent_text_color, #3aa8fc);
 }
 
+.sub-status-hero--active .sub-status-hero__date {
+    font-size: 14px;
+    line-height: 1.28;
+}
+
 .sub-status-hero__meta {
     margin: 0;
     font-size: 13px;
     line-height: 1.45;
     color: var(--subtitle_text_color, var(--tg-theme-hint-color, #6b7c8f));
     max-width: 22em;
+}
+
+.sub-status-hero--active .sub-status-hero__meta,
+.sub-status-hero--inactive .sub-status-hero__meta {
+    font-size: 13px;
+    line-height: 1.4;
+    max-width: none;
 }
 
 .sub-status-hero__urgent {
@@ -518,6 +587,19 @@ body {
     font-weight: 600;
     color: #b45309;
     max-width: 22em;
+}
+
+.sub-status-hero--active .sub-status-hero__urgent {
+    margin: 2px 0 0;
+    font-size: 12px;
+    line-height: 1.38;
+    max-width: none;
+}
+
+.btn-primary.btn-primary--sub-block {
+    padding: 11px 16px;
+    min-height: 46px;
+    font-size: 15px;
 }
 
 /* Два действия в ряд (остальные экраны; главный экран — одна кнопка «Продлить») */
@@ -1770,49 +1852,45 @@ html[data-theme="light"] #modalLinkEmail .link-email-merge-note {
     color: #66758a;
 }
 
-/* ── Referral Screen Elements ── */
-.referral-hero {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 120px;
-    height: 120px;
-    margin: 20px 0 10px;
-}
-
-.referral-hero__outer {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    background: rgba(58, 168, 252, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.referral-hero__inner {
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
-    background: var(--accent_text_color, #3aa8fc);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 8px 24px rgba(58, 168, 252, 0.4);
-}
-
-.referral-hero__inner svg {
-    width: 36px;
-    height: 36px;
-    fill: #fff;
-}
+/* ── Referral Screen («Подарки»): hero = тот же .logo-anim, что на главной / подключении ── */
 
 .referral-card {
-    padding: 16px;
+    width: 100%;
+    max-width: min(400px, 100%);
+    margin-left: auto;
+    margin-right: auto;
+    padding: 11px 13px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
+    box-sizing: border-box;
+}
+
+.referral-card__label {
+    margin: 0 0 2px;
+}
+
+.referral-card__link {
+    margin: 0 0 4px;
+    word-break: break-all;
+    font-size: 14px;
+    line-height: 1.35;
+}
+
+.referral-card__stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    margin-top: 2px;
+}
+
+.referral-card__stats .subtitle {
+    font-size: 15px;
+    line-height: 1.25;
+}
+
+.referral-card__stats .caption {
+    margin-bottom: 2px;
 }
 
 .btn-share {
@@ -2420,7 +2498,7 @@ html[data-theme="light"] #modalLinkEmail .link-email-merge-note {
     font-weight: 600;
     line-height: 1.3;
     margin: 0 0 4px;
-    color: var(--title_color, var(--tg-theme-text-color, #000));
+    color: var(--title_color, var(--tg-theme-text-color, #1a2632));
 }
 
 .profile-announce-item__desc {
@@ -2793,4 +2871,157 @@ html[data-theme="light"] #modalLinkEmail .link-email-merge-note {
     height: 10px;
     background-color: #f00;
     opacity: 0.7;
+}
+
+/* ─── Product VPN | eSIM ─────────────────────────────────── */
+.product-switch {
+    display: flex;
+    width: 100%;
+    max-width: 280px;
+    margin: 0 auto;
+    padding: 4px;
+    border-radius: 12px;
+    background: var(--secondary_bg_color, rgba(255, 255, 255, 0.07));
+    gap: 4px;
+}
+.product-switch__btn {
+    flex: 1;
+    border: none;
+    border-radius: 9px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    background: transparent;
+    color: var(--hint_color, #8e9db0);
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.2s, color 0.2s;
+}
+.product-switch__btn--active {
+    background: var(--accent, #3aa8fc);
+    color: #fff;
+}
+html[data-theme="light"] .product-switch {
+    background: #eef2f7;
+}
+html[data-theme="light"] .product-switch__btn {
+    color: #556274;
+}
+html[data-theme="light"] .product-switch__btn--active {
+    color: #fff;
+}
+
+/* eSIM screen */
+.esim-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--hint_color, #8e9db0);
+    margin: 0 0 6px 4px;
+}
+.esim-select {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--section_separator_color, rgba(255, 255, 255, 0.08));
+    background: var(--secondary_bg_color, rgba(255, 255, 255, 0.07));
+    color: var(--text_color, #fff);
+    font-size: 16px;
+    font-family: inherit;
+    outline: none;
+}
+html[data-theme="light"] .esim-select {
+    background: #f5f8fc;
+    color: #1f2937;
+    border-color: #d7e0ea;
+}
+.esim-packages {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 48px;
+}
+.esim-packages-placeholder {
+    text-align: center;
+    padding: 16px 8px;
+}
+.esim-pkg {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid var(--section_separator_color, rgba(255, 255, 255, 0.1));
+    background: var(--section_bg_color, #21303f);
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    font-family: inherit;
+    color: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.esim-pkg--selected {
+    border-color: var(--accent, #3aa8fc);
+    box-shadow: 0 0 0 1px var(--accent, #3aa8fc);
+}
+.esim-pkg__title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+}
+.esim-pkg__meta {
+    font-size: 13px;
+    color: var(--hint_color, #8e9db0);
+    margin: 0;
+}
+.esim-pkg__price {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent_text_color, #3aa8fc);
+    margin-top: 4px;
+}
+.esim-result {
+    border-top: 1px solid var(--section_separator_color, rgba(255, 255, 255, 0.08));
+    padding-bottom: 24px;
+}
+.esim-qr-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 12px;
+}
+.esim-qr-img {
+    width: 200px;
+    height: 200px;
+    border-radius: 12px;
+    background: #fff;
+    padding: 8px;
+    object-fit: contain;
+}
+.esim-code-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+.esim-ac {
+    display: block;
+    font-size: 13px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--secondary_bg_color, rgba(255, 255, 255, 0.07));
+    word-break: break-all;
+    flex: 1;
+    min-width: 0;
+}
+.esim-ac--sm {
+    font-size: 12px;
+    margin-top: 6px;
+}
+.esim-copy-btn {
+    flex-shrink: 0;
+    padding: 10px 14px;
+    font-size: 13px;
 }

@@ -22,7 +22,16 @@
     (function () {
       var urlParams = new URLSearchParams(window.location.search);
       var tg = window.Telegram && window.Telegram.WebApp;
-      var scheme = urlParams.get('theme') || (tg && tg.colorScheme) || 'dark';
+      var urlTheme = urlParams.get('theme');
+      var inTg = tg && tg.initData && String(tg.initData).length > 0;
+      var scheme;
+      if (urlTheme) {
+        scheme = urlTheme;
+      } else if (inTg) {
+        scheme = (tg.colorScheme === 'dark' || tg.colorScheme === 'light') ? tg.colorScheme : 'dark';
+      } else {
+        scheme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      }
       var bg = scheme === 'dark' ? '#18222d' : '#ffffff';
 
       /* Meta tag for WebView */
@@ -53,10 +62,10 @@
   <link rel="preload" as="font" href="need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="need/assets/index_v111.css" />
-  <link rel="stylesheet" href="need/app_v124.css?v=134" />
-  <link rel="stylesheet" href="need/desktop-pc.css?v=18" />
+  <link rel="stylesheet" href="need/app_v124.css?v=138" />
+  <link rel="stylesheet" href="need/desktop-pc.css?v=23" />
 
-  <script defer src="need/app_v124.js?v=148"></script>
+  <script defer src="need/app_v124.js?v=150"></script>
 
   <style>
   /* Auth Screen — Exact Mobile Style */
@@ -209,7 +218,7 @@
           </svg>
         </div>
       </div>
-      <div class="app-name">SvoyVPN Pro</div>
+      <div class="app-name">SvoyVPN</div>
       <div class="app-tagline">Быстрый и надёжный, потому что Свой</div>
 
       <!-- Auth Card -->
@@ -319,6 +328,12 @@
 <div id="screenVpn" class="screen">
       <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
 
+        <div class="product-switch" role="tablist" aria-label="Продукт">
+          <button type="button" class="product-switch__btn product-switch__btn--active" data-product="vpn" id="btnProductVpn" aria-selected="true">VPN</button>
+          <button type="button" class="product-switch__btn" data-product="esim" id="btnProductEsim" aria-selected="false">eSIM</button>
+        </div>
+        <div class="gap-8"></div>
+
         <!-- Animated logo -->
         <div class="logo-anim">
           <div class="ring" style="--ring-opacity:.15;"></div>
@@ -366,6 +381,53 @@
           </div>
         </div>
 
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: eSIM ═══ -->
+    <div id="screenEsim" class="screen">
+      <div class="screen-content esim-screen" style="display:flex;flex-direction:column;align-items:stretch;width:100%;max-width:420px;margin:0 auto;">
+
+        <div class="product-switch" role="tablist" aria-label="Продукт">
+          <button type="button" class="product-switch__btn" data-product="vpn" aria-selected="false">VPN</button>
+          <button type="button" class="product-switch__btn product-switch__btn--active" data-product="esim" aria-selected="true">eSIM</button>
+        </div>
+        <div class="gap-8"></div>
+
+        <p class="title text-center" style="margin:0;">eSIM интернет</p>
+        <p class="body text-muted text-center" style="margin-top:6px;">Тариф по стране, оплата с баланса</p>
+        <p id="esimBalanceLine" class="caption text-muted text-center" style="margin-top:8px;">Баланс: —</p>
+        <p id="esimModeHint" class="caption text-muted text-center" style="margin-top:2px;opacity:0.85;"></p>
+
+        <div class="gap-12"></div>
+
+        <label class="esim-label" for="esimCountry">Страна / регион</label>
+        <select id="esimCountry" class="esim-select">
+          <option value="">Загрузка…</option>
+        </select>
+
+        <div class="gap-12"></div>
+        <p class="section-title" style="margin:0 0 8px 0;">Тарифы</p>
+        <div id="esimPackages" class="esim-packages">
+          <div class="esim-packages-placeholder text-muted body">Выберите страну</div>
+        </div>
+
+        <div class="gap-16"></div>
+        <button type="button" id="btnEsimBuy" class="btn-primary" style="width:100%;" disabled>Купить</button>
+
+        <div id="esimResult" class="esim-result" style="display:none;">
+          <p class="section-title" style="margin-top:20px;">Ваш eSIM</p>
+          <div class="esim-qr-wrap">
+            <img id="esimQrImg" alt="QR eSIM" class="esim-qr-img" />
+          </div>
+          <p class="caption text-muted" style="margin-top:8px;">Код активации</p>
+          <div class="esim-code-row">
+            <code id="esimAcCode" class="esim-ac"></code>
+            <button type="button" id="btnEsimCopyAc" class="btn-secondary esim-copy-btn">Копировать</button>
+          </div>
+          <p class="caption text-muted" style="margin-top:12px;">SMDP+ адрес</p>
+          <code id="esimSmdpCode" class="esim-ac esim-ac--sm"></code>
+        </div>
       </div>
     </div>
 
@@ -669,27 +731,29 @@
     <div id="screenReferral" class="screen">
       <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
 
-        <div class="referral-hero" style="margin-top: 0;">
-          <div class="referral-hero__outer">
-            <div class="referral-hero__inner">
-              <svg width="40" height="40" viewBox="0 0 73 73">
-                <use href="#referral"></use>
-              </svg>
-            </div>
+        <div class="logo-anim">
+          <div class="ring" style="--ring-opacity:.15;"></div>
+          <div class="ring" style="--ring-opacity:.25;"></div>
+          <div class="ring" style="--ring-opacity:.35;"></div>
+          <div class="logo-core" style="color: #fff;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" style="width:44px;height:44px;fill:none!important;" aria-hidden="true">
+              <use href="#referral"></use>
+            </svg>
           </div>
         </div>
 
-        <div class="gap-16"></div>
+        <div class="gap-8"></div>
         <p class="title-s text-center">Приглашайте друзей —<br>получайте бонусные дни</p>
         <div class="gap-8"></div>
         <p id="refDesc" class="body text-muted text-center" style="padding:0 8px;">Загрузка…</p>
 
-        <div class="gap-16"></div>
+        <div class="gap-12"></div>
 
-        <div class="card referral-card" style="width:100%;">
-          <p class="caption text-muted" style="margin-bottom:4px;">Ваша реферальная ссылка</p>
-          <p id="refLinkText" class="body" style="word-break:break-all;margin-bottom:8px;">—</p>
-          <div style="display:flex;gap:16px;">
+        <div class="card referral-card">
+          <p class="caption text-muted referral-card__label">Ваша реферальная ссылка</p>
+          <p id="refLinkText" class="body referral-card__link">—</p>
+          <div class="referral-card__stats">
             <div>
               <p class="caption text-muted">Приглашено</p>
               <p id="refCount" class="subtitle">—</p>
@@ -701,7 +765,7 @@
           </div>
         </div>
 
-        <div class="gap-16"></div>
+        <div class="gap-12"></div>
 
         <button id="btnCopyRef" class="btn-primary">Скопировать ссылку</button>
         <div class="gap-8"></div>
@@ -712,7 +776,7 @@
 
     <!-- ═══ TAB BAR ═══ -->
     <nav id="tabBar" class="tab-bar">
-      <button class="tab active" data-screen="screenVpn">
+      <button class="tab active" data-home-tab="1" data-screen="screenVpn">
         <svg class="tab-icon tab-icon-vpn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />

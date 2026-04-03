@@ -39,7 +39,51 @@
     servers: [],
     selectedTariff: null,
     selectedPM: null,
+    esimCountries: [],
+    esimPackages: [],
+    esimSelectedCountry: '',
+    esimSelectedPackage: null,
+    esimMode: 'test',
+    esimLoadedCountries: false,
   };
+
+  const PRODUCT_KEY = 'svoy_product';
+
+  function productHomeScreenId() {
+    try {
+      return localStorage.getItem(PRODUCT_KEY) === 'esim' ? 'screenEsim' : 'screenVpn';
+    } catch (_) {
+      return 'screenVpn';
+    }
+  }
+
+  function applyProductSwitchUI() {
+    let p = 'vpn';
+    try {
+      p = localStorage.getItem(PRODUCT_KEY) || 'vpn';
+    } catch (_) {}
+    document.querySelectorAll('.product-switch__btn').forEach((btn) => {
+      const on = btn.dataset.product === p;
+      btn.classList.toggle('product-switch__btn--active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  function setProduct(product, navigate) {
+    try {
+      localStorage.setItem(PRODUCT_KEY, product);
+    } catch (_) {}
+    applyProductSwitchUI();
+    if (navigate) showScreen(product === 'esim' ? 'screenEsim' : 'screenVpn');
+    if (product === 'esim') ensureEsimCountriesLoaded();
+  }
+
+  function updateEsimBalanceLine() {
+    const el = document.getElementById('esimBalanceLine');
+    if (!el) return;
+    const rub = S.user && S.user.balanceRub != null ? Number(S.user.balanceRub) : null;
+    el.textContent = rub != null && !isNaN(rub) ? 'Баланс: ' + rub.toFixed(2) + ' ₽' : 'Баланс: —';
+  }
 
   function escapeHtml(s) {
     if (s == null || s === '') return '';
@@ -180,10 +224,32 @@
     } catch (_) { }
   }
 
-  /* ═══════ Theme ═══════ */
+  /* ═══════ Theme ═══════
+     SDK по умолчанию colorScheme = 'light'; вне Telegram initData пустой — иначе OS-тема игнорируется. */
+  function isTelegramMiniApp() {
+    return !!(tg && typeof tg.initData === 'string' && tg.initData.length > 0);
+  }
+
+  function systemColorScheme() {
+    try {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } catch (_) {
+      return 'light';
+    }
+  }
+
+  function getResolvedThemeScheme() {
+    if (URL_THEME) return URL_THEME;
+    if (isTelegramMiniApp()) {
+      const cs = tg.colorScheme;
+      return cs === 'dark' || cs === 'light' ? cs : 'dark';
+    }
+    return systemColorScheme();
+  }
+
   function forceHeaderColor() {
     if (!tg) return;
-    const scheme = tg.colorScheme || 'dark';
+    const scheme = getResolvedThemeScheme();
     const bgColor = scheme === 'dark' ? '#18222d' : '#ffffff';
     const secBgColor = scheme === 'dark' ? '#21303f' : '#f7f9fb';
     try { tg.setHeaderColor(bgColor); } catch (_) { }
@@ -192,8 +258,7 @@
   }
 
   function applyTheme() {
-    const scheme = URL_THEME || (tg && tg.colorScheme) ||
-      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const scheme = getResolvedThemeScheme();
     document.documentElement.setAttribute('data-theme', scheme);
     document.body.setAttribute('data-theme', scheme);
 
@@ -230,9 +295,13 @@
     const screen = document.getElementById(id);
     if (screen) screen.classList.add('active');
 
-    // Tab highlight
-    const tab = document.querySelector(`.tab[data-screen="${id}"]`);
+    let tab = document.querySelector(`.tab[data-screen="${id}"]`);
+    if (!tab && id === 'screenEsim') {
+      tab = document.querySelector('.tab[data-home-tab="1"]');
+    }
     if (tab) tab.classList.add('active');
+
+    if (id === 'screenEsim') ensureEsimCountriesLoaded();
 
     haptic('light');
   }
@@ -305,16 +374,21 @@
 
   /* ═══════ API ═══════ */
   async function api(url, opts) {
+    opts = opts || {};
     try {
       const r = await fetch(url, opts);
       const d = await r.json();
       if (!r.ok) {
-        showToast('API Error: ' + (d.error || r.status), 5000);
-        return null;
+        if (!opts.silentError) {
+          showToast('API Error: ' + (d.error || r.status), 5000);
+        }
+        return opts.silentError ? d : null;
       }
       return d;
     } catch (e) {
-      showToast('Fetch Error: ' + e.message, 5000);
+      if (!opts.silentError) {
+        showToast('Fetch Error: ' + e.message, 5000);
+      }
       return null;
     }
   }
@@ -829,7 +903,7 @@
         let statusHtml = `
             <div class="card sub-status-hero sub-status-hero--active${heroMod}" role="status">
               <div class="sub-status-hero__ring" aria-hidden="true">
-                <svg class="sub-status-hero__check" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg class="sub-status-hero__check" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                   <polyline points="22 4 12 14.01 9 11.01"/>
                 </svg>
@@ -926,7 +1000,7 @@
           subBlockBox.innerHTML = `
             <div class="card sub-status-hero sub-status-hero--inactive" role="status">
               <div class="sub-status-hero__ring sub-status-hero__ring--muted" aria-hidden="true">
-                <svg class="sub-status-hero__lock" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg class="sub-status-hero__lock" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 </svg>
@@ -1018,6 +1092,134 @@
 
     // Refresh servers layout (pageSize may change if trial block appeared)
     renderServers();
+    updateEsimBalanceLine();
+  }
+
+  function fmtBytes(n) {
+    const v = Number(n) || 0;
+    if (v >= 1073741824) return (v / 1073741824).toFixed(v >= 2147483648 ? 0 : 1) + ' ГБ';
+    if (v >= 1048576) return Math.round(v / 1048576) + ' МБ';
+    return v + ' Б';
+  }
+
+  const ESIM_API_PREFIX = '/miniapp/api';
+
+  async function ensureEsimCountriesLoaded() {
+    if (S.esimLoadedCountries) return;
+    const sel = document.getElementById('esimCountry');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Загрузка…</option>';
+    let url = ESIM_API_PREFIX + '/esim/countries';
+    if (tg && tg.initData) url += '?initData=' + encodeURIComponent(tg.initData);
+    const skipJwt = !!(tg && tg.initData);
+    try {
+      const d = await api(url, { method: 'GET', skipWebJwt: skipJwt });
+      if (d && d.countries && d.countries.length) {
+        S.esimCountries = d.countries;
+        S.esimMode = d.esimMode || 'test';
+        S.esimLoadedCountries = true;
+        sel.innerHTML = '<option value="">Выберите страну</option>';
+        d.countries.forEach((c) => {
+          const o = document.createElement('option');
+          o.value = c.code;
+          o.textContent = (c.name || c.code) + ' (' + c.code + ')';
+          sel.appendChild(o);
+        });
+      } else {
+        sel.innerHTML = '<option value="">Нет данных</option>';
+        showToast(d && d.error ? d.error : 'Не удалось загрузить страны');
+      }
+    } catch (e) {
+      sel.innerHTML = '<option value="">Ошибка сети</option>';
+    }
+    const hint = document.getElementById('esimModeHint');
+    if (hint) {
+      hint.textContent =
+        S.esimMode === 'live' ? '' : 'Режим теста: оплата с баланса, выдача демо eSIM (без провайдера).';
+    }
+  }
+
+  async function loadEsimPackages(country) {
+    const wrap = document.getElementById('esimPackages');
+    const buy = document.getElementById('btnEsimBuy');
+    S.esimSelectedPackage = null;
+    if (buy) buy.disabled = true;
+    if (!wrap) return;
+    if (!country) {
+      wrap.innerHTML = '<div class="esim-packages-placeholder text-muted body">Выберите страну</div>';
+      return;
+    }
+    wrap.innerHTML = '<div class="esim-packages-placeholder text-muted body">Загрузка…</div>';
+    let url = ESIM_API_PREFIX + '/esim/packages?country=' + encodeURIComponent(country);
+    if (tg && tg.initData) url += '&initData=' + encodeURIComponent(tg.initData);
+    const skipJwt = !!(tg && tg.initData);
+    try {
+      const d = await api(url, { method: 'GET', skipWebJwt: skipJwt });
+      if (!d || !d.packages || !d.packages.length) {
+        wrap.innerHTML = '<div class="esim-packages-placeholder text-muted body">Нет тарифов</div>';
+        return;
+      }
+      S.esimPackages = d.packages;
+      S.esimMode = d.esimMode || S.esimMode;
+      wrap.innerHTML = '';
+      d.packages.forEach((pkg) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'esim-pkg';
+        btn.dataset.code = pkg.packageCode;
+        const vol = fmtBytes(pkg.volume);
+        const days = pkg.duration ? pkg.duration + ' ' + (pkg.durationUnit === 'DAY' ? 'дн.' : pkg.durationUnit || '') : '';
+        const priceK = pkg.salePriceKopecks != null ? pkg.salePriceKopecks : 0;
+        const priceRub = (priceK / 100).toFixed(priceK % 100 === 0 ? 0 : 2);
+        btn.innerHTML =
+          '<p class="esim-pkg__title">' +
+          escapeHtml(pkg.name || pkg.description || pkg.packageCode) +
+          '</p>' +
+          '<p class="esim-pkg__meta">' +
+          escapeHtml(vol + (days ? ' · ' + days : '')) +
+          '</p>' +
+          '<p class="esim-pkg__price">' +
+          escapeHtml(priceRub) +
+          ' ₽</p>';
+        btn.onclick = () => {
+          wrap.querySelectorAll('.esim-pkg').forEach((x) => x.classList.remove('esim-pkg--selected'));
+          btn.classList.add('esim-pkg--selected');
+          S.esimSelectedPackage = pkg;
+          if (buy) buy.disabled = false;
+          haptic('light');
+        };
+        wrap.appendChild(btn);
+      });
+    } catch (e) {
+      wrap.innerHTML = '<div class="esim-packages-placeholder text-muted body">Ошибка загрузки</div>';
+    }
+  }
+
+  function hideEsimResult() {
+    const block = document.getElementById('esimResult');
+    if (block) block.style.display = 'none';
+  }
+
+  function showEsimDelivery(delivery) {
+    const block = document.getElementById('esimResult');
+    const img = document.getElementById('esimQrImg');
+    const ac = document.getElementById('esimAcCode');
+    const smdp = document.getElementById('esimSmdpCode');
+    if (!block || !ac || !smdp) return;
+    block.style.display = 'block';
+    ac.textContent = delivery.activationCode || delivery.ac || '—';
+    smdp.textContent = delivery.smdpAddress || delivery.smdp || '—';
+    if (img) {
+      if (delivery.qrImagePngBase64) {
+        img.src = 'data:image/png;base64,' + delivery.qrImagePngBase64;
+        img.style.display = 'block';
+      } else if (delivery.qrCodeUrl && isSafeHttpsUrl(delivery.qrCodeUrl)) {
+        img.src = delivery.qrCodeUrl;
+        img.style.display = 'block';
+      } else {
+        img.style.display = 'none';
+      }
+    }
   }
 
   /* ═══════ Load Data ═══════ */
@@ -1106,6 +1308,7 @@
         S.subscription = d.subscription;
         S.referral = normalizeReferralFromApi(d.referral);
         renderUser();
+        if (!silent) showScreen(productHomeScreenId());
         const isActive = S.subscription && S.subscription.isActive;
         const newEnd = S.subscription && S.subscription.endDate;
         const pendingTime = localStorage.getItem('pending_payment_time');
@@ -1143,6 +1346,7 @@
         } catch (_) { }
       }
       renderUser();
+      if (!silent) showScreen(productHomeScreenId());
 
       const isActive = S.subscription && S.subscription.isActive;
       const newEnd = S.subscription && S.subscription.endDate;
@@ -1302,6 +1506,17 @@
     // Re-apply after a tick in case Telegram populates themeParams async
     setTimeout(applyTheme, 150);
 
+    if (!URL_THEME) {
+      try {
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        const onSysTheme = () => {
+          if (!isTelegramMiniApp()) applyTheme();
+        };
+        if (mq.addEventListener) mq.addEventListener('change', onSysTheme);
+        else if (mq.addListener) mq.addListener(onSysTheme);
+      } catch (_) { }
+    }
+
     // Load SVG sprite
     loadSprite();
 
@@ -1322,13 +1537,87 @@
       renderUser();
     }
 
+    applyProductSwitchUI();
+
     // Tab bar navigation
     document.querySelectorAll('.tab').forEach((btn) => {
       btn.addEventListener('click', () => {
-        if (btn.dataset.screen) showScreen(btn.dataset.screen);
+        if (btn.dataset.homeTab === '1') {
+          showScreen(productHomeScreenId());
+        } else if (btn.dataset.screen) {
+          showScreen(btn.dataset.screen);
+        }
         if (btn.dataset.screen === 'screenReferral') loadReferral();
       });
     });
+
+    document.querySelector('.app').addEventListener('click', (ev) => {
+      const b = ev.target.closest('.product-switch__btn');
+      if (!b || !b.dataset.product) return;
+      const prod = b.dataset.product;
+      setProduct(prod, true);
+      if (prod === 'vpn') hideEsimResult();
+    });
+
+    const esimCountry = document.getElementById('esimCountry');
+    if (esimCountry) {
+      esimCountry.addEventListener('change', () => {
+        const v = esimCountry.value;
+        S.esimSelectedCountry = v;
+        hideEsimResult();
+        loadEsimPackages(v);
+      });
+    }
+
+    const btnEsimBuy = document.getElementById('btnEsimBuy');
+    if (btnEsimBuy) {
+      btnEsimBuy.addEventListener('click', async () => {
+        const pkg = S.esimSelectedPackage;
+        const loc = S.esimSelectedCountry || (esimCountry && esimCountry.value);
+        if (!pkg || !loc) return;
+        btnEsimBuy.disabled = true;
+        const body = { packageCode: pkg.packageCode, locationCode: loc };
+        if (tg && tg.initData) body.initData = tg.initData;
+        const headers = { 'Content-Type': 'application/json' };
+        if (IS_ANDROID) headers['Authorization'] = 'Bearer ' + ANDROID_JWT;
+        const skipJwt = !!(tg && tg.initData);
+        try {
+          const d = await api(ESIM_API_PREFIX + '/esim/purchase', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(body),
+            skipWebJwt: skipJwt,
+            silentError: true,
+          });
+          if (d && d.ok && d.delivery) {
+            if (S.user) {
+              if (d.balanceRub != null) S.user.balanceRub = d.balanceRub;
+              if (d.balanceKopecks != null) S.user.balanceKopecks = d.balanceKopecks;
+            }
+            updateEsimBalanceLine();
+            showEsimDelivery(d.delivery);
+            showToast('Готово! Установите eSIM по QR или коду.');
+            haptic('success');
+          } else if (d && d.error === 'insufficient_balance') {
+            const need = d.needKopecks != null ? (Number(d.needKopecks) / 100).toFixed(2) : '';
+            showToast('Недостаточно средств на балансе' + (need ? ' (нужно ' + need + ' ₽)' : ''), 4000);
+          } else {
+            showToast((d && d.error) || 'Ошибка покупки', 3000);
+          }
+        } catch (e) {
+          showToast('Ошибка сети', 2000);
+        }
+        btnEsimBuy.disabled = false;
+      });
+    }
+
+    const btnEsimCopyAc = document.getElementById('btnEsimCopyAc');
+    if (btnEsimCopyAc) {
+      btnEsimCopyAc.addEventListener('click', () => {
+        const el = document.getElementById('esimAcCode');
+        copyText(el && el.textContent, btnEsimCopyAc);
+      });
+    }
 
     function addClick(id, handler) {
       const el = document.getElementById(id);
@@ -1814,7 +2103,7 @@
         if (currentSlide === 2) renderConnectSlide();
         goToSlide(currentSlide + 1, 'forward');
       } else {
-        showScreen('screenVpn');
+        showScreen(productHomeScreenId());
       }
     });
 

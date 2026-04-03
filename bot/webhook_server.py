@@ -8,9 +8,10 @@ import mimetypes
 import hashlib
 import hmac
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import parse_qs, unquote
 import secrets
+import uuid
 import asyncio
 import bcrypt
 import jwt as pyjwt
@@ -31,6 +32,7 @@ from .database import (
 )
 from .subscriptions import create_or_activate_keys_for_all_servers, get_user_subscription_url
 from .plans import get_subscription_plans, get_renewal_plans
+from . import esim_service
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +156,8 @@ class WebhookServer:
         self.app.router.add_get('/sub/{token}', self.handle_subscription)
         self.app.router.add_post('/webhook/flyer', self.handle_flyer_webhook)
         self.app.router.add_get('/webhook/flyer', self.health_check)
+        self.app.router.add_post('/webhook/esim', self.handle_esim_webhook)
+        self.app.router.add_get('/webhook/esim', self.handle_esim_webhook)
         if yookassa_config and yookassa_config.enabled:
             self.app.router.add_post('/webhook/yookassa', self.handle_yookassa_webhook)
             self.app.router.add_post('/webhook/yookassa/', self.handle_yookassa_webhook)
@@ -199,6 +203,9 @@ class WebhookServer:
             ('/api/auth/link-email/confirm', self.api_link_email_confirm, 'POST'),
             ('/api/auth/link-telegram/init', self.api_link_telegram_init, 'POST'),
             ('/api/auth/link-telegram/poll', self.api_link_telegram_poll, 'GET'),
+            ('/api/esim/countries', self.api_esim_countries, 'GET'),
+            ('/api/esim/packages', self.api_esim_packages, 'GET'),
+            ('/api/esim/purchase', self.api_esim_purchase, 'POST'),
         ]
         
         for path, handler, method in api_routes:
@@ -225,7 +232,9 @@ class WebhookServer:
                 "SVOYVPN_JWT_SECRET is not set — email/Android JWT uses a default secret; set the env var in production."
             )
 
-        logger.info(f"WebhookServer initialized with routes (POST): /webhook/flyer, /webhook/yookassa, /webhook/cryptopay")
+        logger.info(
+            f"WebhookServer initialized with routes (POST): /webhook/flyer, /webhook/yookassa, /webhook/cryptopay, /webhook/esim"
+        )
         logger.info(f"WebhookServer initialized with routes (GET): /, /sub/{{token}}, /api/*, /webhook/cryptopay")
     
     @staticmethod
@@ -974,6 +983,10 @@ class WebhookServer:
                 referral = await self._referral_bundle_for_user(conn, user_id)
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
 
+                bal_row = await conn.fetchval("SELECT balance FROM user_balances WHERE user_id = $1", user_id)
+                bal = int(bal_row or 0)
+                balance_snap = {"balanceKopecks": bal, "balanceRub": round(bal / 100.0, 2)}
+
                 return web.json_response({
                     "user": {
                         "id": user_id,
@@ -986,6 +999,7 @@ class WebhookServer:
                         "isAdmin": is_admin,
                         "supportLink": support_link,
                         **auth_snap,
+                        **balance_snap,
                     },
                     "subscription": {
                         "isActive": is_active,
@@ -2728,6 +2742,10 @@ class WebhookServer:
                 referral = await self._referral_bundle_for_user(conn, user_id)
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
 
+                bal_row = await conn.fetchval("SELECT balance FROM user_balances WHERE user_id = $1", user_id)
+                bal = int(bal_row or 0)
+                balance_snap = {"balanceKopecks": bal, "balanceRub": round(bal / 100.0, 2)}
+
                 return web.json_response({
                     "user": {
                         "id": user_id,
@@ -2740,6 +2758,7 @@ class WebhookServer:
                         "isAdmin": is_admin,
                         "supportLink": support_link,
                         **auth_snap,
+                        **balance_snap,
                     },
                     "subscription": {
                         "isActive": is_active,
@@ -2753,6 +2772,244 @@ class WebhookServer:
         except Exception as e:
             logger.error(f"Error in api_get_user_jwt: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
+
+    def _auth_user_id_from_miniapp_request(
+        self, request: web_request.Request, body: Optional[dict[str, Any]] = None
+    ) -> Optional[int]:
+        """JWT (веб/Android) или initData (Telegram WebApp)."""
+        jwt_uid = self._get_jwt_user_id(request)
+        if jwt_uid is not None:
+            return jwt_uid
+        init_data = ""
+        if body and body.get("initData"):
+            init_data = str(body.get("initData") or "").strip()
+        if not init_data:
+            init_data = (request.query.get("initData") or "").strip()
+        if not init_data or not self.bot:
+            return None
+        if not self.verify_telegram_webapp_data(init_data, self.bot.token):
+            return None
+        parsed = self.parse_telegram_init_data(init_data)
+        return telegram_user_id_from_parsed_init(parsed) or None
+
+    async def api_esim_countries(self, request: web_request.Request) -> web.Response:
+        try:
+            uid = self._auth_user_id_from_miniapp_request(request, None)
+            if not uid:
+                return web.json_response({"error": "Unauthorized"}, status=401)
+            locs = await esim_service.public_locations()
+            slim = [{"code": x.get("code"), "name": x.get("name"), "type": x.get("type")} for x in locs]
+            return web.json_response(
+                {"countries": slim, "esimMode": esim_service._cfg_mode()}
+            )
+        except Exception as e:
+            logger.error("api_esim_countries: %s", e, exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_esim_packages(self, request: web_request.Request) -> web.Response:
+        try:
+            uid = self._auth_user_id_from_miniapp_request(request, None)
+            if not uid:
+                return web.json_response({"error": "Unauthorized"}, status=401)
+            code = (request.query.get("country") or request.query.get("location") or "").strip().upper()
+            if not code:
+                return web.json_response({"error": "country required"}, status=400)
+            packs = await esim_service.public_packages(code)
+            return web.json_response(
+                {"packages": packs, "esimMode": esim_service._cfg_mode()}
+            )
+        except Exception as e:
+            logger.error("api_esim_packages: %s", e, exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_esim_purchase(self, request: web_request.Request) -> web.Response:
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "JSON body required"}, status=400)
+        try:
+            user_id = self._auth_user_id_from_miniapp_request(request, data)
+            if not user_id:
+                return web.json_response({"error": "Unauthorized"}, status=401)
+            package_code = (data.get("packageCode") or "").strip()
+            location_code = (data.get("locationCode") or data.get("country") or "").strip().upper()
+            if not package_code or not location_code:
+                return web.json_response({"error": "packageCode and locationCode required"}, status=400)
+
+            packages = await esim_service.public_packages(location_code)
+            pkg = next((p for p in packages if p.get("packageCode") == package_code), None)
+            if not pkg:
+                return web.json_response({"error": "Package not found for this country"}, status=404)
+
+            price_k = int(pkg.get("salePriceKopecks") or esim_service.package_sale_price_kopecks(pkg))
+            mode = esim_service._cfg_mode()
+            tx_id = f"svoy_{user_id}_{uuid.uuid4().hex}"
+
+            async with get_connection() as conn:
+                urow = await conn.fetchrow("SELECT user_id FROM users WHERE user_id = $1", user_id)
+                if not urow:
+                    return web.json_response({"error": "User not found"}, status=404)
+
+                await conn.execute(
+                    """
+                    INSERT INTO user_balances (user_id, balance, updated_at)
+                    VALUES ($1, 0, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id) DO NOTHING
+                    """,
+                    user_id,
+                )
+
+                async with conn.transaction():
+                    brow = await conn.fetchrow(
+                        "SELECT balance FROM user_balances WHERE user_id = $1 FOR UPDATE",
+                        user_id,
+                    )
+                    bal = int(brow["balance"] if brow else 0)
+                    if bal < price_k:
+                        return web.json_response(
+                            {
+                                "error": "insufficient_balance",
+                                "needKopecks": price_k,
+                                "balanceKopecks": bal,
+                            },
+                            status=402,
+                        )
+                    await conn.execute(
+                        """
+                        UPDATE user_balances
+                        SET balance = balance - $2, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = $1 AND balance >= $2
+                        """,
+                        user_id,
+                        price_k,
+                    )
+
+                delivery: dict[str, Any]
+                provider_raw: Optional[dict] = None
+                batch_no: Optional[str] = None
+
+                if mode == "live":
+                    ok, err, extra = await esim_service.fulfill_order_live(tx_id, package_code)
+                    provider_raw = extra.get("providerResponse") if isinstance(extra, dict) else None
+                    batch_no = (extra or {}).get("batchOrderNo") if isinstance(extra, dict) else None
+                    if not ok:
+                        await conn.execute(
+                            """
+                            UPDATE user_balances
+                            SET balance = balance + $2, updated_at = CURRENT_TIMESTAMP
+                            WHERE user_id = $1
+                            """,
+                            user_id,
+                            price_k,
+                        )
+                        return web.json_response(
+                            {"error": err or "esim_order_failed", "details": extra},
+                            status=502,
+                        )
+                    delivery = {k: v for k, v in extra.items() if k != "providerResponse"}
+                else:
+                    delivery = esim_service.test_fake_delivery(package_code)
+
+                await conn.execute(
+                    """
+                    INSERT INTO esim_orders
+                    (user_id, transaction_id, package_code, location_code, price_kopecks,
+                     mode, batch_order_no, status, delivery_json, provider_raw)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,'completed',$8,$9)
+                    """,
+                    user_id,
+                    tx_id,
+                    package_code,
+                    location_code,
+                    price_k,
+                    mode,
+                    batch_no,
+                    delivery,
+                    provider_raw,
+                )
+
+                new_bal = await conn.fetchval(
+                    "SELECT balance FROM user_balances WHERE user_id = $1", user_id
+                )
+                new_bal = int(new_bal or 0)
+
+            return web.json_response(
+                {
+                    "ok": True,
+                    "transactionId": tx_id,
+                    "esimMode": mode,
+                    "priceKopecks": price_k,
+                    "balanceKopecks": new_bal,
+                    "balanceRub": round(new_bal / 100.0, 2),
+                    "delivery": delivery,
+                }
+            )
+        except Exception as e:
+            logger.error("api_esim_purchase: %s", e, exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_esim_webhook(self, request: web_request.Request) -> web.Response:
+        """Уведомления eSIM Access: статусы, данные, ошибки (GET query или POST JSON/form)."""
+        try:
+            if request.method == "GET" and len(request.query) == 0:
+                return web.json_response({"status": "ok", "service": "esim_webhook"})
+            payload: dict[str, Any] = {}
+            if request.method == "GET":
+                for k, v in request.query.items():
+                    if len(v) == 1:
+                        payload[k] = v[0]
+                    else:
+                        payload[k] = list(v)
+            else:
+                ct = (request.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                if ct == "application/json":
+                    try:
+                        body = await request.json()
+                        if isinstance(body, dict):
+                            payload = body
+                        else:
+                            payload = {"_raw": body}
+                    except Exception:
+                        txt = await request.text()
+                        payload = {"_rawText": txt[:8000]}
+                elif ct in ("application/x-www-form-urlencoded", "multipart/form-data"):
+                    try:
+                        data = await request.post()
+                        payload = {k: v for k, v in data.items()}
+                    except Exception:
+                        payload = {}
+                else:
+                    try:
+                        txt = await request.text()
+                        payload = {"_rawText": txt[:8000]}
+                    except Exception:
+                        payload = {}
+
+            notify_type = payload.get("notifyType") or payload.get("notify_type")
+            content = payload.get("content")
+            if isinstance(content, str):
+                try:
+                    content = json.loads(content)
+                except Exception:
+                    content = {"value": content}
+            flat = {"notifyType": notify_type, "content": content, "raw": payload}
+
+            async with get_connection() as conn:
+                await conn.execute(
+                    "INSERT INTO esim_webhook_events (notify_type, payload) VALUES ($1, $2)",
+                    str(notify_type) if notify_type else None,
+                    flat,
+                )
+
+            logger.info(
+                "eSIM webhook: notifyType=%s keys=%s",
+                notify_type,
+                list(payload.keys())[:12],
+            )
+            return web.json_response({"ok": True})
+        except Exception as e:
+            logger.error("handle_esim_webhook: %s", e, exc_info=True)
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     async def run(self, host: str, port: int):
         """Запуск сервера"""

@@ -426,6 +426,41 @@ async def init_db() -> None:
         except Exception as e:
             logging.warning(f"Could not create device_instruction_photos table: {e}")
 
+        # eSIM заказы (SvoyVPN + eSIM Access)
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS esim_orders (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL REFERENCES users(user_id),
+                    transaction_id TEXT UNIQUE NOT NULL,
+                    package_code TEXT NOT NULL,
+                    location_code TEXT,
+                    price_kopecks INTEGER NOT NULL,
+                    mode TEXT NOT NULL DEFAULT 'test',
+                    batch_order_no TEXT,
+                    status TEXT NOT NULL DEFAULT 'completed',
+                    delivery_json JSONB,
+                    provider_raw JSONB,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            ''')
+            await conn.execute(
+                'CREATE INDEX IF NOT EXISTS idx_esim_orders_user ON esim_orders(user_id, created_at DESC)'
+            )
+        except Exception as e:
+            logging.warning(f"Could not create esim_orders table: {e}")
+
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS esim_webhook_events (
+                    id BIGSERIAL PRIMARY KEY,
+                    received_at TIMESTAMPTZ DEFAULT NOW(),
+                    notify_type TEXT,
+                    payload JSONB NOT NULL
+                )
+            ''')
+        except Exception as e:
+            logging.warning(f"Could not create esim_webhook_events table: {e}")
 
         # news
         try:

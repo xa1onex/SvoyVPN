@@ -35,33 +35,67 @@
     box-sizing: border-box;
   }
 
-  /* Top nav: compact, not stretched */
+  /* Top nav: сгруппирован по центру, «таблетки» вместо растягивания на всю ширину */
   .tab-bar {
     order: -1;
     position: sticky;
     top: 0;
     z-index: 1100;
-    height: 52px !important;
-    padding: 0 12px calc(0px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))) !important;
-    justify-content: stretch !important;
-    gap: 8px !important;
+    /* Не фиксируем height: иначе при wrap или тенях верх обрезается (body/.app overflow + sticky) */
+    min-height: 56px !important;
+    height: auto !important;
+    padding: 10px 16px calc(10px + var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))) !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-wrap: nowrap;
+    gap: 6px !important;
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
     border-top: none !important;
     border-bottom: 1px solid var(--separator_color, rgba(0, 0, 0, 0.08)) !important;
-    background: color-mix(in srgb, var(--bg_color, #fff) 92%, transparent) !important;
-    backdrop-filter: blur(10px);
+    background: color-mix(in srgb, var(--bg_color, #fff) 86%, transparent) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .tab-bar::-webkit-scrollbar {
+    display: none;
   }
 
   .tab-bar .tab {
-    flex: 1 1 0 !important;
+    flex: 0 0 auto !important;
     min-width: 0 !important;
+    flex-shrink: 0 !important;
     max-width: none;
-    padding: 0 10px !important;
+    padding: 0 14px !important;
     flex-direction: row !important;
     align-items: center !important;
     justify-content: center !important;
     gap: 8px !important;
-    border-radius: 10px;
+    border-radius: 999px;
     height: 40px;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.12s ease;
+    color: var(--subtitle_text_color, #6b7c8f);
+    background: color-mix(in srgb, var(--subtitle_text_color, #6b7c8f) 10%, transparent);
+  }
+
+  .tab-bar .tab:hover {
+    background: color-mix(in srgb, var(--accent_text_color, #3aa8fc) 14%, transparent);
+    color: var(--title_color, #1a2535);
+  }
+
+  .tab-bar .tab.active {
+    color: var(--accent_text_color, #3aa8fc) !important;
+    background: color-mix(in srgb, var(--accent_text_color, #3aa8fc) 18%, transparent) !important;
+    box-shadow:
+      0 1px 3px rgba(15, 23, 42, 0.08),
+      0 0 0 1px color-mix(in srgb, var(--accent_text_color, #3aa8fc) 28%, transparent);
+  }
+
+  .tab-bar .tab:active {
+    transform: scale(0.97);
   }
 
   .tab-bar .tab-icon {
@@ -73,6 +107,7 @@
   .tab-bar .tab-label {
     font-size: 13px !important;
     font-weight: 650 !important;
+    letter-spacing: 0.01em;
   }
 
   /* Typography scale */
@@ -106,10 +141,20 @@
     padding: 12px 14px !important;
   }
 
+  /* Плашка подписки на главной — уже по содержимому, не на всю колонку */
+  #subBlockBox .sub-status-hero.sub-status-hero--active,
+  #subBlockBox .sub-status-hero.sub-status-hero--inactive {
+    max-width: min(500px, 100%) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 13px 15px !important;
+  }
+
   /* Primary CTAs — компактные, по центру (не на всю ширину экрана) */
   #screenVpn .screen-content > .btn-primary,
   #screenVpn .screen-content > .btn-secondary,
-  /* Кнопки внутри промо-карточки пробного периода */
   #subBlockBox .card .btn-primary,
   #subBlockBox > .btn-primary,
   #subBlockBox > .btn-secondary,
@@ -639,8 +684,16 @@
     margin: 0 auto;
   }
 
+  #screenReferral .logo-anim {
+    transform: scale(0.88);
+    transform-origin: top center;
+  }
+
   #screenReferral .referral-card {
     border: 1px solid var(--separator_color, rgba(0, 0, 0, 0.08));
+    max-width: min(420px, 100%) !important;
+    padding: 11px 14px !important;
+    gap: 6px !important;
   }
 
   /* Карточки: лёгкий hover на десктопе */
@@ -703,7 +756,25 @@
   /* Light theme on desktop: stronger contrast */
   html[data-theme="light"] .tab-bar {
     border-bottom-color: #d6e1ec !important;
-    background: rgba(255, 255, 255, 0.96) !important;
+    background: rgba(255, 255, 255, 0.88) !important;
+  }
+
+  html[data-theme="dark"] .tab-bar .tab {
+    color: rgba(255, 255, 255, 0.55) !important;
+    background: rgba(255, 255, 255, 0.07) !important;
+  }
+
+  html[data-theme="dark"] .tab-bar .tab:hover {
+    color: rgba(255, 255, 255, 0.9) !important;
+    background: rgba(58, 168, 252, 0.14) !important;
+  }
+
+  html[data-theme="dark"] .tab-bar .tab.active {
+    color: var(--accent_text_color, #5eb8ff) !important;
+    background: rgba(58, 168, 252, 0.2) !important;
+    box-shadow:
+      0 0 0 1px rgba(58, 168, 252, 0.35),
+      0 4px 14px rgba(0, 0, 0, 0.25) !important;
   }
 
   html[data-theme="light"] .card,

@@ -171,7 +171,7 @@ final class AuthViewController: UIViewController {
       </svg>
     </div>
   </div>
-  <div class="app-name">SvoyVPN Pro</div>
+  <div class="app-name">SvoyVPN</div>
   <div class="app-tagline">Быстрый и надёжный, потому что Свой</div>
   <div class="card">
     <div class="tabs">
