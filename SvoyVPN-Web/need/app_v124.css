@@ -490,8 +490,8 @@ html[data-theme="light"] {
     flex-direction: row;
     align-items: center;
     text-align: left;
-    gap: 12px;
-    padding: 13px 15px;
+    gap: 16px;
+    padding: 20px 22px;
 }
 
 .sub-status-hero__body {
@@ -500,7 +500,7 @@ html[data-theme="light"] {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: 6px;
 }
 
 .sub-status-hero--warn {
@@ -514,8 +514,8 @@ html[data-theme="light"] {
 }
 
 .sub-status-hero__ring {
-    width: 48px;
-    height: 48px;
+    width: 56px;
+    height: 56px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -524,14 +524,14 @@ html[data-theme="light"] {
     flex-shrink: 0;
     color: #22a059;
     background: linear-gradient(160deg, rgba(52, 199, 89, 0.22), rgba(52, 199, 89, 0.06));
-    box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.12);
+    box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.12);
     animation: sub-status-pulse 2.8s ease-in-out infinite;
 }
 
 .sub-status-hero--warn .sub-status-hero__ring {
     color: #c97800;
     background: linear-gradient(160deg, rgba(255, 159, 10, 0.28), rgba(255, 159, 10, 0.08));
-    box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.14);
+    box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.14);
     animation-name: sub-status-pulse-warn;
 }
 
@@ -539,31 +539,31 @@ html[data-theme="light"] {
     animation: none;
     color: #8b95a5;
     background: linear-gradient(160deg, rgba(120, 130, 145, 0.2), rgba(120, 130, 145, 0.06));
-    box-shadow: 0 0 0 3px rgba(120, 130, 145, 0.1);
+    box-shadow: 0 0 0 4px rgba(120, 130, 145, 0.1);
 }
 
 .sub-status-hero__check,
 .sub-status-hero__lock {
     display: block;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
 }
 
 @keyframes sub-status-pulse {
     0%, 100% {
-        box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.12);
+        box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.12);
     }
     50% {
-        box-shadow: 0 0 0 6px rgba(52, 199, 89, 0.05);
+        box-shadow: 0 0 0 8px rgba(52, 199, 89, 0.05);
     }
 }
 
 @keyframes sub-status-pulse-warn {
     0%, 100% {
-        box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.14);
+        box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.14);
     }
     50% {
-        box-shadow: 0 0 0 6px rgba(255, 159, 10, 0.06);
+        box-shadow: 0 0 0 8px rgba(255, 159, 10, 0.06);
     }
 }
 
@@ -584,7 +584,7 @@ html[data-theme="light"] {
 
 .sub-status-hero--active .sub-status-hero__title,
 .sub-status-hero--inactive .sub-status-hero__title {
-    font-size: 16px;
+    font-size: 18px;
     line-height: 1.22;
 }
 
@@ -597,8 +597,8 @@ html[data-theme="light"] {
 }
 
 .sub-status-hero--active .sub-status-hero__date {
-    font-size: 14px;
-    line-height: 1.28;
+    font-size: 16px;
+    line-height: 1.3;
 }
 
 .sub-status-hero__meta {
@@ -611,8 +611,8 @@ html[data-theme="light"] {
 
 .sub-status-hero--active .sub-status-hero__meta,
 .sub-status-hero--inactive .sub-status-hero__meta {
-    font-size: 13px;
-    line-height: 1.4;
+    font-size: 14px;
+    line-height: 1.45;
     max-width: none;
 }
 
@@ -627,15 +627,15 @@ html[data-theme="light"] {
 
 .sub-status-hero--active .sub-status-hero__urgent {
     margin: 2px 0 0;
-    font-size: 12px;
-    line-height: 1.38;
+    font-size: 13px;
+    line-height: 1.4;
     max-width: none;
 }
 
 .btn-primary.btn-primary--sub-block {
-    padding: 11px 16px;
-    min-height: 46px;
-    font-size: 15px;
+    padding: 13px 18px;
+    min-height: 50px;
+    font-size: 16px;
 }
 
 /* Два действия в ряд (остальные экраны; главный экран — одна кнопка «Продлить») */

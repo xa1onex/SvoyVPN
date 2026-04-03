@@ -852,7 +852,7 @@
         let statusHtml = `
             <div class="card sub-status-hero sub-status-hero--active${heroMod}" role="status">
               <div class="sub-status-hero__ring" aria-hidden="true">
-                <svg class="sub-status-hero__check" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg class="sub-status-hero__check" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                   <polyline points="22 4 12 14.01 9 11.01"/>
                 </svg>
@@ -868,7 +868,7 @@
                 }
               </div>
             </div>
-            <div class="gap-8"></div>
+            <div class="gap-12"></div>
         `;
 
         statusHtml += `
@@ -949,7 +949,7 @@
           subBlockBox.innerHTML = `
             <div class="card sub-status-hero sub-status-hero--inactive" role="status">
               <div class="sub-status-hero__ring sub-status-hero__ring--muted" aria-hidden="true">
-                <svg class="sub-status-hero__lock" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg class="sub-status-hero__lock" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 </svg>
@@ -959,7 +959,7 @@
                 <p class="sub-status-hero__meta">Без тарифа VPN-серверы недоступны. Тарифы и оплата — в отдельном окне.</p>
               </div>
             </div>
-            <div class="gap-8"></div>
+            <div class="gap-12"></div>
             <button type="button" class="btn-primary btn-primary--sub-block" onclick="window.showModal('modalPlan')">Выбрать тариф</button>
           `;
         }
