@@ -43,9 +43,9 @@
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="/miniapp/need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/miniapp/need/assets/index_v111.css" />
-  <link rel="stylesheet" href="/miniapp/need/app_v124.css?v=134" />
+  <link rel="stylesheet" href="/miniapp/need/app_v124.css?v=135" />
 
-  <script defer src="/miniapp/need/app_v124.js?v=134"></script>
+  <script defer src="/miniapp/need/app_v124.js?v=135"></script>
 </head>
 
 <body>
@@ -524,6 +524,19 @@
           </div>
         </div>
         <button type="button" id="btnLinkEmailSend" class="btn-primary modal-link-email__submit">Получить код</button>
+      </div>
+      <div id="linkEmailMergeStep" class="link-email-merge-step" style="display:none;">
+        <div class="link-email-merge-anim" aria-hidden="true">
+          <div class="link-email-merge-orb link-email-merge-orb--tg"></div>
+          <div class="link-email-merge-orb link-email-merge-orb--mail"></div>
+          <div class="link-email-merge-bridge"></div>
+        </div>
+        <p class="modal-link-email__hint link-email-merge-lead">Эта почта уже есть в SvoyVPN (вход только по email).</p>
+        <p class="link-email-merge-text">Объединить её с вашим <b>Telegram</b>? Подписка, баланс и ключи с почты
+          <span id="linkEmailMergeMasked" class="link-email-merge-masked">…</span> перейдут в этот Telegram-аккаунт.</p>
+        <p class="link-email-merge-note">Это одноразовое действие: после подтверждения вход по старому «только почта» сольётся с текущим профилем.</p>
+        <button type="button" id="btnLinkEmailMergeConfirm" class="btn-primary modal-link-email__submit">Да, объединить и получить код</button>
+        <button type="button" id="btnLinkEmailMergeCancel" class="btn-secondary modal-link-email__submit link-email-merge-back">Назад</button>
       </div>
       <div id="linkEmailStep2" style="display:none;">
         <p class="modal-link-email__hint">Введите код из Telegram или из письма.</p>

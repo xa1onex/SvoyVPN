@@ -1349,16 +1349,25 @@
     loadUser();
 
     window._pendingLinkEmail = '';
+
+    function resetLinkEmailModalSteps() {
+      const s1 = document.getElementById('linkEmailStep1');
+      const sM = document.getElementById('linkEmailMergeStep');
+      const s2 = document.getElementById('linkEmailStep2');
+      const t = document.querySelector('#modalLinkEmail .modal-link-email__title');
+      if (s1) s1.style.display = 'block';
+      if (sM) sM.style.display = 'none';
+      if (s2) s2.style.display = 'none';
+      if (t) t.textContent = 'Привязка почты';
+    }
+
     window.openLinkEmailModal = function () {
       if (!tg || !tg.initData) {
         showToast('Нужен Telegram');
         return;
       }
       window._pendingLinkEmail = '';
-      const s1 = document.getElementById('linkEmailStep1');
-      const s2 = document.getElementById('linkEmailStep2');
-      if (s1) s1.style.display = 'block';
-      if (s2) s2.style.display = 'none';
+      resetLinkEmailModalSteps();
       const a = document.getElementById('linkEmailAddr');
       const p = document.getElementById('linkEmailPass');
       const o = document.getElementById('linkEmailOtp');
@@ -1368,43 +1377,80 @@
       showModal('modalLinkEmail');
     };
 
+    async function handleLinkEmailSendClick(btnEl, confirmMerge) {
+      if (!tg || !tg.initData) return;
+      const email = (document.getElementById('linkEmailAddr') || {}).value.trim().toLowerCase();
+      const password = (document.getElementById('linkEmailPass') || {}).value;
+      if (!email || email.indexOf('@') < 0) {
+        showToast('Укажите email');
+        return;
+      }
+      btnEl.disabled = true;
+      const r = await fetch('/miniapp/api/auth/link-email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          initData: tg.initData,
+          email,
+          password,
+          confirm_merge: !!confirmMerge,
+        }),
+      });
+      let d = {};
+      try {
+        d = await r.json();
+      } catch (_) {}
+      btnEl.disabled = false;
+      if (!r.ok) {
+        showToast(d.error || 'Ошибка');
+        return;
+      }
+      if (d.status === 'already_linked') {
+        showToast('Почта уже привязана');
+        hideModal('modalLinkEmail');
+        await loadUser(true);
+        return;
+      }
+      if (d.status === 'merge_confirm_required') {
+        const masked = d.masked_email || '…';
+        const mEl = document.getElementById('linkEmailMergeMasked');
+        if (mEl) mEl.textContent = masked;
+        const s1 = document.getElementById('linkEmailStep1');
+        const sM = document.getElementById('linkEmailMergeStep');
+        const t = document.querySelector('#modalLinkEmail .modal-link-email__title');
+        if (s1) s1.style.display = 'none';
+        if (sM) sM.style.display = 'block';
+        if (t) t.textContent = 'Объединение аккаунтов';
+        return;
+      }
+      window._pendingLinkEmail = email;
+      const s1 = document.getElementById('linkEmailStep1');
+      const sM = document.getElementById('linkEmailMergeStep');
+      const s2 = document.getElementById('linkEmailStep2');
+      const t = document.querySelector('#modalLinkEmail .modal-link-email__title');
+      if (s1) s1.style.display = 'none';
+      if (sM) sM.style.display = 'none';
+      if (s2) s2.style.display = 'block';
+      if (t) t.textContent = 'Привязка почты';
+      showToast('Код в Telegram и на почте');
+    }
+
     const btnSend = document.getElementById('btnLinkEmailSend');
     if (btnSend) {
-      btnSend.addEventListener('click', async function () {
-        if (!tg || !tg.initData) return;
-        const email = (document.getElementById('linkEmailAddr') || {}).value.trim().toLowerCase();
-        const password = (document.getElementById('linkEmailPass') || {}).value;
-        if (!email || email.indexOf('@') < 0) {
-          showToast('Укажите email');
-          return;
-        }
-        this.disabled = true;
-        const r = await fetch('/miniapp/api/auth/link-email/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData: tg.initData, email, password }),
-        });
-        let d = {};
-        try {
-          d = await r.json();
-        } catch (_) {}
-        this.disabled = false;
-        if (!r.ok) {
-          showToast(d.error || 'Ошибка');
-          return;
-        }
-        if (d.status === 'already_linked') {
-          showToast('Почта уже привязана');
-          hideModal('modalLinkEmail');
-          await loadUser(true);
-          return;
-        }
-        window._pendingLinkEmail = email;
-        const s1 = document.getElementById('linkEmailStep1');
-        const s2 = document.getElementById('linkEmailStep2');
-        if (s1) s1.style.display = 'none';
-        if (s2) s2.style.display = 'block';
-        showToast('Код в Telegram и на почте');
+      btnSend.addEventListener('click', function () {
+        handleLinkEmailSendClick(this, false);
+      });
+    }
+    const btnMergeOk = document.getElementById('btnLinkEmailMergeConfirm');
+    if (btnMergeOk) {
+      btnMergeOk.addEventListener('click', function () {
+        handleLinkEmailSendClick(this, true);
+      });
+    }
+    const btnMergeCancel = document.getElementById('btnLinkEmailMergeCancel');
+    if (btnMergeCancel) {
+      btnMergeCancel.addEventListener('click', function () {
+        resetLinkEmailModalSteps();
       });
     }
 

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import parse_qs, unquote
 import secrets
-import hashlib
+import asyncio
 import bcrypt
 import jwt as pyjwt
 from aiohttp import web, web_request
@@ -125,7 +125,10 @@ def mask_email_for_display(email: str) -> str:
 
 class WebhookServer:
     """HTTP сервер для вебхуков и subscription endpoint"""
-    
+
+    # Для security-уведомлений из async classmethod (привязка Telegram)
+    _notify_bot = None
+
     def __init__(
         self,
         flyer_config: FlyerConfig,
@@ -140,6 +143,7 @@ class WebhookServer:
         self.yookassa_config = yookassa_config
         self.cryptopay_config = cryptopay_config
         self.bot = bot_instance
+        WebhookServer._notify_bot = bot_instance
         self.yookassa_client = yookassa_client
         self.payment_processor = payment_processor
         self.admin_ids = admin_ids or []
@@ -1820,7 +1824,8 @@ class WebhookServer:
             return (
                 "✅ <b>Telegram привязан!</b>\n\n"
                 "Данные аккаунта с почтой перенесены на этот Telegram. "
-                "Вернитесь в приложение — сессия обновится автоматически."
+                "Вернитесь в приложение — сессия обновится автоматически.\n\n"
+                "📧 На вашу почту отправлено письмо с подтверждением."
             )
         except Exception as e:
             logger.error("confirm_link_telegram: %s", e, exc_info=True)
@@ -1957,6 +1962,214 @@ class WebhookServer:
                 s.login(smtp_user, smtp_pass)
                 s.sendmail(smtp_from, [to_email], msg.as_string())
 
+    # ─── Безопасность: новое устройство, привязки, сброс пароля ───────────────
+
+    def _client_ip(self, request: web_request.Request | None) -> str:
+        if request is None:
+            return "—"
+        fwd = (request.headers.get("X-Forwarded-For") or "").strip()
+        if fwd:
+            return fwd.split(",")[0].strip()[:80]
+        if request.remote:
+            return str(request.remote)[:80]
+        return "—"
+
+    def _client_ua(self, request: web_request.Request | None) -> str:
+        if request is None:
+            return "—"
+        ua = (request.headers.get("User-Agent") or "").strip()
+        return ua[:200] if ua else "—"
+
+    def _login_fingerprint(self, request: web_request.Request | None) -> str:
+        raw = f"{self._client_ip(request)}|{self._client_ua(request)}".encode("utf-8", errors="replace")
+        return hashlib.sha256(raw).hexdigest()
+
+    def _security_context_lines(self, request: web_request.Request | None) -> list[str]:
+        now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        if request is None:
+            return [
+                f"Время: {now_str}",
+                "Контекст: действие через Telegram / мини-приложение.",
+            ]
+        return [
+            f"Время: {now_str}",
+            f"IP: {self._client_ip(request)}",
+            f"Клиент: {self._client_ua(request)}",
+        ]
+
+    def _build_security_notice_html(self, title: str, lines: list[str]) -> str:
+        def _he(s: str) -> str:
+            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        title_h = _he(title)
+        esc = []
+        for ln in lines:
+            t = _he(ln).replace("\n", "<br/>")
+            esc.append(f'<p style="margin:0 0 10px;font-size:14px;color:#c5d0dc;line-height:1.55;">{t}</p>')
+        body = "\n".join(esc)
+        return f"""<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{title_h}</title></head>
+<body style="margin:0;padding:0;background:#0f1923;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f1923;min-height:100vh;">
+    <tr><td align="center" style="padding:32px 16px;">
+      <table width="100%" style="max-width:480px;background:#18222d;border-radius:20px;padding:28px 24px;border:1px solid rgba(255,255,255,0.06);">
+        <tr><td>
+          <p style="margin:0 0 20px;font-size:20px;font-weight:700;color:#ffffff;">{title_h}</p>
+          {body}
+          <p style="margin:20px 0 0;font-size:12px;color:#6b7c8f;">Если это не вы — смените пароль на сайте и напишите в поддержку.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>"""
+
+    async def _ensure_app_accounts_login_audit(self, conn) -> None:
+        await conn.execute(
+            """
+            ALTER TABLE app_accounts
+            ADD COLUMN IF NOT EXISTS last_login_fingerprint TEXT,
+            ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ
+            """
+        )
+
+    async def _apply_web_auth_audit_db(
+        self,
+        request: web_request.Request,
+        email: str,
+        event: str,
+    ) -> tuple[str, str, list[str]] | None:
+        """
+        Обновляет отпечаток входа в app_accounts.
+        Возвращает (subject, title, lines) для письма/Telegram или None, если уведомлять не нужно.
+        event: login | register | password_reset
+        """
+        fp = self._login_fingerprint(request)
+        base_lines = self._security_context_lines(request)
+
+        async with get_connection() as conn:
+            await self._ensure_app_accounts_login_audit(conn)
+
+            if event == "login":
+                row = await conn.fetchrow(
+                    "SELECT last_login_fingerprint FROM app_accounts WHERE email = $1", email
+                )
+                old_fp = row["last_login_fingerprint"] if row else None
+                if old_fp is None:
+                    await conn.execute(
+                        """
+                        UPDATE app_accounts SET last_login_fingerprint = $1, last_login_at = NOW()
+                        WHERE email = $2
+                        """,
+                        fp,
+                        email,
+                    )
+                    return None
+                if old_fp == fp:
+                    await conn.execute(
+                        "UPDATE app_accounts SET last_login_at = NOW() WHERE email = $1", email
+                    )
+                    return None
+                await conn.execute(
+                    """
+                    UPDATE app_accounts SET last_login_fingerprint = $1, last_login_at = NOW()
+                    WHERE email = $2
+                    """,
+                    fp,
+                    email,
+                )
+                lines = [
+                    "Вход выполнен с нового устройства или браузера (отличается от предыдущего сохранённого).",
+                    "Если это вы — ничего делать не нужно. Если нет — смените пароль.",
+                ] + base_lines
+                return ("SvoyVPN: вход с нового устройства", "Новый вход в аккаунт", lines)
+
+            if event == "register":
+                await conn.execute(
+                    """
+                    UPDATE app_accounts SET last_login_fingerprint = $1, last_login_at = NOW()
+                    WHERE email = $2
+                    """,
+                    fp,
+                    email,
+                )
+                lines = [
+                    f"Регистрация завершена для {email}.",
+                    "Сохраните пароль в надёжном месте. Вход на сайте — по этой почте и паролю.",
+                ] + base_lines
+                return ("Добро пожаловать в SvoyVPN", "Аккаунт создан", lines)
+
+            if event == "password_reset":
+                await conn.execute(
+                    """
+                    UPDATE app_accounts SET last_login_fingerprint = $1, last_login_at = NOW()
+                    WHERE email = $2
+                    """,
+                    fp,
+                    email,
+                )
+                lines = [
+                    "Пароль изменён по коду из письма; выполнен автоматический вход в аккаунт.",
+                    "Если это были не вы — немедленно обратитесь в поддержку.",
+                ] + base_lines
+                return ("SvoyVPN: пароль изменён", "Сброс пароля", lines)
+
+        return None
+
+    def _spawn_security_notifications(
+        self,
+        email: str,
+        telegram_user_id: int,
+        subject: str,
+        title: str,
+        lines: list[str],
+        *,
+        send_telegram: bool = True,
+    ) -> None:
+        async def job():
+            try:
+                loop = asyncio.get_running_loop()
+                html = self._build_security_notice_html(title, lines)
+                await loop.run_in_executor(None, self._send_email, email, subject, html)
+            except Exception as e:
+                logger.warning("security email to %s failed: %s", email, e)
+            if (
+                send_telegram
+                and telegram_user_id
+                and telegram_user_id > 0
+                and self.bot
+            ):
+                try:
+                    text = f"{title}\n\n" + "\n".join(lines)
+                    if len(text) > 3900:
+                        text = text[:3897] + "…"
+                    await self.bot.send_message(chat_id=telegram_user_id, text=text)
+                except Exception as e:
+                    logger.warning("security TG to %s failed: %s", telegram_user_id, e)
+
+        try:
+            asyncio.create_task(job())
+        except Exception as e:
+            logger.warning("security notify task: %s", e)
+
+    def _schedule_delete_bot_message(self, chat_id: int, message_id: int, delay_sec: float) -> None:
+        """Удаляет сообщение бота в личке через delay_sec (например код привязки почты)."""
+
+        async def job():
+            try:
+                await asyncio.sleep(delay_sec)
+                if self.bot:
+                    await self.bot.delete_message(chat_id=chat_id, message_id=message_id)
+            except Exception as e:
+                logger.debug(
+                    "delete_message chat=%s msg=%s: %s", chat_id, message_id, e
+                )
+
+        try:
+            asyncio.create_task(job())
+        except Exception as e:
+            logger.warning("schedule delete_message: %s", e)
+
     async def api_auth_email_otp(self, request: web_request.Request) -> web.Response:
         """Send OTP code to email for registration verification."""
         try:
@@ -2067,6 +2280,13 @@ class WebhookServer:
             del self._reset_otps[email]
             token = self._generate_jwt(user_id)
             logger.info(f"Password reset for {email} → logged in")
+            uid = int(user_id) if user_id is not None else 0
+            pack = await self._apply_web_auth_audit_db(request, email, "password_reset")
+            if pack:
+                subj, ttl, lines = pack
+                self._spawn_security_notifications(
+                    email, uid, subj, ttl, lines, send_telegram=uid > 0
+                )
             return web.json_response({"status": "ok", "token": token, "userId": user_id})
         except Exception as e:
             logger.error(f"Error in api_auth_reset_password: {e}", exc_info=True)
@@ -2130,6 +2350,12 @@ class WebhookServer:
 
             token = self._generate_jwt(fake_user_id)
             logger.info(f"Email registration confirmed: {email} → user_id={fake_user_id}")
+            pack = await self._apply_web_auth_audit_db(request, email, "register")
+            if pack:
+                subj, ttl, lines = pack
+                self._spawn_security_notifications(
+                    email, int(fake_user_id), subj, ttl, lines, send_telegram=fake_user_id > 0
+                )
             return web.json_response({"status": "ok", "token": token, "userId": fake_user_id})
 
         except Exception as e:
@@ -2176,6 +2402,12 @@ class WebhookServer:
 
             token = self._generate_jwt(user_id)
             logger.info(f"Email login: {email} → user_id={user_id}")
+            pack = await self._apply_web_auth_audit_db(request, email, "login")
+            if pack:
+                subj, ttl, lines = pack
+                self._spawn_security_notifications(
+                    email, int(user_id), subj, ttl, lines, send_telegram=user_id > 0
+                )
             return web.json_response({"token": token, "userId": user_id})
 
         except Exception as e:
@@ -2253,6 +2485,15 @@ class WebhookServer:
                         )
                     pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
+            confirm_merge = bool(data.get("confirm_merge"))
+            if merge_from is not None and not confirm_merge:
+                return web.json_response(
+                    {
+                        "status": "merge_confirm_required",
+                        "masked_email": mask_email_for_display(email),
+                    }
+                )
+
             code = str(secrets.randbelow(900000) + 100000)
             self._link_email_otps[email] = {
                 "code": code,
@@ -2280,7 +2521,7 @@ class WebhookServer:
                 return web.json_response({"error": "Не удалось отправить письмо"}, status=500)
 
             try:
-                await self.bot.send_message(
+                sent = await self.bot.send_message(
                     chat_id=tg_uid,
                     text=(
                         f"📧 <b>Привязка почты</b>\n\n"
@@ -2289,6 +2530,10 @@ class WebhookServer:
                         f"Введите его в приложении в течение 10 минут."
                     ),
                     parse_mode="HTML",
+                )
+                # Как срок кода OTP — убираем код из чата
+                self._schedule_delete_bot_message(
+                    tg_uid, sent.message_id, delay_sec=600.0
                 )
             except Exception as tg_err:
                 logger.warning(f"link-email: could not DM user {tg_uid}: {tg_err}")
@@ -2353,6 +2598,18 @@ class WebhookServer:
                     )
 
             logger.info(f"Email linked to TG {tg_uid}: {email}")
+            lines = [
+                f"К аккаунту Telegram привязан email: {email}.",
+                "Теперь можно входить на сайте по этой почте и паролю.",
+            ] + self._security_context_lines(request)
+            self._spawn_security_notifications(
+                email,
+                int(tg_uid),
+                "SvoyVPN: почта привязана",
+                "Привязка почты",
+                lines,
+                send_telegram=True,
+            )
             return web.json_response({"status": "ok"})
         except Exception as e:
             logger.error(f"api_link_email_confirm: {e}", exc_info=True)
@@ -2399,6 +2656,26 @@ class WebhookServer:
 
         token = self._generate_jwt(done)
         del self._link_tg_nonces[nonce]
+        try:
+            async with get_connection() as conn:
+                linked_email = await conn.fetchval(
+                    "SELECT email FROM app_accounts WHERE user_id = $1", done
+                )
+            if linked_email:
+                lines = [
+                    "Ваш аккаунт SvoyVPN привязан к Telegram: данные с почты перенесены в этот аккаунт.",
+                    "Вход в мини-приложение и бот — через Telegram; на сайте можно по-прежнему использовать почту.",
+                ] + self._security_context_lines(request)
+                self._spawn_security_notifications(
+                    linked_email,
+                    int(done),
+                    "SvoyVPN: Telegram привязан",
+                    "Привязка Telegram",
+                    lines,
+                    send_telegram=True,
+                )
+        except Exception as ex:
+            logger.warning("link-telegram poll notify: %s", ex)
         return web.json_response({"status": "ok", "token": token, "userId": done})
 
     # ─── GET /api/user (JWT version for Android) ──────────────────────────────

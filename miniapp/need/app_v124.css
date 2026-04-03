@@ -1640,6 +1640,132 @@ html[data-theme="light"] #modalLinkEmail .modal-link-email__hint {
     color: #66758a;
 }
 
+/* ── Привязка почты: шаг подтверждения объединения аккаунтов ── */
+#modalLinkEmail .link-email-merge-step {
+    animation: link-email-merge-step-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes link-email-merge-step-in {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#modalLinkEmail .link-email-merge-anim {
+    position: relative;
+    height: 96px;
+    margin: 4px auto 18px;
+    max-width: 240px;
+}
+
+#modalLinkEmail .link-email-merge-orb {
+    position: absolute;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    top: 22px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    animation: link-email-merge-orb-float 2.4s ease-in-out infinite;
+}
+
+#modalLinkEmail .link-email-merge-orb--tg {
+    left: 12px;
+    background: linear-gradient(145deg, #37aee2 0%, #1b96d1 100%);
+    animation-delay: 0s;
+}
+
+#modalLinkEmail .link-email-merge-orb--mail {
+    right: 12px;
+    background: linear-gradient(145deg, #5eb0ff 0%, #3aa8fc 55%, #6b7cff 100%);
+    animation-delay: 0.12s;
+}
+
+#modalLinkEmail .link-email-merge-bridge {
+    position: absolute;
+    left: 50%;
+    top: 46px;
+    width: 48px;
+    height: 5px;
+    margin-left: -24px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, rgba(55, 174, 226, 0.35), rgba(58, 168, 252, 0.9), rgba(107, 124, 255, 0.35));
+    animation: link-email-merge-bridge-pulse 1.9s ease-in-out infinite;
+    transform-origin: center;
+}
+
+@keyframes link-email-merge-orb-float {
+
+    0%,
+    100% {
+        transform: translateY(0) scale(1);
+    }
+
+    50% {
+        transform: translateY(-7px) scale(1.05);
+    }
+}
+
+@keyframes link-email-merge-bridge-pulse {
+
+    0%,
+    100% {
+        opacity: 0.45;
+        transform: scaleX(0.65);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scaleX(1.15);
+    }
+}
+
+#modalLinkEmail .link-email-merge-lead {
+    font-weight: 600;
+    color: var(--text_color, #fff);
+    margin-bottom: 10px !important;
+}
+
+#modalLinkEmail .link-email-merge-text {
+    margin: 0 0 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--hint_color, #8e9db0);
+}
+
+#modalLinkEmail .link-email-merge-masked {
+    color: var(--accent_text_color, #3aa8fc);
+    font-weight: 600;
+}
+
+#modalLinkEmail .link-email-merge-note {
+    margin: 0 0 18px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--subtitle_text_color, #8e9db0);
+    opacity: 0.92;
+}
+
+#modalLinkEmail .link-email-merge-back {
+    margin-top: 10px;
+}
+
+html[data-theme="light"] #modalLinkEmail .link-email-merge-lead {
+    color: #1b2430;
+}
+
+html[data-theme="light"] #modalLinkEmail .link-email-merge-text {
+    color: #556274;
+}
+
+html[data-theme="light"] #modalLinkEmail .link-email-merge-note {
+    color: #66758a;
+}
+
 /* ── Referral Screen Elements ── */
 .referral-hero {
     position: relative;
