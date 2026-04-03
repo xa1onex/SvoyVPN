@@ -409,17 +409,35 @@ body {
     align-items: center;
 }
 
-/* Главный экран: блок статуса подписки (активна / не оформлена) */
+/* Главный экран: блок статуса подписки (активна / не оформлена) — компактная строка */
 .sub-status-hero {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
     gap: 8px;
-    margin-top: 12px;
+    margin-top: 8px;
     padding: 18px 16px 16px;
     border: 1px solid rgba(52, 199, 89, 0.35);
     background: linear-gradient(180deg, rgba(52, 199, 89, 0.09) 0%, transparent 52%);
+}
+
+.sub-status-hero.sub-status-hero--active,
+.sub-status-hero.sub-status-hero--inactive {
+    flex-direction: row;
+    align-items: center;
+    text-align: left;
+    gap: 10px;
+    padding: 10px 12px;
+}
+
+.sub-status-hero__body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
 }
 
 .sub-status-hero--warn {
@@ -433,51 +451,56 @@ body {
 }
 
 .sub-status-hero__ring {
-    width: 56px;
-    height: 56px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 2px;
+    margin-bottom: 0;
+    flex-shrink: 0;
     color: #22a059;
     background: linear-gradient(160deg, rgba(52, 199, 89, 0.22), rgba(52, 199, 89, 0.06));
-    box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.12);
+    box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.12);
     animation: sub-status-pulse 2.8s ease-in-out infinite;
 }
 
 .sub-status-hero--warn .sub-status-hero__ring {
     color: #c97800;
     background: linear-gradient(160deg, rgba(255, 159, 10, 0.28), rgba(255, 159, 10, 0.08));
-    box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.14);
+    box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.14);
+    animation-name: sub-status-pulse-warn;
 }
 
 .sub-status-hero__ring--muted {
     animation: none;
     color: #8b95a5;
     background: linear-gradient(160deg, rgba(120, 130, 145, 0.2), rgba(120, 130, 145, 0.06));
-    box-shadow: 0 0 0 4px rgba(120, 130, 145, 0.1);
+    box-shadow: 0 0 0 3px rgba(120, 130, 145, 0.1);
+}
+
+.sub-status-hero__check,
+.sub-status-hero__lock {
+    display: block;
+    width: 20px;
+    height: 20px;
 }
 
 @keyframes sub-status-pulse {
     0%, 100% {
-        box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.12);
+        box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.12);
     }
     50% {
-        box-shadow: 0 0 0 8px rgba(52, 199, 89, 0.06);
+        box-shadow: 0 0 0 6px rgba(52, 199, 89, 0.05);
     }
-}
-
-.sub-status-hero--warn .sub-status-hero__ring {
-    animation-name: sub-status-pulse-warn;
 }
 
 @keyframes sub-status-pulse-warn {
     0%, 100% {
-        box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.14);
+        box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.14);
     }
     50% {
-        box-shadow: 0 0 0 8px rgba(255, 159, 10, 0.07);
+        box-shadow: 0 0 0 6px rgba(255, 159, 10, 0.06);
     }
 }
 
@@ -495,12 +518,23 @@ body {
     color: var(--title_color, var(--tg-theme-text-color, #0f2438));
 }
 
+.sub-status-hero--active .sub-status-hero__title,
+.sub-status-hero--inactive .sub-status-hero__title {
+    font-size: 15px;
+    line-height: 1.2;
+}
+
 .sub-status-hero__date {
     margin: 0;
     font-size: 15px;
     font-weight: 600;
     line-height: 1.3;
     color: var(--accent_text_color, #3aa8fc);
+}
+
+.sub-status-hero--active .sub-status-hero__date {
+    font-size: 13px;
+    line-height: 1.25;
 }
 
 .sub-status-hero__meta {
@@ -511,6 +545,13 @@ body {
     max-width: 22em;
 }
 
+.sub-status-hero--active .sub-status-hero__meta,
+.sub-status-hero--inactive .sub-status-hero__meta {
+    font-size: 12px;
+    line-height: 1.35;
+    max-width: none;
+}
+
 .sub-status-hero__urgent {
     margin: 4px 0 0;
     font-size: 12px;
@@ -518,6 +559,19 @@ body {
     font-weight: 600;
     color: #b45309;
     max-width: 22em;
+}
+
+.sub-status-hero--active .sub-status-hero__urgent {
+    margin: 2px 0 0;
+    font-size: 11px;
+    line-height: 1.35;
+    max-width: none;
+}
+
+.btn-primary.btn-primary--sub-block {
+    padding: 10px 14px;
+    min-height: 44px;
+    font-size: 15px;
 }
 
 .sub-actions-row {
