@@ -62,8 +62,8 @@
   <link rel="preload" as="font" href="need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
   <link rel="preload" as="font" href="need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="need/assets/index_v111.css" />
-  <link rel="stylesheet" href="need/app_v124.css?v=138" />
-  <link rel="stylesheet" href="need/desktop-pc.css?v=23" />
+  <link rel="stylesheet" href="need/app_v124.css?v=139" />
+  <link rel="stylesheet" href="need/desktop-pc.css?v=24" />
 
   <script defer src="need/app_v124.js?v=150"></script>
 
@@ -356,28 +356,29 @@
           <!-- Loaded by JS -->
         </div>
 
-        <!-- Servers -->
-        <div
-          style="display:flex; justify-content:space-between; align-items:flex-end; width:100%; margin-top:20px; margin-bottom:6px;">
-          <p class="section-title" style="display:flex;align-items:center;gap:6px; margin:0; width:auto;">
-            <svg style="width:16px;height:16px;" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-            </svg>
-            Доступные сервера
-          </p>
-          <div id="serverNavPlaceholder"></div>
-        </div>
-        
-        <!-- Mobile grid -->
-        <div id="serversWrap" class="server-grid">
-          <div class="server-card server-card--loading text-muted body">Загрузка…</div>
+        <!-- Моб.: подсказка после обновления — сервера в Профиль -->
+        <div id="serversRelocatedHint" class="servers-relocated-hint" role="status" aria-live="polite">
+          <div class="servers-relocated-hint__inner">
+            <p class="servers-relocated-hint__text">Сервера для проверки пинга теперь во вкладке <strong>Профиль</strong> — откройте её внизу экрана.</p>
+            <button type="button" class="btn-secondary servers-relocated-hint__btn" id="btnServersRelocatedHintOk">Понятно</button>
+          </div>
         </div>
 
-        <!-- Desktop map -->
-        <div id="serverMapWrap" class="server-map-wrap" style="display: none;">
-          <div id="mapContainer" class="map-container">
-             <!-- SVG and pins go here -->
+        <!-- Десктоп (≥1024px): карта на главной VPN; моб. — скрыто в CSS -->
+        <div class="vpn-desktop-map-block">
+          <div class="vpn-desktop-map-block__toolbar">
+            <p class="section-title vpn-desktop-map-block__title" style="display:flex;align-items:center;gap:6px; margin:0;">
+              <svg style="width:16px;height:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+              </svg>
+              Доступные сервера
+            </p>
+          </div>
+          <div id="serverMapWrap" class="server-map-wrap" style="display: none;">
+            <div id="mapContainer" class="map-container">
+              <!-- SVG and pins go here -->
+            </div>
           </div>
         </div>
 
@@ -676,6 +677,25 @@
         </div>
 
         <div id="profileAuthLinkBox" class="profile-auth-slot" style="display:none" aria-live="polite"></div>
+
+        <!-- Сервера: моб. / узкая ширина — карусель; на ПК блок скрыт в desktop-pc.css -->
+        <div id="profileServersBlock" class="profile-servers-block">
+          <div class="profile-servers-block__head">
+            <p class="section-title profile-servers-block__title" style="display:flex;align-items:center;gap:6px;margin:0;">
+              <svg style="width:16px;height:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+              </svg>
+              Доступные сервера
+            </p>
+          </div>
+          <div class="server-carousel" id="serverCarouselShell">
+            <div id="serversWrapProfile" class="server-carousel__track">
+              <div class="server-card server-card--loading text-muted body">Загрузка…</div>
+            </div>
+          </div>
+          <p class="server-carousel__hint caption text-muted">Свайпните в сторону, чтобы листать сервера</p>
+        </div>
 
         <div class="link-list profile-link-list-below-auth">
 

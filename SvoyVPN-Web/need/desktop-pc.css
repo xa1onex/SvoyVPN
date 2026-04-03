@@ -351,8 +351,25 @@
     margin-right: auto !important;
   }
 
-  #serversWrap.server-grid, #serverNavPlaceholder {
+  /* Мобильный блок серверов в профиле на ПК не показываем — есть карта на VPN */
+  .profile-servers-block {
     display: none !important;
+  }
+
+  .servers-relocated-hint {
+    display: none !important;
+  }
+
+  /* Карта на главной VPN (моб. скрыта в app_v124.css) */
+  .vpn-desktop-map-block {
+    display: block !important;
+    width: 100%;
+    margin-top: 16px;
+  }
+
+  .vpn-desktop-map-block__toolbar {
+    width: 100%;
+    margin-bottom: 6px;
   }
 
   /* Без отрицательных margin: у .screen-content overflow-y:auto даёт clip по X — карта резалась по краям */
@@ -463,10 +480,6 @@
   #screenVpn .body {
     text-align: center;
     margin-bottom: 6px;
-  }
-
-  #screenVpn #serversWrap.server-grid {
-    display: none !important;
   }
 
   /* ── Экран «Подключиться»: та же колонка/типографика, что на остальных экранах; кнопки у контента ── */

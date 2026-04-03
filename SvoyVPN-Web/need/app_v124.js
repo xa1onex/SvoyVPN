@@ -636,6 +636,31 @@ window.AppConfig = {
     }
   }
 
+  const SERVERS_PROFILE_HINT_KEY = 'svoy_hint_servers_profile_v2';
+  const DESKTOP_MAP_MIN = 1024;
+
+  function isDesktopMapServers() {
+    return typeof window !== 'undefined' && window.innerWidth >= DESKTOP_MAP_MIN;
+  }
+
+  function dismissServersRelocatedHint() {
+    const el = document.getElementById('serversRelocatedHint');
+    if (el) el.classList.remove('servers-relocated-hint--visible');
+    try {
+      localStorage.setItem(SERVERS_PROFILE_HINT_KEY, '1');
+    } catch (_) {}
+  }
+
+  function maybeShowServersRelocatedHint() {
+    if (isDesktopMapServers()) return;
+    try {
+      if (localStorage.getItem(SERVERS_PROFILE_HINT_KEY)) return;
+    } catch (_) {}
+    const el = document.getElementById('serversRelocatedHint');
+    if (!el) return;
+    el.classList.add('servers-relocated-hint--visible');
+  }
+
   /* ═══════ Navigation ═══════ */
   function showScreen(id) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
@@ -651,6 +676,7 @@ window.AppConfig = {
     if (tab) tab.classList.add('active');
 
     if (id === 'screenEsim') ensureEsimCountriesLoaded();
+    if (id === 'screenVpn') maybeShowServersRelocatedHint();
 
     haptic('light');
   }
@@ -909,11 +935,11 @@ window.AppConfig = {
     }
   }
 
-  let serverPage = 0;
-
-  function createServerCard(s) {
+  function createServerCard(s, opts) {
+    opts = opts || {};
+    const carousel = !!opts.carousel;
     const el = document.createElement('div');
-    el.className = 'server-card';
+    el.className = 'server-card' + (carousel ? ' server-card--carousel' : '');
     el.setAttribute('data-server-id', s.id);
     const flagOrEmoji = escapeHtml(String(s.emoji || getFlag(s.name) || ''));
     const nameEsc = escapeHtml(String(s.name || ''));
@@ -940,88 +966,29 @@ window.AppConfig = {
   }
 
   function renderServers() {
-    const w = document.getElementById('serversWrap');
-    if (!w) return;
-    
-    // Render desktop map if applicable
-    const mapWrap = document.getElementById('serverMapWrap');
-    if (mapWrap && window.innerWidth >= 1024) {
-      initAndRenderMap();
-    }
-
-    if (!S.servers.length) {
-      w.innerHTML = '<div class="server-card server-card--loading text-muted body">Нет серверов</div>';
-      // Remove old nav if exists
-      var oldNav = document.getElementById('serverNav');
-      if (oldNav) oldNav.remove();
-      return;
-    }
-
-    const pageSize = (S.user && S.user.trialAvailable && !(S.subscription && S.subscription.isActive)) ? 2 : 4;
-    var totalPages = Math.ceil(S.servers.length / pageSize);
-    if (serverPage >= totalPages) serverPage = totalPages - 1;
-    if (serverPage < 0) serverPage = 0;
-
-    var start = serverPage * pageSize;
-    var pageServers = S.servers.slice(start, start + pageSize);
-
-    w.innerHTML = '';
-    pageServers.forEach(function (s) {
-      w.appendChild(createServerCard(s));
-    });
-
-    // Navigation bar
+    const wProfile = document.getElementById('serversWrapProfile');
     var oldNav = document.getElementById('serverNav');
     if (oldNav) oldNav.remove();
 
-    if (totalPages > 1) {
-      var nav = document.createElement('div');
-      nav.id = 'serverNav';
-      nav.className = 'server-nav';
+    const mapWrap = document.getElementById('serverMapWrap');
 
-      var btnPrev = document.createElement('button');
-      btnPrev.className = 'server-nav__btn';
-      btnPrev.textContent = '‹';
-      btnPrev.disabled = serverPage === 0;
-      btnPrev.addEventListener('click', function () {
-        if (serverPage > 0) {
-          serverPage--;
-          haptic('light');
-          renderServers();
-        }
-      });
-
-      var indicator = document.createElement('span');
-      indicator.className = 'server-nav__indicator';
-      indicator.textContent = (serverPage + 1) + ' / ' + totalPages;
-
-      var btnNext = document.createElement('button');
-      btnNext.className = 'server-nav__btn';
-      btnNext.textContent = '›';
-      btnNext.disabled = serverPage >= totalPages - 1;
-      btnNext.addEventListener('click', function () {
-        if (serverPage < totalPages - 1) {
-          serverPage++;
-          haptic('light');
-          renderServers();
-        }
-      });
-
-      nav.appendChild(btnPrev);
-      nav.appendChild(indicator);
-      nav.appendChild(btnNext);
-
-      var placeholder = document.getElementById('serverNavPlaceholder');
-      if (placeholder) {
-        placeholder.innerHTML = '';
-        placeholder.appendChild(nav);
-      } else {
-        w.parentNode.insertBefore(nav, w.nextSibling);
-      }
-    } else {
-      var placeholder = document.getElementById('serverNavPlaceholder');
-      if (placeholder) placeholder.innerHTML = '';
+    if (isDesktopMapServers()) {
+      if (wProfile) wProfile.innerHTML = '';
+      if (mapWrap) initAndRenderMap();
+      return;
     }
+
+    if (!wProfile) return;
+
+    if (!S.servers.length) {
+      wProfile.innerHTML = '<div class="server-card server-card--loading text-muted body">Нет серверов</div>';
+      return;
+    }
+
+    wProfile.innerHTML = '';
+    S.servers.forEach(function (s) {
+      wProfile.appendChild(createServerCard(s, { carousel: true }));
+    });
   }
 
   // Auto-refresh pings every 60 seconds (only visible cards)
@@ -1033,7 +1000,7 @@ window.AppConfig = {
       
       // Refresh map pings if map is visible
       const mapWrap = document.getElementById('serverMapWrap');
-      if (mapWrap && window.innerWidth >= 1024) {
+      if (mapWrap && isDesktopMapServers()) {
         document.querySelectorAll('.map-pin').forEach(pin => {
            const idsRaw = pin.getAttribute('data-server-ids');
            if (idsRaw) {
@@ -1056,15 +1023,11 @@ window.AppConfig = {
         });
       }
 
-      const pageSize = (S.user && S.user.trialAvailable && !(S.subscription && S.subscription.isActive)) ? 2 : 4;
-      var start = serverPage * pageSize;
-      var pageServers = S.servers.slice(start, start + pageSize);
-      document.querySelectorAll('.server-card[data-server-id]').forEach(function (card, i) {
-        if (i >= pageServers.length) return;
+      document.querySelectorAll('#serversWrapProfile .server-card[data-server-id]').forEach(function (card) {
+        var sid = card.getAttribute('data-server-id');
         var pingWrap = card.querySelector('.server-card__ping-wrap');
-        if (pingWrap) {
-          measurePing(pageServers[i].id).then(function (ms) { renderPingBadge(pingWrap, ms); });
-        }
+        if (!sid || !pingWrap) return;
+        measurePing(sid).then(function (ms) { renderPingBadge(pingWrap, ms); });
       });
     }, 60000);
   }
@@ -2369,6 +2332,19 @@ window.AppConfig = {
     }
 
     applyProductSwitchUI();
+
+    maybeShowServersRelocatedHint();
+    const btnSrvHint = document.getElementById('btnServersRelocatedHintOk');
+    if (btnSrvHint) btnSrvHint.addEventListener('click', dismissServersRelocatedHint);
+
+    let _serversResizeTimer;
+    window.addEventListener('resize', function () {
+      clearTimeout(_serversResizeTimer);
+      _serversResizeTimer = setTimeout(function () {
+        renderServers();
+        startPingRefresh();
+      }, 280);
+    });
 
     // Tab bar navigation
     document.querySelectorAll('.tab').forEach((btn) => {
