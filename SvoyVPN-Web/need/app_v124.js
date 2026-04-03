@@ -543,6 +543,10 @@ window.AppConfig = {
   };
 
   window.hideModal = function (id) {
+    if (id === 'modalLinkTg' && window._linkTgPoll) {
+      clearInterval(window._linkTgPoll);
+      window._linkTgPoll = null;
+    }
     const modal = document.getElementById(id);
     if (modal) {
       modal.classList.remove('active');
@@ -1212,6 +1216,106 @@ window.AppConfig = {
     }
   }
 
+  function escapeHtml(s) {
+    if (s == null || s === '') return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function renderProfileAuthLinks() {
+    const box = document.getElementById('profileAuthLinkBox');
+    if (!box) return;
+    if (!S.user) {
+      box.style.display = 'none';
+      return;
+    }
+    const needE = !!S.user.needLinkEmail;
+    const needTg = !!S.user.needLinkTelegram;
+    const masked = S.user.linkedEmailMasked;
+    if (!needE && !needTg) {
+      if (masked) {
+        box.style.display = 'block';
+        box.innerHTML =
+          '<div class="card" style="padding:12px 14px;width:100%;box-sizing:border-box;"><p class="body text-muted" style="margin:0;font-size:13px;line-height:1.4;">Привязанная почта: <strong>' +
+          escapeHtml(masked) +
+          '</strong></p></div>';
+      } else {
+        box.style.display = 'none';
+      }
+      return;
+    }
+    box.style.display = 'block';
+    let inner = '<div class="card" style="padding:12px 14px;width:100%;box-sizing:border-box;">';
+    if (needE && tg && tg.initData) {
+      inner +=
+        '<p class="subtitle" style="margin:0 0 6px;">Привяжите почту</p>' +
+        '<p class="body text-muted" style="margin:0 0 12px;font-size:13px;line-height:1.4;">Один и тот же код придёт в Telegram и на email — можно входить с сайта и не потерять доступ.</p>' +
+        '<button type="button" class="btn-secondary" style="width:100%" onclick="window.openLinkEmailModal()">Привязать почту</button>';
+    } else if (needE) {
+      inner +=
+        '<p class="body text-muted" style="margin:0;font-size:13px;line-height:1.4;">Откройте это приложение из Telegram (мини-приложение), чтобы привязать почту.</p>';
+    }
+    if (needTg && S.authViaWebJwt) {
+      inner +=
+        '<p class="subtitle" style="margin:12px 0 6px;">Привяжите Telegram</p>' +
+        '<p class="body text-muted" style="margin:0 0 12px;font-size:13px;line-height:1.4;">Откройте бота по ссылке и нажмите Start — подписка перенесётся на ваш Telegram.</p>' +
+        '<button type="button" class="btn-primary" style="width:100%" onclick="window.startLinkTelegramFlow()">Открыть бота</button>';
+    }
+    inner += '</div>';
+    box.innerHTML = inner;
+  }
+
+  window.startLinkTelegramFlow = async function () {
+    const jwt = localStorage.getItem('svoyvpn_web_jwt');
+    if (!jwt) {
+      showToast('Сначала войдите по почте');
+      return;
+    }
+    const base = window.AppConfig.apiBaseURL || '';
+    const r = await fetch(base + '/api/auth/link-telegram/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + jwt },
+      body: '{}',
+    });
+    let d = {};
+    try {
+      d = await r.json();
+    } catch (_) {}
+    if (!r.ok) {
+      showToast(d.error || 'Не удалось начать привязку');
+      return;
+    }
+    if (!d.botUrl || !d.nonce) return;
+    showModal('modalLinkTg');
+    const a = document.getElementById('linkTgOpenBtn');
+    if (a) a.href = d.botUrl;
+    if (window._linkTgPoll) clearInterval(window._linkTgPoll);
+    const nonce = d.nonce;
+    window._linkTgPoll = setInterval(async () => {
+      try {
+        const pr = await fetch(
+          base + '/api/auth/link-telegram/poll?nonce=' + encodeURIComponent(nonce),
+          { headers: { Authorization: 'Bearer ' + jwt } }
+        );
+        const pj = await pr.json();
+        if (pj.status === 'ok' && pj.token) {
+          clearInterval(window._linkTgPoll);
+          window._linkTgPoll = null;
+          localStorage.setItem('svoyvpn_web_jwt', pj.token);
+          hideModal('modalLinkTg');
+          showToast('Готово! Вход теперь через Telegram');
+          await loadUser(true);
+        } else if (pj.status === 'expired') {
+          clearInterval(window._linkTgPoll);
+          window._linkTgPoll = null;
+          hideModal('modalLinkTg');
+          showToast('Время ожидания истекло');
+        }
+      } catch (_) {}
+    }, 2000);
+  };
+
   /* ═══════ Render: User & Subscription ═══════ */
   function renderUser() {
     const avatar = document.getElementById('avatar');
@@ -1417,6 +1521,8 @@ window.AppConfig = {
         }
       }
     }
+
+    renderProfileAuthLinks();
 
     // Onboarding Slide 0 (Activation Check)
     const subCheckBlock = document.getElementById('obSubCheckBlock');
@@ -2256,6 +2362,103 @@ window.AppConfig = {
 
     // Init Admin News Logic
     initAdminNews();
+
+    window._pendingLinkEmail = '';
+    window.openLinkEmailModal = function () {
+      if (!tg || !tg.initData) {
+        showToast('Нужен Telegram');
+        return;
+      }
+      window._pendingLinkEmail = '';
+      const s1 = document.getElementById('linkEmailStep1');
+      const s2 = document.getElementById('linkEmailStep2');
+      if (s1) s1.style.display = 'block';
+      if (s2) s2.style.display = 'none';
+      const a = document.getElementById('linkEmailAddr');
+      const p = document.getElementById('linkEmailPass');
+      const o = document.getElementById('linkEmailOtp');
+      if (a) a.value = '';
+      if (p) p.value = '';
+      if (o) o.value = '';
+      showModal('modalLinkEmail');
+    };
+
+    const btnSend = document.getElementById('btnLinkEmailSend');
+    if (btnSend) {
+      btnSend.addEventListener('click', async function () {
+        if (!tg || !tg.initData) return;
+        const email = (document.getElementById('linkEmailAddr') || {}).value.trim().toLowerCase();
+        const password = (document.getElementById('linkEmailPass') || {}).value;
+        if (!email || email.indexOf('@') < 0) {
+          showToast('Укажите email');
+          return;
+        }
+        this.disabled = true;
+        const base = window.AppConfig.apiBaseURL || '';
+        const r = await fetch(base + '/api/auth/link-email/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData: tg.initData, email, password }),
+          skipWebJwt: true,
+        });
+        let d = {};
+        try {
+          d = await r.json();
+        } catch (_) {}
+        this.disabled = false;
+        if (!r.ok) {
+          showToast(d.error || 'Ошибка');
+          return;
+        }
+        if (d.status === 'already_linked') {
+          showToast('Почта уже привязана');
+          hideModal('modalLinkEmail');
+          await loadUser(true);
+          return;
+        }
+        window._pendingLinkEmail = email;
+        const s1 = document.getElementById('linkEmailStep1');
+        const s2 = document.getElementById('linkEmailStep2');
+        if (s1) s1.style.display = 'none';
+        if (s2) s2.style.display = 'block';
+        showToast('Код отправлен в Telegram и на почту');
+      });
+    }
+
+    const btnConf = document.getElementById('btnLinkEmailConfirm');
+    if (btnConf) {
+      btnConf.addEventListener('click', async function () {
+        if (!tg || !tg.initData) return;
+        const email =
+          window._pendingLinkEmail ||
+          (document.getElementById('linkEmailAddr') || {}).value.trim().toLowerCase();
+        const otp = (document.getElementById('linkEmailOtp') || {}).value.trim();
+        if (!otp) {
+          showToast('Введите код');
+          return;
+        }
+        this.disabled = true;
+        const base = window.AppConfig.apiBaseURL || '';
+        const r = await fetch(base + '/api/auth/link-email/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData: tg.initData, email, otp }),
+          skipWebJwt: true,
+        });
+        let d = {};
+        try {
+          d = await r.json();
+        } catch (_) {}
+        this.disabled = false;
+        if (!r.ok) {
+          showToast(d.error || 'Ошибка');
+          return;
+        }
+        hideModal('modalLinkEmail');
+        showToast('Почта привязана');
+        await loadUser(true);
+      });
+    }
 
     // ═══════════════════════════════════════
     //  ONBOARDING CAROUSEL — Setup Screen

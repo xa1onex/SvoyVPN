@@ -40,6 +40,16 @@ async def setup_start_handler(dp, bot: Bot, config):
             )
             return
 
+        # ── Привязка Telegram к аккаунту с почты (веб / мобильный вход по email) ──
+        if deep_link_arg and deep_link_arg.startswith('linktg_'):
+            nonce = deep_link_arg[7:]
+            from ..webhook_server import WebhookServer
+            msg = await WebhookServer.confirm_link_telegram(
+                nonce, user_id, username, first_name
+            )
+            await message.answer(msg, parse_mode="HTML")
+            return
+
         referral_code = deep_link_arg[4:] if deep_link_arg and deep_link_arg.startswith('ref_') else None
         utm_tag = deep_link_arg if deep_link_arg and not deep_link_arg.startswith('ref_') else None
         

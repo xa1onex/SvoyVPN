@@ -22,7 +22,13 @@ from aiogram.types import LabeledPrice, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .config import FlyerConfig, YooKassaConfig
-from .database import get_connection, log_subscription_usage, log_miniapp_usage
+from .database import (
+    get_connection,
+    log_subscription_usage,
+    log_miniapp_usage,
+    merge_vpn_user_into,
+    generate_subscription_token,
+)
 from .subscriptions import create_or_activate_keys_for_all_servers, get_user_subscription_url
 from .plans import get_subscription_plans, get_renewal_plans
 
@@ -108,6 +114,15 @@ def telegram_user_id_from_parsed_init(parsed_data: dict) -> int:
     return 0
 
 
+def mask_email_for_display(email: str) -> str:
+    if not email or "@" not in email:
+        return ""
+    local, _, domain = email.partition("@")
+    if len(local) <= 1:
+        return f"*@{domain}"
+    return f"{local[0]}***@{domain}"
+
+
 class WebhookServer:
     """HTTP сервер для вебхуков и subscription endpoint"""
     
@@ -176,6 +191,10 @@ class WebhookServer:
             ('/api/auth/login', self.api_auth_login, 'POST'),
             ('/api/auth/reset-otp', self.api_auth_reset_otp, 'POST'),
             ('/api/auth/reset-password', self.api_auth_reset_password, 'POST'),
+            ('/api/auth/link-email/send', self.api_link_email_send, 'POST'),
+            ('/api/auth/link-email/confirm', self.api_link_email_confirm, 'POST'),
+            ('/api/auth/link-telegram/init', self.api_link_telegram_init, 'POST'),
+            ('/api/auth/link-telegram/poll', self.api_link_telegram_poll, 'GET'),
         ]
         
         for path, handler, method in api_routes:
@@ -944,6 +963,7 @@ class WebhookServer:
                 support_link = await get_support_link() or "https://t.me/SvoyVPN_support" # Fallback
 
                 referral = await self._referral_bundle_for_user(conn, user_id)
+                auth_snap = await self._user_auth_snapshot(conn, user_id)
 
                 return web.json_response({
                     "user": {
@@ -955,7 +975,8 @@ class WebhookServer:
                         "trialAvailable": trial_available,
                         "trialDays": trial_days,
                         "isAdmin": is_admin,
-                        "supportLink": support_link
+                        "supportLink": support_link,
+                        **auth_snap,
                     },
                     "subscription": {
                         "isActive": is_active,
@@ -1660,6 +1681,10 @@ class WebhookServer:
     _email_otps: dict = {}
     # In-memory reset password store: {email: {"code": str, "expires": datetime}}
     _reset_otps: dict = {}
+    # Привязка почты к Telegram: {email: {"code", "expires", "tg_user_id", "merge_from", "password_hash"}}
+    _link_email_otps: dict = {}
+    # Привязка Telegram к email-аккаунту: {nonce: {"email_user_id", "expires", "completed_user_id"}}
+    _link_tg_nonces: dict = {}
     JWT_SECRET = "svoyvpn_jwt_secret_change_in_production"
     JWT_ALGORITHM = "HS256"
     JWT_EXPIRY_DAYS = 365
@@ -1736,6 +1761,70 @@ class WebhookServer:
         if nonce in cls._auth_nonces:
             cls._auth_nonces[nonce]["user_id"] = user_id
             logger.info(f"Auth nonce {nonce[:8]}… confirmed for user_id={user_id}")
+
+    @classmethod
+    async def confirm_link_telegram(
+        cls,
+        nonce: str,
+        tg_user_id: int,
+        username: str | None = None,
+        first_name: str | None = None,
+    ) -> str:
+        """/start linktg_{nonce}: объединить email-аккаунт с этим Telegram. Текст для ответа в чат."""
+        entry = cls._link_tg_nonces.get(nonce)
+        if not entry:
+            return (
+                "Ссылка недействительна или устарела. Откройте сайт / приложение и запросите привязку заново."
+            )
+        if datetime.utcnow() > entry["expires"]:
+            del cls._link_tg_nonces[nonce]
+            return "Время ссылки истекло. Запросите новую в приложении."
+        if entry.get("completed_user_id") is not None:
+            return "Привязка уже выполнена. Вернитесь в приложение."
+
+        email_uid = entry["email_user_id"]
+
+        try:
+            async with get_connection() as conn:
+                if await conn.fetchval("SELECT 1 FROM app_accounts WHERE user_id = $1", tg_user_id):
+                    return "К этому Telegram уже привязана почта. Войдите с неё или обратитесь в поддержку."
+
+                src_row = await conn.fetchrow("SELECT user_id FROM users WHERE user_id = $1", email_uid)
+                if not src_row:
+                    del cls._link_tg_nonces[nonce]
+                    return "Сессия устарела. Выйдите и войдите по почте снова, затем запросите привязку."
+
+                tgt_row = await conn.fetchrow("SELECT user_id FROM users WHERE user_id = $1", tg_user_id)
+                if not tgt_row:
+                    rc = secrets.token_hex(4)
+                    st = generate_subscription_token()
+                    await conn.execute(
+                        """
+                        INSERT INTO users (
+                            user_id, username, first_name, registration_date, last_activity,
+                            referral_code, pay_subscribed, subscription_end, subscription_token
+                        ) VALUES ($1, $2, $3, NOW(), NOW(), $4, FALSE, NULL, $5)
+                        ON CONFLICT (user_id) DO NOTHING
+                        """,
+                        tg_user_id,
+                        username or "",
+                        first_name or "Пользователь",
+                        rc,
+                        st,
+                    )
+
+                await merge_vpn_user_into(conn, email_uid, tg_user_id)
+
+            entry["completed_user_id"] = tg_user_id
+            logger.info("Linked email user %s → telegram %s", email_uid, tg_user_id)
+            return (
+                "✅ <b>Telegram привязан!</b>\n\n"
+                "Данные аккаунта с почтой перенесены на этот Telegram. "
+                "Вернитесь в приложение — сессия обновится автоматически."
+            )
+        except Exception as e:
+            logger.error("confirm_link_telegram: %s", e, exc_info=True)
+            return "Не удалось завершить привязку. Напишите в поддержку."
 
     # ─── POST /api/auth/email-otp ─────────────────────────────────────────────
 
@@ -2093,6 +2182,225 @@ class WebhookServer:
             logger.error(f"Error in api_auth_login: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
+    async def _user_auth_snapshot(self, conn, user_id: int) -> dict:
+        email = await conn.fetchval("SELECT email FROM app_accounts WHERE user_id = $1", user_id)
+        masked = mask_email_for_display(email) if email else None
+        return {
+            "linkedEmailMasked": masked,
+            "needLinkEmail": bool(user_id > 0 and not email),
+            "needLinkTelegram": bool(user_id < 0),
+        }
+
+    async def api_link_email_send(self, request: web_request.Request) -> web.Response:
+        """Telegram / miniapp: запрос кода для привязки почты (код в боте и на email)."""
+        try:
+            data = await request.json()
+            init_data = (data.get("initData") or "").strip()
+            email = (data.get("email") or "").strip().lower()
+            password = data.get("password") or ""
+
+            if not init_data or not email or "@" not in email:
+                return web.json_response({"error": "initData и корректный email обязательны"}, status=400)
+            if not self.bot:
+                return web.json_response({"error": "Bot not initialized"}, status=500)
+            if not self.verify_telegram_webapp_data(init_data, self.bot.token):
+                return web.json_response({"error": "Invalid initData"}, status=403)
+
+            parsed = self.parse_telegram_init_data(init_data)
+            tg_uid = telegram_user_id_from_parsed_init(parsed)
+            if not tg_uid or tg_uid < 0:
+                return web.json_response({"error": "Нужен вход через Telegram"}, status=400)
+
+            async with get_connection() as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS app_accounts (
+                        id SERIAL PRIMARY KEY,
+                        email TEXT UNIQUE NOT NULL,
+                        password_hash TEXT NOT NULL,
+                        user_id BIGINT REFERENCES users(user_id),
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """)
+                row_t = await conn.fetchrow(
+                    "SELECT email FROM app_accounts WHERE user_id = $1", tg_uid
+                )
+                if row_t and row_t["email"].lower() != email:
+                    return web.json_response(
+                        {"error": "У этого Telegram уже привязана другая почта"},
+                        status=409,
+                    )
+                if row_t and row_t["email"].lower() == email:
+                    return web.json_response({"status": "already_linked"})
+
+                row_e = await conn.fetchrow("SELECT user_id FROM app_accounts WHERE email = $1", email)
+                merge_from = None
+                pw_hash = None
+                if row_e:
+                    other = row_e["user_id"]
+                    if other == tg_uid:
+                        return web.json_response({"status": "already_linked"})
+                    if other > 0:
+                        return web.json_response(
+                            {"error": "Эта почта уже привязана к другому Telegram"},
+                            status=409,
+                        )
+                    merge_from = other
+                else:
+                    if len(password) < 6:
+                        return web.json_response(
+                            {"error": "Задайте пароль не короче 6 символов для входа по почте"},
+                            status=400,
+                        )
+                    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+            code = str(secrets.randbelow(900000) + 100000)
+            self._link_email_otps[email] = {
+                "code": code,
+                "expires": datetime.utcnow() + timedelta(minutes=10),
+                "tg_user_id": tg_uid,
+                "merge_from": merge_from,
+                "password_hash": pw_hash,
+            }
+
+            try:
+                import asyncio
+
+                loop = asyncio.get_event_loop()
+                html_body = self._build_otp_html(code, email)
+                await loop.run_in_executor(
+                    None,
+                    self._send_email,
+                    email,
+                    "Привязка почты SvoyVPN — код подтверждения",
+                    html_body,
+                )
+            except Exception as mail_err:
+                logger.error(f"link-email send mail: {mail_err}")
+                del self._link_email_otps[email]
+                return web.json_response({"error": "Не удалось отправить письмо"}, status=500)
+
+            try:
+                await self.bot.send_message(
+                    chat_id=tg_uid,
+                    text=(
+                        f"📧 <b>Привязка почты</b>\n\n"
+                        f"Код: <code>{code}</code>\n"
+                        f"Тот же код отправлен на {email}.\n"
+                        f"Введите его в приложении в течение 10 минут."
+                    ),
+                    parse_mode="HTML",
+                )
+            except Exception as tg_err:
+                logger.warning(f"link-email: could not DM user {tg_uid}: {tg_err}")
+
+            return web.json_response({"status": "sent"})
+        except Exception as e:
+            logger.error(f"api_link_email_send: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_link_email_confirm(self, request: web_request.Request) -> web.Response:
+        try:
+            data = await request.json()
+            init_data = (data.get("initData") or "").strip()
+            email = (data.get("email") or "").strip().lower()
+            otp = (data.get("otp") or "").strip()
+
+            if not init_data or not email or not otp:
+                return web.json_response({"error": "initData, email и код обязательны"}, status=400)
+            if not self.bot:
+                return web.json_response({"error": "Bot not initialized"}, status=500)
+            if not self.verify_telegram_webapp_data(init_data, self.bot.token):
+                return web.json_response({"error": "Invalid initData"}, status=403)
+
+            parsed = self.parse_telegram_init_data(init_data)
+            tg_uid = telegram_user_id_from_parsed_init(parsed)
+            if not tg_uid:
+                return web.json_response({"error": "User ID not found"}, status=400)
+
+            entry = self._link_email_otps.get(email)
+            if not entry or entry.get("tg_user_id") != tg_uid:
+                return web.json_response({"error": "Запросите код заново"}, status=400)
+            if datetime.utcnow() > entry["expires"]:
+                del self._link_email_otps[email]
+                return web.json_response({"error": "Код истёк"}, status=400)
+            if entry["code"] != otp:
+                return web.json_response({"error": "Неверный код"}, status=400)
+
+            merge_from = entry.get("merge_from")
+            pw_hash = entry.get("password_hash")
+            del self._link_email_otps[email]
+
+            async with get_connection() as conn:
+                dup = await conn.fetchval("SELECT email FROM app_accounts WHERE user_id = $1", tg_uid)
+                if dup and dup.lower() != email:
+                    return web.json_response({"error": "Конфликт аккаунта"}, status=409)
+
+                if merge_from is not None:
+                    cur = await conn.fetchval(
+                        "SELECT user_id FROM app_accounts WHERE email = $1", email
+                    )
+                    if cur != merge_from:
+                        return web.json_response({"error": "Данные устарели. Запросите код снова."}, status=409)
+                    await merge_vpn_user_into(conn, merge_from, tg_uid)
+                else:
+                    if not pw_hash:
+                        return web.json_response({"error": "Внутренняя ошибка"}, status=500)
+                    await conn.execute(
+                        "INSERT INTO app_accounts (email, password_hash, user_id) VALUES ($1, $2, $3)",
+                        email,
+                        pw_hash,
+                        tg_uid,
+                    )
+
+            logger.info(f"Email linked to TG {tg_uid}: {email}")
+            return web.json_response({"status": "ok"})
+        except Exception as e:
+            logger.error(f"api_link_email_confirm: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_link_telegram_init(self, request: web_request.Request) -> web.Response:
+        try:
+            jwt_uid = self._get_jwt_user_id(request)
+            if jwt_uid is None or jwt_uid >= 0:
+                return web.json_response({"error": "Нужен вход по почте (веб-аккаунт)"}, status=400)
+
+            async with get_connection() as conn:
+                row = await conn.fetchrow("SELECT email FROM app_accounts WHERE user_id = $1", jwt_uid)
+                if not row:
+                    return web.json_response({"error": "Почта не найдена для аккаунта"}, status=400)
+
+            nonce = secrets.token_urlsafe(16)
+            self._link_tg_nonces[nonce] = {
+                "email_user_id": jwt_uid,
+                "expires": datetime.utcnow() + timedelta(minutes=15),
+                "completed_user_id": None,
+            }
+            bot_username = os.getenv("BOT_USERNAME") or "SvoyVPN_robot"
+            bot_url = f"https://t.me/{bot_username}?start=linktg_{nonce}"
+            logger.info(f"link-telegram init: email_uid={jwt_uid} nonce={nonce[:8]}…")
+            return web.json_response({"nonce": nonce, "botUrl": bot_url})
+        except Exception as e:
+            logger.error(f"api_link_telegram_init: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_link_telegram_poll(self, request: web_request.Request) -> web.Response:
+        nonce = request.query.get("nonce", "")
+        if not nonce or nonce not in self._link_tg_nonces:
+            return web.json_response({"status": "expired"})
+
+        entry = self._link_tg_nonces[nonce]
+        if datetime.utcnow() > entry["expires"]:
+            del self._link_tg_nonces[nonce]
+            return web.json_response({"status": "expired"})
+
+        done = entry.get("completed_user_id")
+        if done is None:
+            return web.json_response({"status": "pending"})
+
+        token = self._generate_jwt(done)
+        del self._link_tg_nonces[nonce]
+        return web.json_response({"status": "ok", "token": token, "userId": done})
+
     # ─── GET /api/user (JWT version for Android) ──────────────────────────────
 
     async def api_get_user_jwt(self, request: web_request.Request) -> web.Response:
@@ -2136,6 +2444,7 @@ class WebhookServer:
                 support_link = await get_support_link() or "https://t.me/SvoyVPN_support"
 
                 referral = await self._referral_bundle_for_user(conn, user_id)
+                auth_snap = await self._user_auth_snapshot(conn, user_id)
 
                 return web.json_response({
                     "user": {
@@ -2148,6 +2457,7 @@ class WebhookServer:
                         "trialDays": trial_days,
                         "isAdmin": is_admin,
                         "supportLink": support_link,
+                        **auth_snap,
                     },
                     "subscription": {
                         "isActive": is_active,

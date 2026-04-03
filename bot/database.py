@@ -657,3 +657,143 @@ async def log_subscription_usage(user_id: int, user_agent: str, ip_address: str)
     except Exception as e:
         logging.error(f"Error logging subscription usage: {e}")
 
+
+def _as_dt(v):
+    """Привести значение из БД к datetime для сравнения."""
+    if v is None:
+        return None
+    if hasattr(v, "timestamp"):
+        return v
+    return v
+
+
+async def merge_vpn_user_into(conn, source_user_id: int, target_user_id: int) -> None:
+    """
+    Переносит данные source_user_id → target_user_id, строка source удаляется.
+    Используется при объединении email-аккаунта (отрицательный user_id) с Telegram.
+    """
+    if source_user_id == target_user_id:
+        return
+
+    src = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", source_user_id)
+    tgt = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", target_user_id)
+    if not src or not tgt:
+        raise ValueError("merge_vpn_user_into: user not found")
+
+    se_s = _as_dt(src["subscription_end"])
+    se_t = _as_dt(tgt["subscription_end"])
+    merged_end = None
+    for c in (se_s, se_t):
+        if c is None:
+            continue
+        if merged_end is None or c > merged_end:
+            merged_end = c
+
+    merged_pay = bool(src["pay_subscribed"]) or bool(tgt["pay_subscribed"])
+    trial_used = bool(src["trial_used"]) or bool(tgt["trial_used"])
+    balance = (src["balance"] or 0) + (tgt["balance"] or 0)
+    ref_count = (src["referral_count"] or 0) + (tgt["referral_count"] or 0)
+    renewal_used = bool(src.get("renewal_used")) or bool(tgt.get("renewal_used"))
+
+    tok_s = src.get("subscription_token")
+    tok_t = tgt.get("subscription_token")
+    merged_token = tok_t or tok_s
+
+    # vpn_keys: убрать дубликаты по server_id
+    await conn.execute(
+        """
+        DELETE FROM vpn_keys vk1
+        USING vpn_keys vk2
+        WHERE vk1.user_id = $1 AND vk2.user_id = $2 AND vk1.server_id = vk2.server_id
+        """,
+        source_user_id,
+        target_user_id,
+    )
+    await conn.execute(
+        "UPDATE vpn_keys SET user_id = $2 WHERE user_id = $1",
+        source_user_id,
+        target_user_id,
+    )
+
+    for table in ("payments", "subscription_reminders", "subscription_usage_logs", "miniapp_usage_logs"):
+        try:
+            await conn.execute(
+                f"UPDATE {table} SET user_id = $2 WHERE user_id = $1",
+                source_user_id,
+                target_user_id,
+            )
+        except Exception as e:
+            logging.warning(f"merge: skip {table}: {e}")
+
+    try:
+        await conn.execute(
+            "UPDATE utm_visits SET user_id = $2 WHERE user_id = $1",
+            source_user_id,
+            target_user_id,
+        )
+    except Exception as e:
+        logging.warning(f"merge: skip utm_visits: {e}")
+
+    await conn.execute(
+        "UPDATE users SET invited_by = $2 WHERE invited_by = $1",
+        source_user_id,
+        target_user_id,
+    )
+
+    try:
+        await conn.execute("DELETE FROM managers WHERE user_id = $1", source_user_id)
+    except Exception as e:
+        logging.warning(f"merge: managers: {e}")
+
+    try:
+        ub_s = await conn.fetchval("SELECT balance FROM user_balances WHERE user_id = $1", source_user_id) or 0
+        ub_t = await conn.fetchval("SELECT balance FROM user_balances WHERE user_id = $1", target_user_id) or 0
+        await conn.execute("DELETE FROM user_balances WHERE user_id = $1", source_user_id)
+        ubs = int(ub_s) + int(ub_t)
+        if ubs > 0:
+            await conn.execute(
+                """
+                INSERT INTO user_balances (user_id, balance, updated_at)
+                VALUES ($1, $2, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    balance = EXCLUDED.balance,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                target_user_id,
+                ubs,
+            )
+    except Exception as e:
+        logging.warning(f"merge: user_balances: {e}")
+
+    await conn.execute(
+        "UPDATE app_accounts SET user_id = $2 WHERE user_id = $1",
+        source_user_id,
+        target_user_id,
+    )
+
+    await conn.execute(
+        """
+        UPDATE users SET
+            pay_subscribed = $1,
+            subscription_end = $2,
+            trial_used = $3,
+            balance = $4,
+            referral_count = $5,
+            renewal_used = $6,
+            subscription_token = COALESCE($7, subscription_token),
+            last_activity = COALESCE(last_activity, CURRENT_TIMESTAMP)
+        WHERE user_id = $8
+        """,
+        merged_pay,
+        merged_end,
+        trial_used,
+        balance,
+        ref_count,
+        renewal_used,
+        merged_token,
+        target_user_id,
+    )
+
+    await conn.execute("DELETE FROM users WHERE user_id = $1", source_user_id)
+    logging.info("Merged user %s into %s", source_user_id, target_user_id)
+

@@ -45,7 +45,7 @@
   <link rel="stylesheet" href="/miniapp/need/assets/index_v111.css" />
   <link rel="stylesheet" href="/miniapp/need/app_v124.css?v=131" />
 
-  <script defer src="/miniapp/need/app_v124.js?v=131"></script>
+  <script defer src="/miniapp/need/app_v124.js?v=132"></script>
 </head>
 
 <body>
@@ -347,6 +347,8 @@
         </div>
         <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px; display:none;">—</p>
 
+        <div id="profileAuthLinkBox" style="display:none;width:100%;max-width:400px;padding:0 8px;box-sizing:border-box;"></div>
+
         <div class="copy-field">
           <input id="subUrlProfile" type="text" placeholder="—" readonly />
           <button id="btnCopyProfile" class="btn-copy" aria-label="Скопировать">
@@ -500,6 +502,44 @@
       </button>
     </nav>
 
+  </div>
+
+  <!-- ═══ MODAL: LINK EMAIL ═══ -->
+  <div id="modalLinkEmail" class="modal">
+    <div class="modal-backdrop" onclick="hideModal('modalLinkEmail')"></div>
+    <div class="modal-content" style="padding-top:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <p class="title-s" style="margin:0;">Привязка почты</p>
+        <button type="button" onclick="hideModal('modalLinkEmail')" aria-label="Закрыть"
+          style="background:var(--section_bg_color, #f7f9fb); border:none; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; cursor:pointer;">✕</button>
+      </div>
+      <div id="linkEmailStep1">
+        <p class="body text-muted" style="font-size:13px;line-height:1.4;margin:0 0 12px;">Код придёт в Telegram и на email. Если почта уже зарегистрирована — пароль не нужен.</p>
+        <div class="input-field" style="margin-bottom:8px;">
+          <input type="email" id="linkEmailAddr" placeholder="Email" autocomplete="email" />
+        </div>
+        <div class="input-field" style="margin-bottom:12px;">
+          <input type="password" id="linkEmailPass" placeholder="Пароль (новая почта, мин. 6)" autocomplete="new-password" />
+        </div>
+        <button type="button" id="btnLinkEmailSend" class="btn-primary" style="width:100%;">Получить код</button>
+      </div>
+      <div id="linkEmailStep2" style="display:none;">
+        <p class="body text-muted" style="font-size:13px;margin:0 0 12px;">Введите код из Telegram или из письма.</p>
+        <div class="input-field" style="margin-bottom:12px;">
+          <input type="text" id="linkEmailOtp" inputmode="numeric" placeholder="Код" maxlength="8" />
+        </div>
+        <button type="button" id="btnLinkEmailConfirm" class="btn-primary" style="width:100%;">Подтвердить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalLinkTg" class="modal">
+    <div class="modal-backdrop" onclick="hideModal('modalLinkTg')"></div>
+    <div class="modal-content" style="padding-top:14px;text-align:center;">
+      <p class="title-s" style="margin:0 0 8px;">Привязка Telegram</p>
+      <p class="body text-muted" style="font-size:13px;line-height:1.4;margin:0 0 16px;">Откройте бота и нажмите Start.</p>
+      <a id="linkTgOpenBtn" href="#" target="_blank" rel="noopener" class="btn-primary" style="display:inline-block;text-decoration:none;padding:14px 24px;">Открыть бота</a>
+    </div>
   </div>
 
   <!-- ═══ MODAL: PLAN ═══ -->
