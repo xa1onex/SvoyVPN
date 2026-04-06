@@ -181,6 +181,58 @@
     return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
   }
 
+  /** ДД.ММ.ГГГГ для подписи в скобках */
+  function fmtDateShortDots(iso) {
+    if (!iso) return '—';
+    const s = String(iso).trim();
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    let y, mo, d;
+    if (m) {
+      y = +m[1];
+      mo = +m[2] - 1;
+      d = +m[3];
+    } else {
+      const dt = new Date(iso);
+      if (Number.isNaN(dt.getTime())) return '—';
+      y = dt.getFullYear();
+      mo = dt.getMonth();
+      d = dt.getDate();
+    }
+    return `${String(d).padStart(2, '0')}.${String(mo + 1).padStart(2, '0')}.${y}`;
+  }
+
+  /** Календарных дней от сегодня до дня окончания: 0 = сегодня, 1 = завтра */
+  function calendarDaysUntilEnd(iso) {
+    if (!iso) return null;
+    const s = String(iso).trim();
+    let y, mo, d;
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      y = +m[1];
+      mo = +m[2] - 1;
+      d = +m[3];
+    } else {
+      const dt = new Date(iso);
+      if (Number.isNaN(dt.getTime())) return null;
+      y = dt.getFullYear();
+      mo = dt.getMonth();
+      d = dt.getDate();
+    }
+    const endDay = new Date(y, mo, d);
+    const now = new Date();
+    const startDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((endDay - startDay) / 86400000);
+  }
+
+  /** HTML: «VPN: активен СЕГОДНЯ/ЗАВТРА (ДД.ММ.ГГГГ)» или «Действует до …» */
+  function formatVpnActiveDateLine(iso) {
+    const cal = calendarDaysUntilEnd(iso);
+    const short = fmtDateShortDots(iso);
+    if (cal === 0) return `VPN: активен <b>СЕГОДНЯ</b> (${escapeHtml(short)})`;
+    if (cal === 1) return `VPN: активен <b>ЗАВТРА</b> (${escapeHtml(short)})`;
+    return `Действует до ${escapeHtml(fmtDate(iso))}`;
+  }
+
   const FLAGS_LONG = {
     '🇳🇱': ['netherland', 'nederland', 'нидерланды', 'голландия', 'amsterdam', 'амстердам'],
     '🇩🇪': ['germany', 'deutchland', 'германия', 'frankfurt', 'франкфурт'],
@@ -824,12 +876,9 @@
     const pBadge = document.getElementById('profileBadge');
     const subBlockBox = document.getElementById('subBlockBox');
 
-    let daysLeft = 0;
+    let daysCal = null;
     if (sub && sub.isActive && sub.endDate) {
-      const end = new Date(sub.endDate);
-      const now = new Date();
-      const diff = end.getTime() - now.getTime();
-      daysLeft = Math.ceil(diff / (1000 * 3600 * 24));
+      daysCal = calendarDaysUntilEnd(sub.endDate);
     }
 
     if (pBadge) {
@@ -837,8 +886,12 @@
       if (sub && sub.isActive) {
         pBadge.style.display = 'inline-flex';
         if (pBadgeText) {
-          if (daysLeft > 0) {
-            pBadgeText.textContent = `Активна на ${daysLeft} ${dw(daysLeft)}`;
+          if (daysCal === 0) {
+            pBadgeText.textContent = 'Сегодня';
+          } else if (daysCal === 1) {
+            pBadgeText.textContent = 'Завтра';
+          } else if (daysCal != null && daysCal > 1) {
+            pBadgeText.textContent = `Активна на ${daysCal} ${dw(daysCal)}`;
           } else {
             pBadgeText.textContent = `Активна до ${fmtDate(sub.endDate)}`;
           }
@@ -875,12 +928,15 @@
           pStatus.textContent = '';
         }
 
-        const endHuman = fmtDate(sub.endDate);
         const daysMeta =
-          daysLeft > 0
-            ? `Осталось ${daysLeft} ${dw(daysLeft)} полной свободы.`
-            : 'Срок окончания указан ниже — подключайтесь в любой момент.';
-        const warnSoon = daysLeft > 0 && daysLeft <= 7;
+          daysCal === 0
+            ? 'Подписка заканчивается сегодня — при необходимости продлите.'
+            : daysCal === 1
+              ? 'Остался 1 день полной свободы.'
+              : daysCal != null && daysCal > 1
+                ? `Осталось ${daysCal} ${dw(daysCal)} полной свободы.`
+                : 'Срок окончания указан ниже — подключайтесь в любой момент.';
+        const warnSoon = daysCal != null && daysCal >= 0 && daysCal <= 7;
         const heroMod = warnSoon ? ' sub-status-hero--warn' : '';
 
         let statusHtml = `
@@ -893,7 +949,7 @@
               </div>
               <div class="sub-status-hero__body">
                 <p class="sub-status-hero__title">Подписка активна</p>
-                <p class="sub-status-hero__date">Действует до ${escapeHtml(endHuman)}</p>
+                <p class="sub-status-hero__date">${formatVpnActiveDateLine(sub.endDate)}</p>
                 <p class="sub-status-hero__meta">${escapeHtml(daysMeta)}</p>
                 ${
                   warnSoon
