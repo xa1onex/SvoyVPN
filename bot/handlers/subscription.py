@@ -11,7 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.exceptions import TelegramBadRequest
 
 from ..database import get_connection, ensure_subscription_token
-from ..subscriptions import get_subscription_status, get_user_subscription_url
+from ..subscriptions import get_subscription_status, get_user_subscription_url, format_subscription_status_label
 from ..plans import get_subscription_plans, get_renewal_plans, format_price_rub, format_price_stars, format_price_both, PAYMENT_METHODS
 from ..config import AppConfig
 from ..yookassa_client import YooKassaClient
@@ -284,6 +284,7 @@ async def get_subscription_info(user_id: int) -> dict:
                 'is_active': False,
                 'days_remaining': 0,
                 'end_date_str': None,
+                'end_date_obj': None,
                 'user_id': user_id
             }
         
@@ -292,6 +293,7 @@ async def get_subscription_info(user_id: int) -> dict:
         is_active = False
         days_remaining = 0
         end_date_str = None
+        end_date_obj = None
         
         if pay_subscribed and subscription_end:
             try:
@@ -310,6 +312,7 @@ async def get_subscription_info(user_id: int) -> dict:
                     is_active = True
                     days_remaining = (end_date_only - today).days
                     end_date_str = end_date.strftime("%d.%m.%Y")
+                    end_date_obj = end_date
             except Exception as e:
                 logger.error(f"Error parsing subscription date: {e}")
         
@@ -317,6 +320,7 @@ async def get_subscription_info(user_id: int) -> dict:
             'is_active': is_active,
             'days_remaining': days_remaining,
             'end_date_str': end_date_str,
+            'end_date_obj': end_date_obj,
             'user_id': user_id
         }
 
@@ -334,9 +338,15 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
     
     if is_renew:
         text = "💳 <b>Управление подпиской:</b>\n\n"
-        end_date = info.get('end_date_str')
-        if end_date:
-            text += f"✅ Ваш VPN <b>активен</b> до <b>{end_date}</b>!\n"
+        end_date_obj = info.get('end_date_obj')
+        if end_date_obj:
+            days_remaining = info.get('days_remaining')
+            if days_remaining == 0:
+                text += f"✅ Ваш VPN: <b>активен СЕГОДНЯ</b> ({info.get('end_date_str')})!\n"
+            elif days_remaining == 1:
+                text += f"✅ Ваш VPN: <b>активен ЗАВТРА</b> ({info.get('end_date_str')})!\n"
+            else:
+                text += f"✅ Ваш VPN <b>{format_subscription_status_label(end_date_obj)}</b>!\n"
         else:
             text += "✅ Ваш VPN <b>активен</b>!\n"
         text += "Вы можете пользоваться приложением.\n\n"

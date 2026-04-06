@@ -10,6 +10,20 @@ from .xui_client import XUIClient
 logger = logging.getLogger(__name__)
 
 
+def format_subscription_status_label(end_date: datetime) -> str:
+    """Короткий статус для UI/бота с акцентом на сегодня/завтра."""
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    end_date_only = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    days_remaining = (end_date_only - today).days
+    end_date_str = end_date.strftime("%d.%m.%Y")
+
+    if days_remaining == 0:
+        return f"активен СЕГОДНЯ ({end_date_str})"
+    if days_remaining == 1:
+        return f"активен ЗАВТРА ({end_date_str})"
+    return f"активен до {end_date_str}"
+
+
 async def get_subscription_end(user_id: int) -> datetime | None:
     """Получить дату окончания подписки пользователя."""
     async with get_connection() as conn:
@@ -670,7 +684,7 @@ async def get_subscription_status(user_id: int) -> str:
                 
                 today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
                 if end_date.replace(hour=0, minute=0, second=0, microsecond=0) >= today:
-                    return f"активен до {end_date.strftime('%d.%m.%Y')}"
+                    return format_subscription_status_label(end_date)
     except Exception as e:
         logger.error(f"Error in get_subscription_status: {e}")
     return "неактивен"
