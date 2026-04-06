@@ -166,18 +166,24 @@ async def get_user_tariffs(user_id: int) -> tuple[Dict[str, Dict[str, Any]], boo
                 is_renew = True
                 days_remaining = (end_date - datetime.now().date()).days
     
-    # Check if discount applies
+    # Check if discount applies (должно совпадать с handlers/subscription.should_show_discount)
     show_discount = False
     async with get_connection() as conn:
         discount_settings = await conn.fetchrow('SELECT days_threshold, enable_for_all FROM discount_settings ORDER BY id DESC LIMIT 1')
         if not discount_settings:
+            # Нет строки в БД — прежнее поведение: окно 3 дня для продления
             show_discount = (days_remaining <= 3) if is_renew else False
         else:
             if discount_settings['enable_for_all']:
                 show_discount = True
             else:
-                threshold = discount_settings['days_threshold'] or 0
-                show_discount = (days_remaining <= threshold) if is_renew else False
+                threshold = discount_settings['days_threshold']
+                # 0 / NULL = скидка выключена (как в админке). Иначе при threshold=0 выражение
+                # days_remaining <= 0 давало True в последний день подписки и показывало «Спецпредложение».
+                if not threshold or threshold <= 0:
+                    show_discount = False
+                else:
+                    show_discount = (days_remaining <= threshold) if is_renew else False
 
     regular_plans = await get_subscription_plans()
     renewal_plans = await get_renewal_plans()
