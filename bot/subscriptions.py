@@ -374,6 +374,137 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
         logger.error(f"Error creating keys for user {user_id}: {e}")
 
 
+async def ensure_user_keys_for_server_ids(user_id: int, server_ids: List[int]) -> None:
+    """
+    Создать/активировать ключи пользователя только на перечисленных серверах.
+    Используется из GET /sub/{token}, чтобы не дергать все панели XUI подряд
+    (клиенты вроде Happ обрывают запрос по таймауту).
+    """
+    if not server_ids:
+        return
+    try:
+        async with get_connection() as conn:
+            user_row = await conn.fetchrow(
+                """
+                SELECT subscription_end, pay_subscribed
+                FROM users
+                WHERE user_id = $1
+                  AND pay_subscribed = TRUE
+                  AND subscription_end IS NOT NULL
+                """,
+                user_id,
+            )
+            if not user_row:
+                return
+
+            subscription_end = user_row["subscription_end"]
+            if isinstance(subscription_end, str):
+                if " " in subscription_end:
+                    end_date = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
+                else:
+                    end_date = datetime.strptime(subscription_end, "%Y-%m-%d")
+            else:
+                end_date = subscription_end
+
+            end_dt = datetime.combine(end_date.date(), dt_time(23, 59, 59))
+            expiry_ms = int(end_dt.timestamp() * 1000)
+            expires_at = end_date.date() if isinstance(end_date, datetime) else end_date
+
+            servers = await conn.fetch(
+                """
+                SELECT id, name, ip, username, password, inbound_id, base_url
+                FROM servers
+                WHERE is_active = TRUE AND id = ANY($1::int[])
+                """,
+                server_ids,
+            )
+            if not servers:
+                return
+
+            for server in servers:
+                server_id = server["id"]
+                try:
+                    existing = await conn.fetchrow(
+                        """
+                        SELECT id, vless_client_id, is_active
+                        FROM vpn_keys
+                        WHERE user_id = $1 AND server_id = $2
+                        ORDER BY id DESC
+                        LIMIT 1
+                        """,
+                        user_id,
+                        server_id,
+                    )
+
+                    client = XUIClient(
+                        base_url=server["base_url"],
+                        username=server["username"],
+                        password=server["password"],
+                        inbound_id=server["inbound_id"],
+                    )
+
+                    if existing:
+                        await client.update_client_expiry(existing["vless_client_id"], expiry_ms)
+
+                        await conn.execute(
+                            """
+                            UPDATE vpn_keys
+                            SET is_active = TRUE, expires_at = $1
+                            WHERE id = $2
+                            """,
+                            expires_at,
+                            existing["id"],
+                        )
+                    else:
+                        result = await client.add_vless_client(
+                            telegram_user_id=user_id,
+                            display_name=server["name"],
+                            traffic_gb=None,
+                            expiry_time_unix_ms=expiry_ms,
+                            public_ip=server.get("ip"),
+                        )
+
+                        if not result.get("id") or not result.get("link"):
+                            await client.close()
+                            continue
+
+                        key_id = await conn.fetchval(
+                            """
+                            INSERT INTO vpn_keys (user_id, server_id, vless_client_id, vless_link,
+                                                  key_name, expires_at, is_active)
+                            VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+                            ON CONFLICT (user_id, server_id) WHERE is_active = TRUE DO NOTHING
+                            RETURNING id
+                            """,
+                            user_id,
+                            server_id,
+                            result["id"],
+                            result["link"],
+                            None,
+                            expires_at,
+                        )
+                        if key_id:
+                            await conn.execute(
+                                """
+                                UPDATE vpn_keys
+                                SET key_name = $1
+                                WHERE id = $2
+                                """,
+                                server["name"],
+                                key_id,
+                            )
+
+                    await client.close()
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to create/reactivate key for user {user_id} on server {server['name']}: {e}"
+                    )
+
+    except Exception as e:
+        logger.error(f"Error ensuring keys for user {user_id} on server_ids={server_ids}: {e}")
+
+
 async def sync_user_keys(user_id: int) -> None:
     """Синхронизирует ключи пользователя с датой окончания подписки (продлевает)"""
     try:

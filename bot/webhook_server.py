@@ -9,7 +9,7 @@ import hashlib
 import hmac
 from datetime import datetime, timedelta
 from typing import Any, Optional
-from urllib.parse import parse_qs, unquote
+from urllib.parse import parse_qs, unquote, quote
 import secrets
 import uuid
 import asyncio
@@ -31,8 +31,14 @@ from .database import (
     merge_vpn_user_into,
     generate_subscription_token,
 )
-from .subscriptions import create_or_activate_keys_for_all_servers, get_user_subscription_url
-from .plans import get_subscription_plans, get_renewal_plans
+from .subscriptions import ensure_user_keys_for_server_ids, get_user_subscription_url
+from .plans import (
+    get_subscription_plans,
+    get_renewal_plans,
+    get_device_limit_settings,
+    clamp_device_count,
+    calc_total_price_with_devices,
+)
 from . import esim_service
 from .esim_invoice_payload import encode_esim_blob
 
@@ -276,6 +282,26 @@ class WebhookServer:
     async def health_check(self, request: web_request.Request) -> web.Response:
         """Проверка здоровья сервера"""
         return web.json_response({"status": "ok", "service": "flyer_webhook"})
+
+    @staticmethod
+    def _device_fingerprint(request: web_request.Request) -> tuple[str, str, str]:
+        """Стабильный отпечаток устройства на базе User-Agent + IP."""
+        user_agent = (request.headers.get("User-Agent") or "unknown").strip()
+        ip_address = (request.headers.get("X-Forwarded-For") or request.remote or "unknown").strip()
+        if "," in ip_address:
+            ip_address = ip_address.split(",")[0].strip()
+        raw = f"{user_agent}|{ip_address}"
+        fp = hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()
+        return fp, user_agent, ip_address
+
+    @staticmethod
+    def _blocked_device_limit_vless(used_devices: int, device_limit: int) -> str:
+        """Псевдо-сервер для клиентов при превышении лимита устройств."""
+        name = quote(f"Лимит устройств ({used_devices}/{device_limit})", safe="")
+        return (
+            "vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1"
+            f"?type=tcp&security=none&flow=none#{name}"
+        )
     
     async def handle_subscription(self, request: web_request.Request) -> web.Response:
         """
@@ -312,6 +338,37 @@ class WebhookServer:
                 ip_address = request.headers.get("X-Forwarded-For", request.remote or "Unknown")
                 if "," in ip_address: ip_address = ip_address.split(",")[0].strip()
                 await log_subscription_usage(user_id, user_agent, ip_address)
+
+                # Обновляем "активное устройство" и считаем текущий лимит
+                fp, ua_fp, ip_fp = self._device_fingerprint(request)
+                await conn.execute(
+                    """
+                    INSERT INTO user_device_fingerprints (user_id, fingerprint, user_agent, ip_address, created_at, last_seen)
+                    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id, fingerprint)
+                    DO UPDATE SET
+                        user_agent = EXCLUDED.user_agent,
+                        ip_address = EXCLUDED.ip_address,
+                        last_seen = CURRENT_TIMESTAMP
+                    """,
+                    user_id,
+                    fp,
+                    ua_fp,
+                    ip_fp,
+                )
+                device_limit = int(await conn.fetchval("SELECT COALESCE(device_limit, 1) FROM users WHERE user_id = $1", user_id) or 1)
+                used_devices = int(
+                    await conn.fetchval(
+                        """
+                        SELECT COUNT(*)
+                        FROM user_device_fingerprints
+                        WHERE user_id = $1
+                          AND last_seen >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+                        """,
+                        user_id,
+                    )
+                    or 0
+                )
                 
                 # Проверяем активность подписки
                 is_active = await conn.fetchval('''
@@ -369,11 +426,35 @@ class WebhookServer:
                     ''', user_id)
                     
                     if servers_without_keys:
-                        logger.info(f"User {user_id} has {len(servers_without_keys)} servers without keys, creating...")
+                        missing_ids = [int(r["id"]) for r in servers_without_keys]
+                        logger.info(
+                            f"User {user_id} has {len(missing_ids)} servers without keys, "
+                            f"creating only for those ids={missing_ids}..."
+                        )
                         try:
-                            # Создаём ключи вне транзакции (используем отдельное соединение)
-                            from .subscriptions import create_or_activate_keys_for_all_servers
-                            await create_or_activate_keys_for_all_servers(user_id)
+                            # Раньше вызывали create_or_activate_keys_for_all_servers — он
+                            # проходил все серверы и XUI; Happ и др. клиенты рвали запрос по таймауту.
+                            async def _finish_missing_keys():
+                                try:
+                                    await ensure_user_keys_for_server_ids(user_id, missing_ids)
+                                except Exception as bg_e:
+                                    logger.error(
+                                        f"Background ensure_user_keys_for_server_ids failed "
+                                        f"for user {user_id}: {bg_e}",
+                                        exc_info=True,
+                                    )
+
+                            try:
+                                await asyncio.wait_for(
+                                    ensure_user_keys_for_server_ids(user_id, missing_ids),
+                                    timeout=12.0,
+                                )
+                            except asyncio.TimeoutError:
+                                logger.warning(
+                                    f"ensure_user_keys_for_server_ids timed out (12s) for user {user_id}; "
+                                    f"continuing in background for server_ids={missing_ids}"
+                                )
+                                asyncio.create_task(_finish_missing_keys())
                             # Повторно запрашиваем ключи и информацию о сервере для сортировки
                             keys_data = await conn.fetch('''
                                 SELECT DISTINCT ON (k.server_id) 
@@ -393,7 +474,10 @@ class WebhookServer:
                             logger.error(f"Failed to auto-create keys for user {user_id}: {e}")
                 
                 # Формируем ответ
-                body = "\n".join([k["vless_link"] for k in keys if k.get("vless_link")])
+                if is_active and used_devices > device_limit:
+                    body = self._blocked_device_limit_vless(used_devices, device_limit)
+                else:
+                    body = "\n".join([k["vless_link"] for k in keys if k.get("vless_link")])
                 
                 logger.info(f"Returning subscription for user {user_id}: {len(keys)} keys, active={is_active}")
                 
@@ -739,7 +823,9 @@ class WebhookServer:
                                 metadata = {
                                     "user_id": int(parts[0]),
                                     "plan_id": parts[1],
-                                    "method_id": parts[2] if len(parts) > 2 else "cryptopay"
+                                    "method_id": parts[2] if len(parts) > 2 else "cryptopay",
+                                    "device_count": int(parts[3]) if len(parts) > 3 and str(parts[3]).isdigit() else 1,
+                                    "payment_source": "miniapp" if parts[-1] == "miniapp" else "bot",
                                 }
                         else:
                             metadata = {}
@@ -1006,6 +1092,19 @@ class WebhookServer:
 
                 referral = await self._referral_bundle_for_user(conn, user_id)
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
+                device_limit = int(await conn.fetchval("SELECT COALESCE(device_limit, 1) FROM users WHERE user_id = $1", user_id) or 1)
+                used_devices = int(
+                    await conn.fetchval(
+                        """
+                        SELECT COUNT(*)
+                        FROM user_device_fingerprints
+                        WHERE user_id = $1
+                          AND last_seen >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+                        """,
+                        user_id,
+                    )
+                    or 0
+                )
 
                 return web.json_response({
                     "user": {
@@ -1025,7 +1124,10 @@ class WebhookServer:
                         "isActive": is_active,
                         "endDate": end_date_str,
                         "subscriptionUrl": subscription_url,
-                        "token": user['subscription_token']
+                        "token": user['subscription_token'],
+                        "deviceLimit": device_limit,
+                        "usedDevices": used_devices,
+                        "deviceLimitExceeded": used_devices > device_limit,
                     },
                     "referral": referral,
                 })
@@ -1108,6 +1210,10 @@ class WebhookServer:
             
             # Получаем актуальные тарифы для пользователя, учитывая все скидки
             current_tariffs, is_renew, show_discount = await get_user_tariffs(user_id)
+            device_cfg = await get_device_limit_settings()
+            max_devices = int(device_cfg.get("max_devices", 5))
+            extra_rub = int(device_cfg.get("extra_price_rub", 1000))
+            extra_stars = int(device_cfg.get("extra_price_stars", 10))
             
             # Предварительно загружаем базовые планы для расчета выгоды (зачеркнутых цен)
             regular_plans = await get_subscription_plans()
@@ -1148,13 +1254,18 @@ class WebhookServer:
                     "id": plan_id,
                     "months": months,
                     "price": price_rub,
+                    "basePrice": price_rub,
                     "oldPrice": old_price,
                     "pricePerMonth": price_rub / months,
                     "priceStars": price_stars,
+                    "basePriceStars": price_stars,
                     "oldPriceStars": old_price_stars,
                     "pricePerMonthStars": round(price_stars / months) if months > 0 else price_stars,
                     "popular": months == 12,
-                    "isRenew": is_renew
+                    "isRenew": is_renew,
+                    "maxDevices": max_devices,
+                    "extraPricePerDevice": extra_rub / 100.0,
+                    "extraPricePerDeviceStars": extra_stars,
                 })
             
             return web.json_response(tariffs)
@@ -1198,20 +1309,22 @@ class WebhookServer:
             payment_method = data.get('paymentMethod')
             device_count = data.get('deviceCount', 1)
             
-            if not init_data or not tariff_id or not payment_method:
+            if not tariff_id or not payment_method:
                 return web.json_response({"error": "Missing required parameters"}, status=400)
             
             # Проверяем подлинность данных
             if not self.bot:
                 return web.json_response({"error": "Bot not initialized"}, status=500)
             
-            bot_token = self.bot.token
-            if not self.verify_telegram_webapp_data(init_data, bot_token):
-                return web.json_response({"error": "Invalid initData"}, status=403)
-            
-            # Парсим данные пользователя
-            parsed_data = self.parse_telegram_init_data(init_data)
-            user_id = telegram_user_id_from_parsed_init(parsed_data)
+            user_id = None
+            if init_data:
+                bot_token = self.bot.token
+                if not self.verify_telegram_webapp_data(init_data, bot_token):
+                    return web.json_response({"error": "Invalid initData"}, status=403)
+                parsed_data = self.parse_telegram_init_data(init_data)
+                user_id = telegram_user_id_from_parsed_init(parsed_data)
+            else:
+                user_id = self._get_jwt_user_id(request)
             if not user_id:
                 return web.json_response({"error": "User ID not found"}, status=400)
             
@@ -1232,20 +1345,26 @@ class WebhookServer:
             if not method_data:
                 return web.json_response({"error": "Payment method not found"}, status=404)
             
+            device_cfg = await get_device_limit_settings()
+            max_devices = int(device_cfg.get("max_devices", 5))
+            extra_rub = int(device_cfg.get("extra_price_rub", 1000))
+            extra_stars = int(device_cfg.get("extra_price_stars", 10))
+            device_count = clamp_device_count(device_count, max_devices)
+
             # Вычисляем цену
             price_rub = plan_data.get('price_rub', 0)
-            total_price = price_rub * device_count
+            total_price = calc_total_price_with_devices(price_rub, device_count, extra_rub)
             
             # Создаем платеж в зависимости от способа оплаты
             if payment_method == 'stars':
                 # Оплата через Telegram Stars
-                price_stars = plan_data.get('price_stars', 0) * device_count
+                price_stars = calc_total_price_with_devices(plan_data.get('price_stars', 0), device_count, extra_stars)
                 
                 try:
                     # Создаем инвойс-ссылку для Stars
                     labeled_prices = [LabeledPrice(label=plan_data['title'], amount=price_stars)]
                     # Добавляем _miniapp в payload для отслеживания источника
-                    payload = f"stars_{user_id}_{tariff_id}_{int(datetime.now().timestamp())}_miniapp"
+                    payload = f"stars_{user_id}_{tariff_id}_{device_count}_{int(datetime.now().timestamp())}_miniapp"
                     
                     invoice_link = await self.bot.create_invoice_link(
                         title=f"VPN: {plan_data['title']}",
@@ -1273,7 +1392,7 @@ class WebhookServer:
                 if not self.yookassa_config or not self.yookassa_config.enabled:
                     return web.json_response({"error": "YooKassa not configured"}, status=500)
                 
-                total_amount_cents = plan_data.get('price_rub', 0) * device_count
+                total_amount_cents = total_price
                 
                 # Если есть provider_token, используем нативные инвойсы Telegram (они открываются внутри аппа)
                 if self.yookassa_config.provider_token:
@@ -1282,7 +1401,7 @@ class WebhookServer:
                         invoice_link = await self.bot.create_invoice_link(
                             title=f"VPN: {plan_data['title']}",
                             description=f"Подписка на {plan_data.get('duration', 1)} мес. ({device_count} устройство)",
-                            payload=f"yoo_{user_id}_{tariff_id}_{int(datetime.now().timestamp())}_miniapp",
+                            payload=f"yoo_{user_id}_{tariff_id}_{device_count}_{int(datetime.now().timestamp())}_miniapp",
                             provider_token=self.yookassa_config.provider_token,
                             currency="RUB",
                             prices=labeled_prices
@@ -1321,7 +1440,7 @@ class WebhookServer:
                 if not self.cryptopay_config or not self.cryptopay_config.enabled:
                     return web.json_response({"error": "Crypto Pay not configured"}, status=500)
                 
-                amount_rub = (plan_data.get('price_rub', 0) * device_count) / 100.0
+                amount_rub = total_price / 100.0
                 api_url = "https://testnet-pay.crypt.bot/api/createInvoice" if self.cryptopay_config.testnet else "https://pay.crypt.bot/api/createInvoice"
                 payload_str = f"{user_id}:{tariff_id}:cryptopay:{device_count}:miniapp"
                 
@@ -2768,6 +2887,19 @@ class WebhookServer:
 
                 referral = await self._referral_bundle_for_user(conn, user_id)
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
+                device_limit = int(await conn.fetchval("SELECT COALESCE(device_limit, 1) FROM users WHERE user_id = $1", user_id) or 1)
+                used_devices = int(
+                    await conn.fetchval(
+                        """
+                        SELECT COUNT(*)
+                        FROM user_device_fingerprints
+                        WHERE user_id = $1
+                          AND last_seen >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+                        """,
+                        user_id,
+                    )
+                    or 0
+                )
 
                 return web.json_response({
                     "user": {
@@ -2788,6 +2920,9 @@ class WebhookServer:
                         "endDate": end_date_str,
                         "subscriptionUrl": subscription_url,
                         "token": user["subscription_token"],
+                        "deviceLimit": device_limit,
+                        "usedDevices": used_devices,
+                        "deviceLimitExceeded": used_devices > device_limit,
                     },
                     "referral": referral,
                 })
