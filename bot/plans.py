@@ -95,6 +95,10 @@ PAYMENT_METHODS = {
 import copy
 from datetime import datetime
 
+DEFAULT_MAX_DEVICES = 5
+DEFAULT_EXTRA_RUB_KOPECKS = 1000  # +10₽ за устройство сверх первого
+DEFAULT_EXTRA_STARS = 10
+
 async def get_subscription_plans() -> Dict[str, Dict[str, Any]]:
     """Получить планы подписки с динамическими ценами из БД"""
     plans = copy.deepcopy(SUBSCRIPTION_PLANS_BASE)
@@ -229,4 +233,46 @@ def format_price_stars(price_stars: int) -> str:
 def format_price_both(price_rub: int, price_stars: int) -> str:
     """Форматирует цену в рублях и звездах"""
     return f"{format_price_rub(price_rub)} | {format_price_stars(price_stars)}"
+
+
+async def get_device_limit_settings() -> Dict[str, int]:
+    """Настройки лимитов устройств и наценки за доп. устройство."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT max_devices, extra_price_rub, extra_price_stars
+            FROM device_limit_settings
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        )
+        if not row:
+            return {
+                "max_devices": DEFAULT_MAX_DEVICES,
+                "extra_price_rub": DEFAULT_EXTRA_RUB_KOPECKS,
+                "extra_price_stars": DEFAULT_EXTRA_STARS,
+            }
+        return {
+            "max_devices": int(row["max_devices"] or DEFAULT_MAX_DEVICES),
+            "extra_price_rub": int(row["extra_price_rub"] or 0),
+            "extra_price_stars": int(row["extra_price_stars"] or 0),
+        }
+
+
+def clamp_device_count(device_count: int, max_devices: int) -> int:
+    """Ограничивает количество устройств в допустимых пределах."""
+    try:
+        dc = int(device_count)
+    except (TypeError, ValueError):
+        dc = 1
+    if dc < 1:
+        dc = 1
+    if dc > max_devices:
+        dc = max_devices
+    return dc
+
+
+def calc_total_price_with_devices(base_price: int, device_count: int, extra_per_device: int) -> int:
+    """Цена по формуле: база + (N-1) * наценка."""
+    return int(base_price) + max(0, int(device_count) - 1) * int(extra_per_device)
 
