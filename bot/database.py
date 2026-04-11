@@ -63,7 +63,8 @@ async def init_db() -> None:
                 referral_code TEXT,
                 referral_count INTEGER DEFAULT 0,
                 invited_by BIGINT,
-                renewal_used BOOLEAN DEFAULT FALSE
+                renewal_used BOOLEAN DEFAULT FALSE,
+                device_limit INTEGER DEFAULT 1
             )
             """
         )
@@ -93,6 +94,10 @@ async def init_db() -> None:
             if 'renewal_used' not in existing_columns:
                 await conn.execute("ALTER TABLE users ADD COLUMN renewal_used BOOLEAN DEFAULT FALSE")
                 logging.info("Added renewal_used column to users table")
+
+            if 'device_limit' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN device_limit INTEGER DEFAULT 1")
+                logging.info("Added device_limit column to users table")
             
             if 'balance' not in existing_columns:
                 await conn.execute("ALTER TABLE users ADD COLUMN balance INTEGER DEFAULT 0")
@@ -343,6 +348,53 @@ async def init_db() -> None:
                 ''')
         except Exception as e:
             logging.warning(f"Could not initialize trial_settings: {e}")
+
+        # Таблица для настроек лимитов устройств
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS device_limit_settings (
+                id SERIAL PRIMARY KEY,
+                max_devices INTEGER NOT NULL DEFAULT 5,
+                extra_price_rub INTEGER NOT NULL DEFAULT 1000,
+                extra_price_stars INTEGER NOT NULL DEFAULT 10,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        try:
+            dl_count = await conn.fetchval('SELECT COUNT(*) FROM device_limit_settings')
+            if dl_count == 0:
+                await conn.execute(
+                    '''
+                    INSERT INTO device_limit_settings (max_devices, extra_price_rub, extra_price_stars, updated_at)
+                    VALUES (5, 1000, 10, CURRENT_TIMESTAMP)
+                    '''
+                )
+        except Exception as e:
+            logging.warning(f"Could not initialize device_limit_settings: {e}")
+
+        # Активные устройства пользователя по обращениям к /sub
+        try:
+            await conn.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS user_device_fingerprints (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    fingerprint TEXT NOT NULL,
+                    user_agent TEXT,
+                    ip_address TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, fingerprint),
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+                '''
+            )
+            await conn.execute(
+                'CREATE INDEX IF NOT EXISTS idx_user_device_fp_user_seen ON user_device_fingerprints(user_id, last_seen)'
+            )
+        except Exception as e:
+            logging.warning(f"Could not create user_device_fingerprints table: {e}")
         
         # Таблица для менеджеров (техподдержка)
         try:
