@@ -98,6 +98,28 @@ async def init_db() -> None:
             if 'device_limit' not in existing_columns:
                 await conn.execute("ALTER TABLE users ADD COLUMN device_limit INTEGER DEFAULT 1")
                 logging.info("Added device_limit column to users table")
+
+            if 'traffic_anchor_day' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN traffic_anchor_day INTEGER")
+                logging.info("Added traffic_anchor_day column to users table")
+            if 'traffic_period_start' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN traffic_period_start DATE")
+                logging.info("Added traffic_period_start column to users table")
+            if 'traffic_period_end_excl' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN traffic_period_end_excl DATE")
+                logging.info("Added traffic_period_end_excl column to users table")
+            if 'traffic_used_bytes' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN traffic_used_bytes BIGINT DEFAULT 0")
+                logging.info("Added traffic_used_bytes column to users table")
+            if 'traffic_bonus_gb' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN traffic_bonus_gb INTEGER DEFAULT 0")
+                logging.info("Added traffic_bonus_gb column to users table")
+            if 'traffic_limit_gb' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN traffic_limit_gb INTEGER")
+                logging.info("Added traffic_limit_gb column to users table")
+            if 'traffic_last_sync_at' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN traffic_last_sync_at TIMESTAMP")
+                logging.info("Added traffic_last_sync_at column to users table")
             
             if 'balance' not in existing_columns:
                 await conn.execute("ALTER TABLE users ADD COLUMN balance INTEGER DEFAULT 0")
@@ -395,6 +417,48 @@ async def init_db() -> None:
             )
         except Exception as e:
             logging.warning(f"Could not create user_device_fingerprints table: {e}")
+
+        # Месячный лимит трафика (ГБ) — глобальные настройки
+        try:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS traffic_settings (
+                    id SERIAL PRIMARY KEY,
+                    default_monthly_gb INTEGER NOT NULL DEFAULT 50,
+                    panel_sync_min_seconds INTEGER NOT NULL DEFAULT 240,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            tc = await conn.fetchval("SELECT COUNT(*) FROM traffic_settings")
+            if tc == 0:
+                await conn.execute(
+                    """
+                    INSERT INTO traffic_settings (default_monthly_gb, panel_sync_min_seconds, updated_at)
+                    VALUES (50, 240, CURRENT_TIMESTAMP)
+                    """
+                )
+        except Exception as e:
+            logging.warning(f"Could not create traffic_settings: {e}")
+
+        # Пакеты дополнительного трафика (ГБ)
+        try:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS gb_pack_products (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    gb_amount INTEGER NOT NULL,
+                    price_rub INTEGER NOT NULL DEFAULT 0,
+                    price_stars INTEGER NOT NULL DEFAULT 0,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    display_order INTEGER DEFAULT 100,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        except Exception as e:
+            logging.warning(f"Could not create gb_pack_products: {e}")
         
         # Таблица для менеджеров (техподдержка)
         try:
@@ -826,6 +890,16 @@ async def merge_vpn_user_into(conn, source_user_id: int, target_user_id: int) ->
     ref_count = (src["referral_count"] or 0) + (tgt["referral_count"] or 0)
     renewal_used = bool(src.get("renewal_used")) or bool(tgt.get("renewal_used"))
 
+    merged_traffic_anchor = tgt.get("traffic_anchor_day") or src.get("traffic_anchor_day")
+    merged_traffic_bonus = int(src.get("traffic_bonus_gb") or 0) + int(tgt.get("traffic_bonus_gb") or 0)
+    merged_traffic_used = max(
+        int(src.get("traffic_used_bytes") or 0),
+        int(tgt.get("traffic_used_bytes") or 0),
+    )
+    lim_t = tgt.get("traffic_limit_gb")
+    lim_s = src.get("traffic_limit_gb")
+    merged_traffic_limit = lim_t if lim_t is not None else lim_s
+
     tok_s = src.get("subscription_token")
     tok_t = tgt.get("subscription_token")
     merged_token = tok_t or tok_s
@@ -912,7 +986,14 @@ async def merge_vpn_user_into(conn, source_user_id: int, target_user_id: int) ->
             referral_count = $5,
             renewal_used = $6,
             subscription_token = COALESCE($7, subscription_token),
-            last_activity = COALESCE(last_activity, CURRENT_TIMESTAMP)
+            last_activity = COALESCE(last_activity, CURRENT_TIMESTAMP),
+            traffic_anchor_day = $9,
+            traffic_period_start = NULL,
+            traffic_period_end_excl = NULL,
+            traffic_used_bytes = $10,
+            traffic_bonus_gb = $11,
+            traffic_limit_gb = $12,
+            traffic_last_sync_at = NULL
         WHERE user_id = $8
         """,
         merged_pay,
@@ -923,6 +1004,10 @@ async def merge_vpn_user_into(conn, source_user_id: int, target_user_id: int) ->
         renewal_used,
         merged_token,
         target_user_id,
+        merged_traffic_anchor,
+        merged_traffic_used,
+        merged_traffic_bonus,
+        merged_traffic_limit,
     )
 
     await conn.execute("DELETE FROM users WHERE user_id = $1", source_user_id)

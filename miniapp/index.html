@@ -736,10 +736,8 @@
       <p class="section-title">Способ оплаты</p>
       <div id="pmWrap" class="pm-list"></div>
 
-      <div id="deviceCountBox" class="card" style="display:none;padding:14px;margin-top:10px;">
-        <p class="section-title" style="margin:0 0 8px;">Устройств в подписке: <span id="deviceCountValue">1</span></p>
-        <input id="deviceCountRange" type="range" min="1" max="5" value="1" style="width:100%;" />
-        <p id="deviceCountHint" class="body text-muted" style="margin:8px 0 0;font-size:12px;"></p>
+      <div id="planTrafficNote" class="card" style="padding:12px;margin-top:10px;">
+        <p class="body text-muted" style="margin:0;font-size:12px;line-height:1.35;">Цена не зависит от числа устройств. Месячный лимит трафика (ГБ) и сброс по дню подписки — в профиле.</p>
       </div>
 
       <div class="pay-row">
@@ -750,6 +748,36 @@
         <button id="btnPay" class="btn-primary" disabled>Оплатить</button>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ═══ MODAL: TRAFFIC PACKS ═══ -->
+  <div id="modalTrafficPack" class="modal">
+    <div class="modal-backdrop" onclick="hideModal('modalTrafficPack')"></div>
+    <div class="modal-content" style="display:flex;flex-direction:column; padding-top: 14px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
+        <p class="title-s" style="margin:0;">Докупить трафик</p>
+        <button onclick="hideModal('modalTrafficPack')" aria-label="Закрыть"
+          style="background:var(--section_bg_color, #f7f9fb); border:none; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:var(--subtitle_text_color, #8e8e93); cursor:pointer; -webkit-tap-highlight-color:transparent; flex-shrink:0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <p class="body text-muted" style="font-size:13px;line-height:1.4;margin:0 0 12px;">Доступно при активной подписке. ГБ добавляются к лимиту до конца текущего расчётного периода.</p>
+      <p class="section-title">Пакет</p>
+      <div id="trafficPacksWrap" class="tariff-grid"></div>
+      <p class="section-title">Способ оплаты</p>
+      <div id="trafficPmWrap" class="pm-list"></div>
+      <div class="pay-row">
+        <div>
+          <p class="total-label">Итого</p>
+          <p id="trafficPackTotal" class="total-price">—</p>
+        </div>
+        <button id="btnPayTrafficPack" class="btn-primary" disabled>Оплатить</button>
+      </div>
     </div>
   </div>
 

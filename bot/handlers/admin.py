@@ -46,7 +46,11 @@ class AdminStates(StatesGroup):
     REFERRAL_INVITER_DAYS = State()
     REFERRAL_INVITED_DAYS = State()
     DISCOUNT_DAYS_THRESHOLD = State()
-    DEVICE_LIMIT_VALUE = State()
+    TRAFFIC_SETTING_VALUE = State()
+    GB_PACK_TITLE = State()
+    GB_PACK_GB = State()
+    GB_PACK_PRICE_RUB = State()
+    GB_PACK_PRICE_STARS = State()
     TRIAL_DAYS = State()
     SERVER_NAME = State()
     SERVER_IP = State()
@@ -126,7 +130,7 @@ def get_admin_panel_keyboard():
     builder.row(InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"))
     builder.row(InlineKeyboardButton(text="🔔 Логи активности", callback_data="admin_realtime_logs"))
     builder.row(InlineKeyboardButton(text="💰 Управление ценами", callback_data="admin_prices"))
-    builder.row(InlineKeyboardButton(text="📲 Лимиты устройств", callback_data="admin_device_limits"))
+    builder.row(InlineKeyboardButton(text="📶 Трафик и пакеты ГБ", callback_data="admin_traffic"))
     builder.row(InlineKeyboardButton(text="🎁 Управление скидками", callback_data="admin_discounts"))
     builder.row(InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast"))
     builder.row(InlineKeyboardButton(text="✏️ Редактировать объявление", callback_data="edit_announcement"))
@@ -712,112 +716,244 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         )
         await state.clear()
 
-    @dp.callback_query(F.data == "admin_device_limits")
-    async def handle_admin_device_limits(callback: CallbackQuery):
+    @dp.callback_query(F.data == "admin_traffic")
+    async def handle_admin_traffic(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
             await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
+        await state.clear()
         async with get_connection() as conn:
-            row = await conn.fetchrow(
+            ts = await conn.fetchrow(
                 """
-                SELECT max_devices, extra_price_rub, extra_price_stars
-                FROM device_limit_settings
-                ORDER BY id DESC
-                LIMIT 1
+                SELECT default_monthly_gb, panel_sync_min_seconds
+                FROM traffic_settings ORDER BY id DESC LIMIT 1
                 """
             )
-            max_devices = int(row["max_devices"]) if row else 5
-            extra_rub = int(row["extra_price_rub"]) if row else 1000
-            extra_stars = int(row["extra_price_stars"]) if row else 10
-
+            default_gb = int(ts["default_monthly_gb"] or 50) if ts else 50
+            sync_sec = int(ts["panel_sync_min_seconds"] or 240) if ts else 240
+            packs = await conn.fetch(
+                """
+                SELECT id, title, gb_amount, price_rub, price_stars, is_active, display_order
+                FROM gb_pack_products ORDER BY display_order ASC, id ASC
+                """
+            )
+        lines = [
+            "📶 <b>Трафик и пакеты ГБ</b>\n",
+            f"• Лимит по умолчанию: <b>{default_gb} ГБ</b> / месяц (день сброса = день первой оплаты)\n",
+            f"• Мин. интервал синхронизации с панелями: <b>{sync_sec}</b> сек\n",
+            "\n<b>Пакеты доп. ГБ:</b>",
+        ]
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="✏️ Максимум устройств", callback_data="admin_device_limits_edit:max"))
-        builder.row(InlineKeyboardButton(text="✏️ Наценка доп. устройства (₽)", callback_data="admin_device_limits_edit:rub"))
-        builder.row(InlineKeyboardButton(text="✏️ Наценка доп. устройства (⭐)", callback_data="admin_device_limits_edit:stars"))
+        builder.row(
+            InlineKeyboardButton(text="✏️ Лимит по умолчанию (ГБ)", callback_data="admin_traffic_edit:default_gb")
+        )
+        builder.row(
+            InlineKeyboardButton(text="✏️ Интервал синхронизации (сек)", callback_data="admin_traffic_edit:sync_sec")
+        )
+        builder.row(InlineKeyboardButton(text="➕ Новый пакет ГБ", callback_data="admin_gb_pack_add"))
+        if packs:
+            for p in packs:
+                st = "✅" if p["is_active"] else "⏸"
+                lines.append(
+                    f"\n{st} <b>#{p['id']}</b> {p['title']} — +{p['gb_amount']} ГБ, "
+                    f"{p['price_rub'] // 100}₽ / {p['price_stars']}⭐"
+                )
+                builder.row(
+                    InlineKeyboardButton(
+                        text=f"{st} #{p['id']} {p['title'][:18]}",
+                        callback_data=f"admin_gb_pack_toggle:{p['id']}",
+                    )
+                )
+        else:
+            lines.append("\n<i>Пакетов пока нет.</i>")
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
         await callback.message.edit_text(
-            "📲 <b>Лимиты устройств</b>\n\n"
-            f"• Максимум устройств: <b>{max_devices}</b>\n"
-            f"• Наценка за 2+ устройство: <b>{extra_rub // 100}₽</b> и <b>{extra_stars}⭐</b>\n\n"
-            "Формула цены: база + (N-1) × наценка.\n"
-            "Пример: 1 устройство — базовая цена, 2 устройства — + наценка один раз.",
+            "\n".join(lines),
             reply_markup=builder.as_markup(),
             parse_mode="HTML",
         )
         await safe_callback_answer(callback)
 
-    @dp.callback_query(F.data.startswith("admin_device_limits_edit:"))
-    async def handle_admin_device_limits_edit(callback: CallbackQuery, state: FSMContext):
+    @dp.callback_query(F.data.startswith("admin_traffic_edit:"))
+    async def handle_admin_traffic_edit(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
             await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
         mode = callback.data.split(":")[1]
         prompts = {
-            "max": "Введите максимальное количество устройств (минимум 1, максимум 20):",
-            "rub": "Введите наценку за доп. устройство в копейках (например 1000 = 10₽):",
-            "stars": "Введите наценку за доп. устройство в звездах (например 10):",
+            "default_gb": "Введите месячный лимит по умолчанию в ГБ (например 50):",
+            "sync_sec": "Введите минимальный интервал опроса панелей в секундах (например 240):",
         }
-        await state.set_state(AdminStates.DEVICE_LIMIT_VALUE)
-        await state.update_data(device_limit_mode=mode)
+        await state.set_state(AdminStates.TRAFFIC_SETTING_VALUE)
+        await state.update_data(traffic_setting_mode=mode)
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_device_limits"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_traffic"))
         await callback.message.edit_text(
-            f"📲 <b>Настройка лимитов устройств</b>\n\n{prompts.get(mode, 'Введите значение:')}",
+            f"📶 <b>Настройка трафика</b>\n\n{prompts.get(mode, 'Введите значение:')}",
             reply_markup=builder.as_markup(),
             parse_mode="HTML",
         )
         await safe_callback_answer(callback)
 
-    @dp.message(AdminStates.DEVICE_LIMIT_VALUE)
-    async def process_admin_device_limits_value(message: Message, state: FSMContext):
+    @dp.message(AdminStates.TRAFFIC_SETTING_VALUE)
+    async def process_admin_traffic_setting_value(message: Message, state: FSMContext):
         if not is_admin(message.from_user.id, config):
             await message.answer("❌ Нет доступа")
             await state.clear()
             return
         data = await state.get_data()
-        mode = data.get("device_limit_mode")
+        mode = data.get("traffic_setting_mode")
         try:
             val = int((message.text or "").strip())
         except ValueError:
             await message.answer("❌ Введите целое число")
             return
 
-        if mode == "max" and (val < 1 or val > 20):
-            await message.answer("❌ Допустимо от 1 до 20")
+        if mode == "default_gb" and (val < 1 or val > 100000):
+            await message.answer("❌ Допустимо от 1 до 100000 ГБ")
             return
-        if mode in ("rub", "stars") and val < 0:
-            await message.answer("❌ Значение не может быть отрицательным")
+        if mode == "sync_sec" and (val < 30 or val > 86400):
+            await message.answer("❌ Интервал: от 30 до 86400 сек")
             return
 
         async with get_connection() as conn:
-            row = await conn.fetchrow("SELECT id FROM device_limit_settings ORDER BY id DESC LIMIT 1")
-            if not row:
+            if mode == "default_gb":
                 await conn.execute(
                     """
-                    INSERT INTO device_limit_settings (max_devices, extra_price_rub, extra_price_stars, updated_at)
-                    VALUES (5, 1000, 10, CURRENT_TIMESTAMP)
+                    UPDATE traffic_settings SET default_monthly_gb = $1, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = (SELECT id FROM traffic_settings ORDER BY id DESC LIMIT 1)
+                    """,
+                    val,
+                )
+            elif mode == "sync_sec":
+                await conn.execute(
                     """
-                )
-            if mode == "max":
-                await conn.execute(
-                    "UPDATE device_limit_settings SET max_devices = $1, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM device_limit_settings ORDER BY id DESC LIMIT 1)",
-                    val,
-                )
-            elif mode == "rub":
-                await conn.execute(
-                    "UPDATE device_limit_settings SET extra_price_rub = $1, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM device_limit_settings ORDER BY id DESC LIMIT 1)",
-                    val,
-                )
-            else:
-                await conn.execute(
-                    "UPDATE device_limit_settings SET extra_price_stars = $1, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM device_limit_settings ORDER BY id DESC LIMIT 1)",
+                    UPDATE traffic_settings SET panel_sync_min_seconds = $1, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = (SELECT id FROM traffic_settings ORDER BY id DESC LIMIT 1)
+                    """,
                     val,
                 )
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ К лимитам устройств", callback_data="admin_device_limits"))
-        await message.answer("✅ Настройка сохранена", reply_markup=builder.as_markup())
+        builder.row(InlineKeyboardButton(text="◀️ К трафику", callback_data="admin_traffic"))
+        await message.answer("✅ Сохранено", reply_markup=builder.as_markup())
         await state.clear()
+
+    @dp.callback_query(F.data == "admin_gb_pack_add")
+    async def handle_admin_gb_pack_add(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        await state.set_state(AdminStates.GB_PACK_TITLE)
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_traffic"))
+        await callback.message.edit_text(
+            "➕ <b>Новый пакет ГБ</b>\n\nВведите <b>название</b> для отображения в магазине:",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+        await safe_callback_answer(callback)
+
+    @dp.message(AdminStates.GB_PACK_TITLE)
+    async def process_gb_pack_title(message: Message, state: FSMContext):
+        if not is_admin(message.from_user.id, config):
+            await state.clear()
+            return
+        title = (message.text or "").strip()
+        if len(title) < 2:
+            await message.answer("❌ Слишком короткое название")
+            return
+        await state.update_data(gb_pack_title=title)
+        await state.set_state(AdminStates.GB_PACK_GB)
+        await message.answer("Введите объём пакета в <b>ГБ</b> (целое число):", parse_mode="HTML")
+
+    @dp.message(AdminStates.GB_PACK_GB)
+    async def process_gb_pack_gb(message: Message, state: FSMContext):
+        if not is_admin(message.from_user.id, config):
+            await state.clear()
+            return
+        try:
+            gb = int((message.text or "").strip())
+        except ValueError:
+            await message.answer("❌ Введите целое число")
+            return
+        if gb < 1 or gb > 100000:
+            await message.answer("❌ От 1 до 100000")
+            return
+        await state.update_data(gb_pack_gb=gb)
+        await state.set_state(AdminStates.GB_PACK_PRICE_RUB)
+        await message.answer("Введите цену в <b>копейках</b> (например 9900 = 99₽):", parse_mode="HTML")
+
+    @dp.message(AdminStates.GB_PACK_PRICE_RUB)
+    async def process_gb_pack_rub(message: Message, state: FSMContext):
+        if not is_admin(message.from_user.id, config):
+            await state.clear()
+            return
+        try:
+            rub = int((message.text or "").strip())
+        except ValueError:
+            await message.answer("❌ Введите целое число")
+            return
+        if rub < 0:
+            await message.answer("❌ Не может быть отрицательной")
+            return
+        await state.update_data(gb_pack_rub=rub)
+        await state.set_state(AdminStates.GB_PACK_PRICE_STARS)
+        await message.answer("Введите цену в <b>Telegram Stars</b> (целое число):", parse_mode="HTML")
+
+    @dp.message(AdminStates.GB_PACK_PRICE_STARS)
+    async def process_gb_pack_stars(message: Message, state: FSMContext):
+        if not is_admin(message.from_user.id, config):
+            await state.clear()
+            return
+        try:
+            stars = int((message.text or "").strip())
+        except ValueError:
+            await message.answer("❌ Введите целое число")
+            return
+        if stars < 0:
+            await message.answer("❌ Не может быть отрицательной")
+            return
+        data = await state.get_data()
+        title = data.get("gb_pack_title")
+        gb = data.get("gb_pack_gb")
+        rub = data.get("gb_pack_rub")
+        async with get_connection() as conn:
+            next_ord = await conn.fetchval("SELECT COALESCE(MAX(display_order), 0) + 10 FROM gb_pack_products")
+            await conn.execute(
+                """
+                INSERT INTO gb_pack_products (title, gb_amount, price_rub, price_stars, is_active, display_order)
+                VALUES ($1, $2, $3, $4, TRUE, $5)
+                """,
+                title,
+                gb,
+                rub,
+                stars,
+                next_ord or 100,
+            )
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="◀️ К трафику", callback_data="admin_traffic"))
+        await message.answer("✅ Пакет добавлен", reply_markup=builder.as_markup())
+        await state.clear()
+
+    @dp.callback_query(F.data.startswith("admin_gb_pack_toggle:"))
+    async def handle_admin_gb_pack_toggle(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        try:
+            pid = int(callback.data.split(":")[1])
+        except (IndexError, ValueError):
+            await safe_callback_answer(callback, "Ошибка id", show_alert=True)
+            return
+        async with get_connection() as conn:
+            await conn.execute(
+                "UPDATE gb_pack_products SET is_active = NOT COALESCE(is_active, TRUE) WHERE id = $1",
+                pid,
+            )
+        await state.clear()
+        new_cb = callback.model_copy(update={"data": "admin_traffic"})
+        await handle_admin_traffic(new_cb, state)
     
     # Управление скидками
     @dp.callback_query(F.data == "admin_discounts")
@@ -1013,7 +1149,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                         for plan_id, plan_data in current_tariffs.items():
                             builder.button(
                                 text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
-                                callback_data=f"buy_renewal:{plan_id}"
+                                callback_data=f"plan:{plan_id}"
                             )
                         builder.adjust(1)
                         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))

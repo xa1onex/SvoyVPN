@@ -32,12 +32,11 @@ from .database import (
     generate_subscription_token,
 )
 from .subscriptions import ensure_user_keys_for_server_ids, get_user_subscription_url
-from .plans import (
-    get_subscription_plans,
-    get_renewal_plans,
-    get_device_limit_settings,
-    clamp_device_count,
-    calc_total_price_with_devices,
+from .plans import get_subscription_plans, get_renewal_plans
+from .traffic import (
+    user_traffic_snapshot,
+    blocked_traffic_vless,
+    apply_subscription_anchor_on_payment,
 )
 from . import esim_service
 from .esim_invoice_payload import encode_esim_blob
@@ -198,6 +197,8 @@ class WebhookServer:
             ('/api/tariffs', self.api_get_tariffs, 'GET'),
             ('/api/payment-methods', self.api_get_payment_methods, 'GET'),
             ('/api/payment/create', self.api_create_payment, 'POST'),
+            ('/api/traffic/packs', self.api_get_traffic_packs, 'GET'),
+            ('/api/traffic/payment/create', self.api_create_traffic_pack_payment, 'POST'),
             ('/api/servers', self.api_get_servers, 'GET'),
             ('/api/ping', self.api_ping_server, 'GET'),
             ('/api/referral', self.api_get_referral, 'GET'),
@@ -283,26 +284,6 @@ class WebhookServer:
         """Проверка здоровья сервера"""
         return web.json_response({"status": "ok", "service": "flyer_webhook"})
 
-    @staticmethod
-    def _device_fingerprint(request: web_request.Request) -> tuple[str, str, str]:
-        """Стабильный отпечаток устройства на базе User-Agent + IP."""
-        user_agent = (request.headers.get("User-Agent") or "unknown").strip()
-        ip_address = (request.headers.get("X-Forwarded-For") or request.remote or "unknown").strip()
-        if "," in ip_address:
-            ip_address = ip_address.split(",")[0].strip()
-        raw = f"{user_agent}|{ip_address}"
-        fp = hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()
-        return fp, user_agent, ip_address
-
-    @staticmethod
-    def _blocked_device_limit_vless(used_devices: int, device_limit: int) -> str:
-        """Псевдо-сервер для клиентов при превышении лимита устройств."""
-        name = quote(f"Лимит устройств ({used_devices}/{device_limit})", safe="")
-        return (
-            "vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1"
-            f"?type=tcp&security=none&flow=none#{name}"
-        )
-    
     async def handle_subscription(self, request: web_request.Request) -> web.Response:
         """
         Subscription endpoint: возвращает список VLESS-ссылок по subscription_token
@@ -339,37 +320,6 @@ class WebhookServer:
                 if "," in ip_address: ip_address = ip_address.split(",")[0].strip()
                 await log_subscription_usage(user_id, user_agent, ip_address)
 
-                # Обновляем "активное устройство" и считаем текущий лимит
-                fp, ua_fp, ip_fp = self._device_fingerprint(request)
-                await conn.execute(
-                    """
-                    INSERT INTO user_device_fingerprints (user_id, fingerprint, user_agent, ip_address, created_at, last_seen)
-                    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    ON CONFLICT (user_id, fingerprint)
-                    DO UPDATE SET
-                        user_agent = EXCLUDED.user_agent,
-                        ip_address = EXCLUDED.ip_address,
-                        last_seen = CURRENT_TIMESTAMP
-                    """,
-                    user_id,
-                    fp,
-                    ua_fp,
-                    ip_fp,
-                )
-                device_limit = int(await conn.fetchval("SELECT COALESCE(device_limit, 1) FROM users WHERE user_id = $1", user_id) or 1)
-                used_devices = int(
-                    await conn.fetchval(
-                        """
-                        SELECT COUNT(*)
-                        FROM user_device_fingerprints
-                        WHERE user_id = $1
-                          AND last_seen >= CURRENT_TIMESTAMP - INTERVAL '30 days'
-                        """,
-                        user_id,
-                    )
-                    or 0
-                )
-                
                 # Проверяем активность подписки
                 is_active = await conn.fetchval('''
                     SELECT CASE
@@ -448,13 +398,25 @@ class WebhookServer:
                         except Exception as e:
                             logger.error(f"Failed to schedule key creation for user {user_id}: {e}")
                 
-                # Формируем ответ
-                if is_active and used_devices > device_limit:
-                    body = self._blocked_device_limit_vless(used_devices, device_limit)
+                traffic_blocked = False
+                used_bytes = 0
+                limit_bytes = 0
+                if is_active:
+                    snap = await user_traffic_snapshot(conn, user_id, sync_from_panels=True)
+                    used_bytes = int(snap["usedBytes"])
+                    limit_bytes = int(snap["limitBytes"])
+                    if snap.get("trafficEnforced") and snap.get("trafficExceeded"):
+                        traffic_blocked = True
+
+                if is_active and traffic_blocked:
+                    body = blocked_traffic_vless(used_bytes, limit_bytes)
                 else:
                     body = "\n".join([k["vless_link"] for k in keys if k.get("vless_link")])
-                
-                logger.info(f"Returning subscription for user {user_id}: {len(keys)} keys, active={is_active}")
+
+                logger.info(
+                    f"Returning subscription for user {user_id}: {len(keys)} keys, active={is_active}, "
+                    f"traffic_blocked={traffic_blocked}"
+                )
                 
                 # Формируем объявление (одной строкой для заголовка HTTP)
                 announce_text = (
@@ -470,7 +432,11 @@ class WebhookServer:
                     "support-url": "https://t.me/majorka_wy",
                     "profile-web-page-url": "https://t.me/SvoyVPN_robot",
                     "announce": announce_text,
-                    "subscription-userinfo": f"upload=0; download=0; total=0; expire={expire_ts}" if is_active else "Inactive"
+                    "subscription-userinfo": (
+                        f"upload={used_bytes}; download=0; total={limit_bytes}; expire={expire_ts}"
+                        if is_active
+                        else "Inactive"
+                    ),
                 }
                 
                 return web.Response(
@@ -794,12 +760,28 @@ class WebhookServer:
                                     if parts[-1] == "miniapp"
                                     else "bot",
                                 }
+                            elif len(parts) >= 4 and parts[1] == "gb_pack":
+                                metadata = {
+                                    "user_id": int(parts[0]),
+                                    "product_type": "gb_pack",
+                                    "pack_id": int(parts[2]),
+                                    "method_id": parts[3] if len(parts) > 3 else "cryptopay",
+                                    "payment_source": "miniapp" if parts[-1] == "miniapp" else "bot",
+                                }
                             else:
+                                # uid:plan_id:cryptopay[:legacy_device]:miniapp|bot
+                                device_count = 1
+                                if (
+                                    len(parts) >= 5
+                                    and str(parts[3]).isdigit()
+                                    and int(parts[3]) < 1_000_000_000
+                                ):
+                                    device_count = int(parts[3])
                                 metadata = {
                                     "user_id": int(parts[0]),
                                     "plan_id": parts[1],
                                     "method_id": parts[2] if len(parts) > 2 else "cryptopay",
-                                    "device_count": int(parts[3]) if len(parts) > 3 and str(parts[3]).isdigit() else 1,
+                                    "device_count": device_count,
                                     "payment_source": "miniapp" if parts[-1] == "miniapp" else "bot",
                                 }
                         else:
@@ -1067,19 +1049,7 @@ class WebhookServer:
 
                 referral = await self._referral_bundle_for_user(conn, user_id)
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
-                device_limit = int(await conn.fetchval("SELECT COALESCE(device_limit, 1) FROM users WHERE user_id = $1", user_id) or 1)
-                used_devices = int(
-                    await conn.fetchval(
-                        """
-                        SELECT COUNT(*)
-                        FROM user_device_fingerprints
-                        WHERE user_id = $1
-                          AND last_seen >= CURRENT_TIMESTAMP - INTERVAL '30 days'
-                        """,
-                        user_id,
-                    )
-                    or 0
-                )
+                traffic = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
 
                 return web.json_response({
                     "user": {
@@ -1100,9 +1070,21 @@ class WebhookServer:
                         "endDate": end_date_str,
                         "subscriptionUrl": subscription_url,
                         "token": user['subscription_token'],
-                        "deviceLimit": device_limit,
-                        "usedDevices": used_devices,
-                        "deviceLimitExceeded": used_devices > device_limit,
+                        "traffic": {
+                            "usedBytes": traffic["usedBytes"],
+                            "limitBytes": traffic["limitBytes"],
+                            "usedGb": traffic["usedGb"],
+                            "limitGb": traffic["limitGb"],
+                            "bonusGb": traffic["bonusGb"],
+                            "baseLimitGb": traffic.get("baseLimitGb"),
+                            "defaultMonthlyGb": traffic["defaultMonthlyGb"],
+                            "periodStart": traffic["periodStart"],
+                            "periodEndExclusive": traffic["periodEndExclusive"],
+                            "trafficAnchorDay": traffic["trafficAnchorDay"],
+                            "hasAnchor": traffic["hasAnchor"],
+                            "trafficEnforced": traffic["trafficEnforced"],
+                            "trafficExceeded": traffic["trafficExceeded"],
+                        },
                     },
                     "referral": referral,
                 })
@@ -1157,6 +1139,7 @@ class WebhookServer:
                         END
                     WHERE user_id = $2
                 ''', str(trial_days), user_id)
+                await apply_subscription_anchor_on_payment(conn, user_id)
             
             return web.json_response({"status": "ok", "days": trial_days})
             
@@ -1185,10 +1168,6 @@ class WebhookServer:
             
             # Получаем актуальные тарифы для пользователя, учитывая все скидки
             current_tariffs, is_renew, show_discount = await get_user_tariffs(user_id)
-            device_cfg = await get_device_limit_settings()
-            max_devices = int(device_cfg.get("max_devices", 5))
-            extra_rub = int(device_cfg.get("extra_price_rub", 1000))
-            extra_stars = int(device_cfg.get("extra_price_stars", 10))
             
             # Предварительно загружаем базовые планы для расчета выгоды (зачеркнутых цен)
             regular_plans = await get_subscription_plans()
@@ -1238,9 +1217,6 @@ class WebhookServer:
                     "pricePerMonthStars": round(price_stars / months) if months > 0 else price_stars,
                     "popular": months == 12,
                     "isRenew": is_renew,
-                    "maxDevices": max_devices,
-                    "extraPricePerDevice": extra_rub / 100.0,
-                    "extraPricePerDeviceStars": extra_stars,
                 })
             
             return web.json_response(tariffs)
@@ -1282,7 +1258,6 @@ class WebhookServer:
             init_data = data.get('initData', '')
             tariff_id = data.get('tariffId')
             payment_method = data.get('paymentMethod')
-            device_count = data.get('deviceCount', 1)
             
             if not tariff_id or not payment_method:
                 return web.json_response({"error": "Missing required parameters"}, status=400)
@@ -1320,30 +1295,25 @@ class WebhookServer:
             if not method_data:
                 return web.json_response({"error": "Payment method not found"}, status=404)
             
-            device_cfg = await get_device_limit_settings()
-            max_devices = int(device_cfg.get("max_devices", 5))
-            extra_rub = int(device_cfg.get("extra_price_rub", 1000))
-            extra_stars = int(device_cfg.get("extra_price_stars", 10))
-            device_count = clamp_device_count(device_count, max_devices)
-
+            ts = int(datetime.now().timestamp())
             # Вычисляем цену
             price_rub = plan_data.get('price_rub', 0)
-            total_price = calc_total_price_with_devices(price_rub, device_count, extra_rub)
+            total_price = int(price_rub)
             
             # Создаем платеж в зависимости от способа оплаты
             if payment_method == 'stars':
                 # Оплата через Telegram Stars
-                price_stars = calc_total_price_with_devices(plan_data.get('price_stars', 0), device_count, extra_stars)
+                price_stars = int(plan_data.get('price_stars', 0))
                 
                 try:
                     # Создаем инвойс-ссылку для Stars
                     labeled_prices = [LabeledPrice(label=plan_data['title'], amount=price_stars)]
                     # Добавляем _miniapp в payload для отслеживания источника
-                    payload = f"stars_{user_id}_{tariff_id}_{device_count}_{int(datetime.now().timestamp())}_miniapp"
+                    payload = f"stars_{user_id}_{tariff_id}_{ts}_miniapp"
                     
                     invoice_link = await self.bot.create_invoice_link(
                         title=f"VPN: {plan_data['title']}",
-                        description=f"Подписка на {plan_data.get('duration', 1)} мес. ({device_count} устройство)",
+                        description=f"Подписка на {plan_data.get('duration', 1)} мес.",
                         payload=payload,
                         provider_token="", # Empty for Stars
                         currency="XTR",
@@ -1358,7 +1328,7 @@ class WebhookServer:
                     # Fallback to older method if invoice creation fails
                     bot_username = (await self.bot.get_me()).username
                     return web.json_response({
-                        "invoiceUrl": f"https://t.me/{bot_username}?start=payment_{tariff_id}_{device_count}",
+                        "invoiceUrl": f"https://t.me/{bot_username}?start=payment_{tariff_id}",
                         "paymentId": f"stars_{user_id}_{int(datetime.now().timestamp())}"
                     })
 
@@ -1375,8 +1345,8 @@ class WebhookServer:
                         labeled_prices = [LabeledPrice(label=plan_data['title'], amount=total_amount_cents)]
                         invoice_link = await self.bot.create_invoice_link(
                             title=f"VPN: {plan_data['title']}",
-                            description=f"Подписка на {plan_data.get('duration', 1)} мес. ({device_count} устройство)",
-                            payload=f"yoo_{user_id}_{tariff_id}_{device_count}_{int(datetime.now().timestamp())}_miniapp",
+                            description=f"Подписка на {plan_data.get('duration', 1)} мес.",
+                            payload=f"yoo_{user_id}_{tariff_id}_{ts}_miniapp",
                             provider_token=self.yookassa_config.provider_token,
                             currency="RUB",
                             prices=labeled_prices
@@ -1402,7 +1372,6 @@ class WebhookServer:
                     metadata={
                         "user_id": user_id,
                         "plan_id": tariff_id,
-                        "device_count": device_count,
                         "payment_source": "miniapp"
                     }
                 )
@@ -1417,7 +1386,7 @@ class WebhookServer:
                 
                 amount_rub = total_price / 100.0
                 api_url = "https://testnet-pay.crypt.bot/api/createInvoice" if self.cryptopay_config.testnet else "https://pay.crypt.bot/api/createInvoice"
-                payload_str = f"{user_id}:{tariff_id}:cryptopay:{device_count}:miniapp"
+                payload_str = f"{user_id}:{tariff_id}:cryptopay:miniapp"
                 
                 import aiohttp
                 async with aiohttp.ClientSession() as session:
@@ -1483,6 +1452,214 @@ class WebhookServer:
                 
         except Exception as e:
             logger.error(f"Error in api_create_payment: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_get_traffic_packs(self, request: web_request.Request) -> web.Response:
+        """Список активных пакетов доп. ГБ для миниаппа / веба."""
+        try:
+            async with get_connection() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT id, title, gb_amount, price_rub, price_stars, display_order
+                    FROM gb_pack_products
+                    WHERE is_active = TRUE
+                    ORDER BY display_order ASC, id ASC
+                    """
+                )
+            packs = [
+                {
+                    "id": r["id"],
+                    "title": r["title"],
+                    "gbAmount": int(r["gb_amount"]),
+                    "price": int(r["price_rub"]) / 100.0,
+                    "priceStars": int(r["price_stars"]),
+                }
+                for r in rows
+            ]
+            return web.json_response(packs)
+        except Exception as e:
+            logger.error(f"Error in api_get_traffic_packs: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_create_traffic_pack_payment(self, request: web_request.Request) -> web.Response:
+        """Оплата пакета ГБ (Stars / ЮKassa / Crypto Pay) — только при активной подписке."""
+        try:
+            data = await request.json()
+            init_data = data.get("initData", "")
+            pack_id = data.get("packId")
+            payment_method = data.get("paymentMethod")
+
+            if pack_id is None or not payment_method:
+                return web.json_response({"error": "Missing required parameters"}, status=400)
+
+            if not self.bot:
+                return web.json_response({"error": "Bot not initialized"}, status=500)
+
+            user_id = None
+            if init_data:
+                if not self.verify_telegram_webapp_data(init_data, self.bot.token):
+                    return web.json_response({"error": "Invalid initData"}, status=403)
+                parsed_data = self.parse_telegram_init_data(init_data)
+                user_id = telegram_user_id_from_parsed_init(parsed_data)
+            else:
+                user_id = self._get_jwt_user_id(request)
+            if not user_id:
+                return web.json_response({"error": "User ID not found"}, status=400)
+
+            try:
+                pack_id = int(pack_id)
+            except (TypeError, ValueError):
+                return web.json_response({"error": "Invalid packId"}, status=400)
+
+            from .plans import PAYMENT_METHODS
+
+            method_data = PAYMENT_METHODS.get(payment_method)
+            if not method_data:
+                return web.json_response({"error": "Payment method not found"}, status=404)
+
+            async with get_connection() as conn:
+                pack = await conn.fetchrow(
+                    """
+                    SELECT id, title, gb_amount, price_rub, price_stars
+                    FROM gb_pack_products
+                    WHERE id = $1 AND is_active = TRUE
+                    """,
+                    pack_id,
+                )
+                if not pack:
+                    return web.json_response({"error": "Pack not found"}, status=404)
+
+                ok_sub = await conn.fetchval(
+                    """
+                    SELECT CASE
+                        WHEN pay_subscribed = TRUE AND subscription_end IS NOT NULL
+                             AND DATE(subscription_end) >= CURRENT_DATE
+                        THEN TRUE ELSE FALSE END
+                    FROM users WHERE user_id = $1
+                    """,
+                    user_id,
+                )
+                if not ok_sub:
+                    return web.json_response(
+                        {"error": "subscription_required", "message": "Пакеты ГБ доступны при активной подписке"},
+                        status=403,
+                    )
+
+            ts = int(datetime.now().timestamp())
+            title = str(pack["title"])
+            price_rub = int(pack["price_rub"])
+            price_stars = int(pack["price_stars"])
+
+            if payment_method == "stars":
+                if price_stars < 1:
+                    return web.json_response({"error": "Invalid pack price"}, status=400)
+                labeled_prices = [LabeledPrice(label=title, amount=price_stars)]
+                payload = f"stars_gbpack_{user_id}_{pack_id}_{ts}_miniapp"
+                invoice_link = await self.bot.create_invoice_link(
+                    title=f"Доп. трафик: {title}",
+                    description=f"+{pack['gb_amount']} ГБ к месячному лимиту",
+                    payload=payload,
+                    provider_token="",
+                    currency="XTR",
+                    prices=labeled_prices,
+                )
+                return web.json_response(
+                    {"invoiceUrl": invoice_link, "paymentId": f"stars_gb_{user_id}_{ts}"}
+                )
+
+            if payment_method == "yookassa":
+                if not self.yookassa_config or not self.yookassa_config.enabled:
+                    return web.json_response({"error": "YooKassa not configured"}, status=500)
+                if price_rub < 100:
+                    return web.json_response({"error": "Invalid pack price"}, status=400)
+
+                if self.yookassa_config.provider_token:
+                    labeled_prices = [LabeledPrice(label=title, amount=price_rub)]
+                    invoice_link = await self.bot.create_invoice_link(
+                        title=f"Доп. трафик: {title}",
+                        description=f"+{pack['gb_amount']} ГБ",
+                        payload=f"yoo_gbpack_{user_id}_{pack_id}_{ts}_miniapp",
+                        provider_token=self.yookassa_config.provider_token,
+                        currency="RUB",
+                        prices=labeled_prices,
+                    )
+                    return web.json_response(
+                        {"invoiceUrl": invoice_link, "paymentId": f"tg_yoo_gb_{user_id}_{ts}"}
+                    )
+
+                if not self.yookassa_client:
+                    return web.json_response({"error": "YooKassa client not initialized"}, status=500)
+                bot_username = (await self.bot.get_me()).username
+                payment_data = self.yookassa_client.create_payment(
+                    amount=price_rub / 100.0,
+                    description=f"Доп. трафик VPN — {title}",
+                    return_url=f"https://t.me/{bot_username}?start=payment_success",
+                    metadata={
+                        "user_id": user_id,
+                        "product_type": "gb_pack",
+                        "pack_id": pack_id,
+                        "payment_source": "miniapp",
+                    },
+                )
+                return web.json_response(
+                    {
+                        "paymentUrl": payment_data.get("confirmation_url"),
+                        "paymentId": payment_data.get("id"),
+                    }
+                )
+
+            if payment_method == "cryptopay":
+                if not self.cryptopay_config or not self.cryptopay_config.enabled:
+                    return web.json_response({"error": "Crypto Pay not configured"}, status=500)
+                amount_rub = price_rub / 100.0
+                api_url = (
+                    "https://testnet-pay.crypt.bot/api/createInvoice"
+                    if self.cryptopay_config.testnet
+                    else "https://pay.crypt.bot/api/createInvoice"
+                )
+                payload_str = f"{user_id}:gb_pack:{pack_id}:cryptopay:miniapp"
+                import aiohttp
+
+                async with aiohttp.ClientSession() as session:
+                    headers = {"Crypto-Pay-API-Token": self.cryptopay_config.api_token}
+                    data_pay = {
+                        "currency_type": "fiat",
+                        "fiat": "RUB",
+                        "amount": f"{amount_rub:.2f}",
+                        "description": f"Доп. трафик — {title}",
+                        "payload": payload_str,
+                    }
+                    async with session.post(api_url, headers=headers, json=data_pay) as resp:
+                        res = await resp.json()
+                        if not res.get("ok"):
+                            logger.error(f"Crypto Pay GB pack error: {res}")
+                            return web.json_response({"error": "Crypto Pay error"}, status=500)
+                        invoice_url = res["result"].get(
+                            "mini_app_invoice_url", res["result"]["bot_invoice_url"]
+                        )
+                        invoice_id = res["result"]["invoice_id"]
+                        async with get_connection() as conn:
+                            await conn.execute(
+                                """
+                                INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id, payment_source)
+                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                                """,
+                                user_id,
+                                int(price_rub),
+                                "RUB",
+                                f"gb_pack:{pack_id}",
+                                "gb_pack",
+                                "pending",
+                                str(invoice_id),
+                                "miniapp",
+                            )
+                        return web.json_response(
+                            {"paymentUrl": invoice_url, "paymentId": invoice_id}
+                        )
+
+            return web.json_response({"error": "Payment method not supported"}, status=400)
+        except Exception as e:
+            logger.error(f"Error in api_create_traffic_pack_payment: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
     
     async def api_get_servers(self, request: web_request.Request) -> web.Response:
@@ -2863,19 +3040,7 @@ class WebhookServer:
 
                 referral = await self._referral_bundle_for_user(conn, user_id)
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
-                device_limit = int(await conn.fetchval("SELECT COALESCE(device_limit, 1) FROM users WHERE user_id = $1", user_id) or 1)
-                used_devices = int(
-                    await conn.fetchval(
-                        """
-                        SELECT COUNT(*)
-                        FROM user_device_fingerprints
-                        WHERE user_id = $1
-                          AND last_seen >= CURRENT_TIMESTAMP - INTERVAL '30 days'
-                        """,
-                        user_id,
-                    )
-                    or 0
-                )
+                traffic = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
 
                 return web.json_response({
                     "user": {
@@ -2896,9 +3061,21 @@ class WebhookServer:
                         "endDate": end_date_str,
                         "subscriptionUrl": subscription_url,
                         "token": user["subscription_token"],
-                        "deviceLimit": device_limit,
-                        "usedDevices": used_devices,
-                        "deviceLimitExceeded": used_devices > device_limit,
+                        "traffic": {
+                            "usedBytes": traffic["usedBytes"],
+                            "limitBytes": traffic["limitBytes"],
+                            "usedGb": traffic["usedGb"],
+                            "limitGb": traffic["limitGb"],
+                            "bonusGb": traffic["bonusGb"],
+                            "baseLimitGb": traffic.get("baseLimitGb"),
+                            "defaultMonthlyGb": traffic["defaultMonthlyGb"],
+                            "periodStart": traffic["periodStart"],
+                            "periodEndExclusive": traffic["periodEndExclusive"],
+                            "trafficAnchorDay": traffic["trafficAnchorDay"],
+                            "hasAnchor": traffic["hasAnchor"],
+                            "trafficEnforced": traffic["trafficEnforced"],
+                            "trafficExceeded": traffic["trafficExceeded"],
+                        },
                     },
                     "referral": referral,
                 })

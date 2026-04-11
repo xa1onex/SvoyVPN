@@ -17,7 +17,7 @@ from . import esim_service
 from .config import AppConfig
 from .database import get_connection
 from .subscriptions import create_or_activate_keys_for_all_servers, extend_subscription, set_new_subscription
-from .plans import get_device_limit_settings, clamp_device_count
+from .traffic import apply_subscription_anchor_on_payment, ensure_traffic_anchor_and_period
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +179,262 @@ async def _finalize_esim_delivery(
             logger.error("eSIM notify user %s: %s", user_id, e, exc_info=True)
 
     return delivery
+
+
+async def process_gb_pack_webhook_payment(
+    payment_id: str,
+    payment_obj: dict,
+    metadata: dict,
+    bot: Optional[Bot],
+    config: AppConfig,
+    payment_methods: dict,
+) -> bool:
+    """Начисление бонусных ГБ после оплаты пакета (ЮKassa / Crypto Pay)."""
+    user_id = metadata.get("user_id")
+    pack_id = metadata.get("pack_id")
+    payment_source = metadata.get("payment_source", "miniapp")
+    method_id = metadata.get("method_id", "yookassa")
+
+    if user_id is None or pack_id is None:
+        logger.warning("gb_pack webhook %s missing metadata", payment_id)
+        return False
+    try:
+        user_id = int(user_id)
+        pack_id = int(str(pack_id).strip())
+    except (TypeError, ValueError):
+        return False
+
+    amount_cents = _payment_amount_rub_cents(payment_obj)
+    if not amount_cents and payment_obj.get("amount"):
+        try:
+            amount_cents = int(payment_obj.get("amount") or 0)
+        except (TypeError, ValueError):
+            amount_cents = 0
+
+    method_data = payment_methods.get(method_id, {"title": "Онлайн-оплата", "currency": "RUB"})
+
+    async with get_connection() as conn:
+        existing = await conn.fetchrow(
+            "SELECT id, status FROM payments WHERE yookassa_payment_id = $1",
+            payment_id,
+        )
+        if existing and existing["status"] == "completed":
+            logger.warning("gb_pack payment %s already processed", payment_id)
+            return False
+
+        pack = await conn.fetchrow(
+            """
+            SELECT id, title, gb_amount, price_rub
+            FROM gb_pack_products
+            WHERE id = $1 AND is_active = TRUE
+            """,
+            pack_id,
+        )
+        if not pack:
+            logger.error("gb_pack product %s not found or inactive", pack_id)
+            return False
+
+        active = await conn.fetchval(
+            """
+            SELECT CASE
+                WHEN pay_subscribed = TRUE AND subscription_end IS NOT NULL
+                     AND DATE(subscription_end) >= CURRENT_DATE
+                THEN TRUE ELSE FALSE END
+            FROM users WHERE user_id = $1
+            """,
+            user_id,
+        )
+        if not active:
+            logger.warning("gb_pack payment for user %s without active subscription", user_id)
+            return False
+
+        user_exists = await conn.fetchval("SELECT 1 FROM users WHERE user_id = $1", user_id)
+        if not user_exists:
+            return False
+
+        plan_key = f"gb_pack:{pack_id}"
+
+        async with conn.transaction():
+            await apply_subscription_anchor_on_payment(conn, user_id)
+            await ensure_traffic_anchor_and_period(conn, user_id)
+            await conn.execute(
+                """
+                UPDATE users
+                SET traffic_bonus_gb = COALESCE(traffic_bonus_gb, 0) + $1
+                WHERE user_id = $2
+                """,
+                int(pack["gb_amount"]),
+                user_id,
+            )
+            if existing:
+                await conn.execute(
+                    """
+                    UPDATE payments
+                    SET status = 'completed', amount = $1, payment_source = $2, plan_id = $3, plan_type = $4
+                    WHERE yookassa_payment_id = $5
+                    """,
+                    amount_cents,
+                    payment_source,
+                    plan_key,
+                    "gb_pack",
+                    payment_id,
+                )
+            else:
+                await conn.execute(
+                    """
+                    INSERT INTO payments
+                    (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id, payment_source)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    """,
+                    user_id,
+                    max(amount_cents, int(pack["price_rub"])),
+                    "RUB",
+                    plan_key,
+                    "gb_pack",
+                    "completed",
+                    payment_id,
+                    payment_source,
+                )
+
+    if bot:
+        try:
+            await bot.send_message(
+                user_id,
+                (
+                    f"✅ <b>Пакет трафика активирован</b>\n\n"
+                    f"+{pack['gb_amount']} ГБ добавлено к лимиту текущего периода.\n"
+                    f"Товар: <i>{pack['title']}</i>"
+                ),
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.error("gb_pack notify user %s: %s", user_id, e, exc_info=True)
+
+    logger.info("gb_pack webhook %s completed for user %s", payment_id, user_id)
+    return True
+
+
+async def process_telegram_gb_pack_payment(
+    message: Message,
+    bot: Bot,
+    *,
+    pack_id: int,
+    config: AppConfig,
+    source: str = "miniapp",
+    method_id: str = "stars",
+) -> bool:
+    """Оплата пакета ГБ через инвойс Telegram (Stars или ЮKassa provider_token)."""
+    user_id = message.from_user.id
+    charge_id = message.successful_payment.telegram_payment_charge_id
+    provider_charge_id = message.successful_payment.provider_payment_charge_id
+    currency = message.successful_payment.currency
+    total_amount = message.successful_payment.total_amount
+
+    async with get_connection() as conn:
+        if provider_charge_id:
+            existing_payment = await conn.fetchrow(
+                "SELECT id, status FROM payments WHERE telegram_payment_charge_id = $1 OR yookassa_payment_id = $2",
+                charge_id,
+                provider_charge_id,
+            )
+        else:
+            existing_payment = await conn.fetchrow(
+                "SELECT id, status FROM payments WHERE telegram_payment_charge_id = $1",
+                charge_id,
+            )
+
+        if existing_payment and existing_payment["status"] == "completed":
+            await message.answer("✅ Этот платёж уже был обработан.")
+            return False
+
+        pack = await conn.fetchrow(
+            """
+            SELECT id, title, gb_amount, price_rub, price_stars
+            FROM gb_pack_products
+            WHERE id = $1 AND is_active = TRUE
+            """,
+            pack_id,
+        )
+        if not pack:
+            await message.answer("❌ Пакет недоступен.")
+            return False
+
+        active = await conn.fetchval(
+            """
+            SELECT CASE
+                WHEN pay_subscribed = TRUE AND subscription_end IS NOT NULL
+                     AND DATE(subscription_end) >= CURRENT_DATE
+                THEN TRUE ELSE FALSE END
+            FROM users WHERE user_id = $1
+            """,
+            user_id,
+        )
+        if not active:
+            await message.answer("❌ Пакеты трафика доступны только при активной подписке.")
+            return False
+
+        plan_key = f"gb_pack:{pack_id}"
+
+        async with conn.transaction():
+            await apply_subscription_anchor_on_payment(conn, user_id)
+            await ensure_traffic_anchor_and_period(conn, user_id)
+            await conn.execute(
+                """
+                UPDATE users
+                SET traffic_bonus_gb = COALESCE(traffic_bonus_gb, 0) + $1
+                WHERE user_id = $2
+                """,
+                int(pack["gb_amount"]),
+                user_id,
+            )
+            if existing_payment:
+                await conn.execute(
+                    """
+                    UPDATE payments
+                    SET status = 'completed', amount = $1, currency = $2, plan_id = $3, plan_type = $4,
+                        yookassa_payment_id = $5
+                    WHERE telegram_payment_charge_id = $6 OR (yookassa_payment_id = $5 AND yookassa_payment_id IS NOT NULL)
+                    """,
+                    total_amount,
+                    currency,
+                    plan_key,
+                    "gb_pack",
+                    provider_charge_id,
+                    charge_id,
+                )
+            else:
+                await conn.execute(
+                    """
+                    INSERT INTO payments
+                    (user_id, amount, currency, plan_id, plan_type, status, telegram_payment_charge_id,
+                     yookassa_payment_id, payment_source)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    """,
+                    user_id,
+                    total_amount,
+                    currency,
+                    plan_key,
+                    "gb_pack",
+                    "completed",
+                    charge_id,
+                    provider_charge_id,
+                    source,
+                )
+
+    if currency == "XTR":
+        formatted_price = f"{total_amount} Stars"
+    else:
+        formatted_price = f"{total_amount // 100}₽"
+
+    await message.answer(
+        (
+            f"✅ <b>+{pack['gb_amount']} ГБ</b> добавлено к лимиту текущего периода.\n"
+            f"Пакет: <i>{pack['title']}</i>\n"
+            f"Оплачено: <i>{formatted_price}</i>"
+        ),
+        parse_mode="HTML",
+    )
+    return True
 
 
 async def process_esim_webhook_payment(
@@ -353,7 +609,6 @@ async def process_telegram_stars_payment(
     is_new_subscription: bool,
     config: AppConfig,
     source: str = 'bot',
-    device_count: int = 1,
 ) -> bool:
     """
     Обрабатывает платеж через Telegram Stars
@@ -400,19 +655,12 @@ async def process_telegram_stars_payment(
         # ✅ ИСПОЛЬЗУЕМ ТРАНЗАКЦИЮ
         async with conn.transaction():
             duration_months = plan_data['duration']
-            device_cfg = await get_device_limit_settings()
-            dc = clamp_device_count(device_count, int(device_cfg.get("max_devices", 5)))
             
             # Обновляем подписку
             if is_new_subscription:
                 await set_new_subscription(user_id, duration_months, conn)
             else:
                 await extend_subscription(user_id, duration_months, conn)
-            await conn.execute(
-                "UPDATE users SET device_limit = $1 WHERE user_id = $2",
-                dc,
-                user_id,
-            )
             
             # Получаем обновленную дату окончания
             subscription_end_row = await conn.fetchrow(
@@ -472,8 +720,7 @@ async def process_telegram_stars_payment(
             f"Сумма оплаты: <i>{formatted_price}</i>\n\n"
             f"<b>Детали подписки</b>:\n"
             f"• План: <i>{plan_data['title']}</i>\n"
-            f"• Трафик: <i>{plan_data.get('traffic_gb', 'Безлимитный')} ГБ</i>\n"
-            f"• Лимит устройств: <i>{dc}</i>\n"
+            f"• Месячный лимит трафика задаётся в настройках сервиса (см. приложение)\n"
             f"• Срок: <i>{duration_months} месяцев</i>\n\n"
             f"✅ Теперь вы можете получить VPN ссылку через кнопку <b>🔗 Получить VPN</b>!\n\n"
             f"ID транзакции: <code>{charge_id}</code>"
@@ -539,12 +786,20 @@ async def process_webhook_payment(
     plan_id = metadata.get("plan_id")
     method_id = metadata.get("method_id", "yookassa")
     payment_source = metadata.get("payment_source", "bot")
-    device_count = metadata.get("device_count", 1)
-    
     logger.info(f"Processing webhook payment: id={payment_id}, method={method_id}, user={user_id}, plan={plan_id}, source={payment_source}")
 
     if str(metadata.get("product_type") or "").lower() == "esim":
         return await process_esim_webhook_payment(
+            payment_id=payment_id,
+            payment_obj=payment_obj,
+            metadata=metadata,
+            bot=bot,
+            config=config,
+            payment_methods=payment_methods,
+        )
+
+    if str(metadata.get("product_type") or "").lower() == "gb_pack":
+        return await process_gb_pack_webhook_payment(
             payment_id=payment_id,
             payment_obj=payment_obj,
             metadata=metadata,
@@ -568,8 +823,6 @@ async def process_webhook_payment(
         return False
     
     try:
-        device_cfg = await get_device_limit_settings()
-        device_count = clamp_device_count(device_count, int(device_cfg.get("max_devices", 5)))
         # Определяем тип подписки
         if plan_id in subscription_plans:
             plan_data = subscription_plans[plan_id]
@@ -629,11 +882,6 @@ async def process_webhook_payment(
                     await set_new_subscription(user_id, duration_months, conn)
                 else:
                     await extend_subscription(user_id, duration_months, conn)
-                await conn.execute(
-                    "UPDATE users SET device_limit = $1 WHERE user_id = $2",
-                    device_count,
-                    user_id,
-                )
                 
                 # Получаем обновлённую дату окончания
                 sub_row = await conn.fetchrow(
@@ -691,7 +939,6 @@ async def process_webhook_payment(
                         f"• ID транзакции: <code>{payment_id}</code>\n\n"
                         f"💎 <b>Подписка:</b>\n"
                         f"• План: <i>{plan_data['title']}</i>\n"
-                        f"• Лимит устройств: <i>{device_count}</i>\n"
                         f"• Активна до: <b>{end_str}</b>\n\n"
                         f"Нажмите кнопку ниже, чтобы получить настройки VPN."
                     )

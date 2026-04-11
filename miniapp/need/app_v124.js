@@ -39,7 +39,9 @@
     servers: [],
     selectedTariff: null,
     selectedPM: null,
-    selectedDeviceCount: 1,
+    trafficPacks: [],
+    selectedTrafficPack: null,
+    trafficPackPM: null,
     esimCountries: [],
     esimPackages: [],
     esimSelectedCountry: '',
@@ -565,7 +567,6 @@
       el.addEventListener('click', () => {
         S.selectedTariff = t;
         renderTariffs();
-        renderDeviceCountControl();
         updateTotal();
         haptic('light');
       });
@@ -605,30 +606,11 @@
         S.selectedPM = m;
         renderPM();
         renderTariffs();
-        renderDeviceCountControl();
         updateTotal();
         haptic('light');
       });
       w.appendChild(el);
     });
-  }
-
-  function renderDeviceCountControl() {
-    const box = document.getElementById('deviceCountBox');
-    const range = document.getElementById('deviceCountRange');
-    const valueEl = document.getElementById('deviceCountValue');
-    const hintEl = document.getElementById('deviceCountHint');
-    if (!box || !range || !valueEl) return;
-    const maxDevices = Math.max(1, Number(S.selectedTariff && S.selectedTariff.maxDevices ? S.selectedTariff.maxDevices : 1));
-    range.min = '1';
-    range.max = String(maxDevices);
-    if (!S.selectedDeviceCount || S.selectedDeviceCount > maxDevices) S.selectedDeviceCount = 1;
-    range.value = String(S.selectedDeviceCount);
-    valueEl.textContent = String(S.selectedDeviceCount);
-    const rubExtra = Number(S.selectedTariff && S.selectedTariff.extraPricePerDevice ? S.selectedTariff.extraPricePerDevice : 0);
-    const starsExtra = Number(S.selectedTariff && S.selectedTariff.extraPricePerDeviceStars ? S.selectedTariff.extraPricePerDeviceStars : 0);
-    if (hintEl) hintEl.textContent = `2+ устройство: +${fmtPrice(rubExtra)} ₽ / +${fmtPrice(starsExtra)} ⭐`;
-    box.style.display = maxDevices > 1 ? 'block' : 'none';
   }
 
   /* ═══════ Render: Servers ═══════ */
@@ -751,14 +733,9 @@
       const isStars = S.selectedPM && S.selectedPM.id === 'stars';
       const starIcon = `<svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em;fill:var(--accent_text_color, #3aa8fc)"><path d="M12 2.3l2.4 7.4 7.6.6-5.8 4.7 1.8 7.3-6-4.3-6 4.3 1.8-7.3-5.8-4.7 7.6-.6z" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linejoin="round"/></svg>`;
       const currency = isStars ? starIcon : '₽';
-      const dc = Math.max(1, Number(S.selectedDeviceCount || 1));
       const rubBase = Number(S.selectedTariff.basePrice ?? S.selectedTariff.price ?? 0);
-      const rubExtra = Number(S.selectedTariff.extraPricePerDevice ?? 0);
       const starsBase = Number(S.selectedTariff.basePriceStars ?? S.selectedTariff.priceStars ?? 0);
-      const starsExtra = Number(S.selectedTariff.extraPricePerDeviceStars ?? 0);
-      const price = isStars
-        ? (starsBase + (dc - 1) * starsExtra)
-        : (rubBase + (dc - 1) * rubExtra);
+      const price = isStars ? starsBase : rubBase;
 
       el.innerHTML = fmtPrice(price) + ' ' + currency;
       btn.disabled = !S.selectedPM;
@@ -967,6 +944,16 @@
         const warnSoon = daysCal != null && daysCal >= 0 && daysCal <= 7;
         const heroMod = warnSoon ? ' sub-status-hero--warn' : '';
 
+        let trafficLine = '';
+        const tr = sub.traffic;
+        if (tr && typeof tr.usedGb === 'number' && typeof tr.limitGb === 'number') {
+          const used = Number(tr.usedGb);
+          const lim = Number(tr.limitGb);
+          const pct = lim > 0 ? Math.min(100, Math.round((used / lim) * 100)) : 0;
+          const ex = tr.trafficExceeded ? ' <span style="color:#ff3b30;">Лимит исчерпан.</span>' : '';
+          trafficLine = `<p class="sub-status-hero__meta" style="margin-top:6px;">Трафик: <b>${used.toFixed(1)} / ${lim.toFixed(0)} ГБ</b> (${pct}%)${ex}</p>`;
+        }
+
         let statusHtml = `
             <div class="card sub-status-hero sub-status-hero--active${heroMod}" role="status">
               <div class="sub-status-hero__ring" aria-hidden="true">
@@ -979,6 +966,7 @@
                 <p class="sub-status-hero__title">Подписка активна</p>
                 <p class="sub-status-hero__date">${formatVpnActiveDateLine(sub.endDate)}</p>
                 <p class="sub-status-hero__meta">${escapeHtml(daysMeta)}</p>
+                ${trafficLine}
                 ${
                   warnSoon
                     ? '<p class="sub-status-hero__urgent">Скоро окончание — продлите подписку, чтобы оставться в сети!</p>'
@@ -990,7 +978,10 @@
         `;
 
         statusHtml += `
-          <button type="button" class="btn-primary btn-primary--sub-block" onclick="window.showModal('modalPlan')">Продлить</button>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <button type="button" class="btn-primary btn-primary--sub-block" onclick="window.showModal('modalPlan')">Продлить</button>
+            <button type="button" class="btn-secondary btn-primary--sub-block" onclick="window.openTrafficPackModal && window.openTrafficPackModal()">Докупить ГБ</button>
+          </div>
         `;
         subBlockBox.innerHTML = statusHtml;
 
@@ -1596,9 +1587,7 @@
     if (Array.isArray(tariffs) && tariffs.length) {
       S.tariffs = tariffs;
       S.selectedTariff = tariffs.reduce((prev, curr) => (curr.price > prev.price ? curr : prev));
-      S.selectedDeviceCount = 1;
       renderTariffs();
-      renderDeviceCountControl();
       updateTotal();
     }
     if (Array.isArray(pm) && pm.length) {
@@ -1611,7 +1600,6 @@
       S.paymentMethods = pm;
       S.selectedPM = pm[0];
       renderPM();
-      renderDeviceCountControl();
       updateTotal();
     }
 
@@ -1728,6 +1716,146 @@
     }
   }
 
+  function renderTrafficPmList() {
+    const w = document.getElementById('trafficPmWrap');
+    if (!w) return;
+    w.innerHTML = '';
+    if (!S.paymentMethods.length) return;
+    S.paymentMethods.forEach((m) => {
+      const sel = S.trafficPackPM && S.trafficPackPM.id === m.id;
+      const el = document.createElement('div');
+      el.className = 'pm-item' + (sel ? ' selected' : '');
+      el.innerHTML =
+        '<span class="pm-icon flex-center">' + escapeHtml(String(m.icon || '💳')) + '</span>' +
+        '<span class="pm-name">' + escapeHtml(m.name || m.id) + '</span>';
+      el.addEventListener('click', () => {
+        S.trafficPackPM = m;
+        renderTrafficPmList();
+        updateTrafficPackTotal();
+        haptic('light');
+      });
+      w.appendChild(el);
+    });
+  }
+
+  function renderTrafficPacksGrid() {
+    const w = document.getElementById('trafficPacksWrap');
+    if (!w) return;
+    w.innerHTML = '';
+    if (!S.trafficPacks.length) {
+      w.innerHTML = '<p class="body text-muted" style="padding:8px;">Пакеты пока не настроены.</p>';
+      return;
+    }
+    S.trafficPacks.forEach((p) => {
+      const sel = S.selectedTrafficPack && S.selectedTrafficPack.id === p.id;
+      const el = document.createElement('div');
+      el.className = 'tariff-card' + (sel ? ' selected' : '');
+      el.innerHTML =
+        '<p class="months">+' + escapeHtml(String(p.gbAmount)) + ' ГБ</p>' +
+        '<p class="price" style="margin-top:6px;">' + escapeHtml(p.title || '') + '</p>' +
+        '<p class="per-month">' + fmtPrice(p.price) + ' ₽ · ' + fmtPrice(p.priceStars) + ' ⭐</p>';
+      el.addEventListener('click', () => {
+        S.selectedTrafficPack = p;
+        renderTrafficPacksGrid();
+        updateTrafficPackTotal();
+        haptic('light');
+      });
+      w.appendChild(el);
+    });
+  }
+
+  function updateTrafficPackTotal() {
+    const el = document.getElementById('trafficPackTotal');
+    const btn = document.getElementById('btnPayTrafficPack');
+    if (!S.selectedTrafficPack || !S.trafficPackPM) {
+      if (el) el.textContent = '—';
+      if (btn) btn.disabled = true;
+      return;
+    }
+    const isStars = S.trafficPackPM.id === 'stars';
+    const starIcon = `<svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em;fill:var(--accent_text_color, #3aa8fc)"><path d="M12 2.3l2.4 7.4 7.6.6-5.8 4.7 1.8 7.3-6-4.3-6 4.3 1.8-7.3-5.8-4.7 7.6-.6z" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linejoin="round"/></svg>`;
+    const price = isStars ? S.selectedTrafficPack.priceStars : S.selectedTrafficPack.price;
+    el.innerHTML = fmtPrice(price) + ' ' + (isStars ? starIcon : '₽');
+    btn.disabled = false;
+  }
+
+  async function openTrafficPackModal() {
+    if (!S.subscription || !S.subscription.isActive) {
+      showToast('Нужна активная подписка');
+      return;
+    }
+    if (!IS_ANDROID && (!tg || !tg.initData)) {
+      showToast('Откройте мини-приложение из Telegram');
+      return;
+    }
+    const packs = await api('/miniapp/api/traffic/packs', { silentError: true });
+    S.trafficPacks = Array.isArray(packs) ? packs : [];
+    S.selectedTrafficPack = S.trafficPacks[0] || null;
+    S.trafficPackPM = S.selectedPM || S.paymentMethods[0] || null;
+    renderTrafficPacksGrid();
+    renderTrafficPmList();
+    updateTrafficPackTotal();
+    showModal('modalTrafficPack');
+  }
+  window.openTrafficPackModal = openTrafficPackModal;
+
+  async function handleTrafficPackPay() {
+    if (!S.selectedTrafficPack || !S.trafficPackPM) return;
+    if (!IS_ANDROID && (!tg || !tg.initData)) {
+      showToast('Оплата доступна только в Telegram');
+      return;
+    }
+    const payBody = IS_ANDROID
+      ? { packId: S.selectedTrafficPack.id, paymentMethod: S.trafficPackPM.id }
+      : { initData: tg.initData, packId: S.selectedTrafficPack.id, paymentMethod: S.trafficPackPM.id };
+    const payHeaders = IS_ANDROID
+      ? { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ANDROID_JWT }
+      : { 'Content-Type': 'application/json' };
+    const d = await api('/miniapp/api/traffic/payment/create', {
+      method: 'POST',
+      headers: payHeaders,
+      body: JSON.stringify(payBody),
+    });
+    if (d && (d.paymentUrl || d.invoiceUrl)) {
+      localStorage.setItem('pending_payment_time', Date.now().toString());
+      startPaymentPolling();
+      const url = d.paymentUrl || d.invoiceUrl;
+      const isNativeInvoice = url.includes('t.me/$') || url.includes('t.me/invoice');
+      const isCryptoPay = url.includes('CryptoBot') || url.includes('CryptoTestnetBot');
+      if (isNativeInvoice) {
+        if (tg && tg.openInvoice) {
+          tg.openInvoice(url, function (status) {
+            if (status === 'paid') {
+              localStorage.removeItem('pending_payment_time');
+              stopPaymentPolling();
+              showSuccessOverlay('Готово!', 'Пакет трафика начислен. Обновите подписку в приложении VPN.');
+              hideModal('modalTrafficPack');
+              loadUser(true);
+            } else if (status === 'failed') {
+              localStorage.removeItem('pending_payment_time');
+              stopPaymentPolling();
+              showToast('Ошибка при оплате');
+            }
+          });
+        } else {
+          tg && tg.openLink ? tg.openLink(url) : window.open(url, '_blank');
+        }
+      } else if (isCryptoPay) {
+        if (tg && tg.openLink) tg.openLink(url);
+        else window.open(url, '_blank');
+      } else {
+        if (tg && tg.openLink) tg.openLink(url, { try_instant_view: false });
+        else window.open(url, '_blank');
+      }
+    } else {
+      if (d && d.error === 'subscription_required') {
+        showToast('Нужна активная подписка');
+      } else {
+        showToast('Ошибка создания платежа');
+      }
+    }
+  }
+
   /* ═══════ Payment ═══════ */
   async function handlePay() {
     if (!S.selectedTariff || !S.selectedPM) return;
@@ -1736,8 +1864,8 @@
       return;
     }
     const payBody = IS_ANDROID
-      ? { tariffId: S.selectedTariff.id, paymentMethod: S.selectedPM.id, deviceCount: Number(S.selectedDeviceCount || 1) }
-      : { initData: tg.initData, tariffId: S.selectedTariff.id, paymentMethod: S.selectedPM.id, deviceCount: Number(S.selectedDeviceCount || 1) };
+      ? { tariffId: S.selectedTariff.id, paymentMethod: S.selectedPM.id }
+      : { initData: tg.initData, tariffId: S.selectedTariff.id, paymentMethod: S.selectedPM.id };
     const payHeaders = IS_ANDROID
       ? { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ANDROID_JWT }
       : { 'Content-Type': 'application/json' };
@@ -2093,15 +2221,7 @@
 
     // Pay
     addClick('btnPay', handlePay);
-    const dcRange = document.getElementById('deviceCountRange');
-    if (dcRange) {
-      dcRange.addEventListener('input', () => {
-        S.selectedDeviceCount = Number(dcRange.value || 1);
-        const valueEl = document.getElementById('deviceCountValue');
-        if (valueEl) valueEl.textContent = String(S.selectedDeviceCount);
-        updateTotal();
-      });
-    }
+    addClick('btnPayTrafficPack', handleTrafficPackPay);
 
     // Links
     addClick('btnChannel', () => {

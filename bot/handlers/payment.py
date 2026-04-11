@@ -9,7 +9,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..esim_invoice_payload import parse_stars_or_yoo_esim_payload
-from ..payments import process_esim_telegram_invoice_payment, process_telegram_stars_payment
+from ..payments import (
+    process_esim_telegram_invoice_payment,
+    process_telegram_stars_payment,
+    process_telegram_gb_pack_payment,
+)
 from ..plans import get_subscription_plans, get_renewal_plans, PAYMENT_METHODS
 from ..config import AppConfig
 
@@ -49,44 +53,69 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
                 )
                 return
 
+            raw_pl = payload or ""
+            if raw_pl.startswith("stars_gbpack_") or raw_pl.startswith("yoo_gbpack_"):
+                is_mini = raw_pl.endswith("_miniapp")
+                src = "miniapp" if is_mini else "bot"
+                pl = raw_pl[:-8] if is_mini else raw_pl
+                parts = pl.split("_")
+                if len(parts) < 5 or parts[1] != "gbpack":
+                    raise ValueError("bad gbpack payload")
+                uid_enc = int(parts[2])
+                pack_id_enc = int(parts[3])
+                if uid_enc != int(message.from_user.id):
+                    raise ValueError("user mismatch gb pack invoice")
+                pref = parts[0]
+                mid = "stars" if pref == "stars" else "yookassa"
+                await process_telegram_gb_pack_payment(
+                    message,
+                    bot,
+                    pack_id=pack_id_enc,
+                    config=config,
+                    source=src,
+                    method_id=mid,
+                )
+                return
+
             source = 'bot'
-            device_count = 1
-            if payload.startswith("stars_"):
+            if raw_pl.startswith("stars_"):
                 method_id = "stars"
-                if payload.endswith("_miniapp"):
+                pl = raw_pl
+                if pl.endswith("_miniapp"):
                     source = 'miniapp'
-                    payload = payload[:-8]
-                parts = payload.split("_")
-                # stars_{user_id}_{tariff_id}_{device_count}_{timestamp}
-                if len(parts) >= 5 and parts[-2].isdigit():
-                    device_count = int(parts[-2])
+                    pl = pl[:-8]
+                parts = pl.split("_")
+                if len(parts) < 4:
+                    raise ValueError("bad stars payload")
+                if int(parts[1]) != int(message.from_user.id):
+                    raise ValueError("user mismatch subscription invoice")
+                if len(parts) >= 5 and parts[-2].isdigit() and int(parts[-2]) < 1_000_000_000:
                     plan_id = "_".join(parts[2:-2])
                 else:
                     plan_id = "_".join(parts[2:-1])
-            elif payload.startswith("yoo_"):
+            elif raw_pl.startswith("yoo_"):
                 method_id = "yookassa"
-                if payload.endswith("_miniapp"):
+                pl = raw_pl
+                if pl.endswith("_miniapp"):
                     source = 'miniapp'
-                    payload = payload[:-8]
-                parts = payload.split("_")
-                # yoo_{user_id}_{tariff_id}_{device_count}_{timestamp}
-                if len(parts) >= 5 and parts[-2].isdigit():
-                    device_count = int(parts[-2])
+                    pl = pl[:-8]
+                parts = pl.split("_")
+                if len(parts) < 4:
+                    raise ValueError("bad yoo payload")
+                if int(parts[1]) != int(message.from_user.id):
+                    raise ValueError("user mismatch subscription invoice")
+                if len(parts) >= 5 and parts[-2].isdigit() and int(parts[-2]) < 1_000_000_000:
                     plan_id = "_".join(parts[2:-2])
                 else:
                     plan_id = "_".join(parts[2:-1])
-            elif "|" in payload:
-                parts = payload.split("|")
-                # tariff_id|method|device_count[|miniapp]
+            elif "|" in raw_pl:
+                parts = raw_pl.split("|")
                 plan_id = parts[0]
                 method_id = parts[1]
-                if len(parts) > 2 and str(parts[2]).isdigit():
-                    device_count = int(parts[2])
                 if len(parts) > 3 and parts[3] == "miniapp":
                     source = 'miniapp'
             else:
-                # Fallback
-                plan_id = payload
+                plan_id = raw_pl
                 method_id = "stars" if message.successful_payment.currency == "XTR" else "yookassa"
             
             # Получаем планы
@@ -119,7 +148,6 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
                 is_new_subscription=is_new_subscription,
                 config=config,
                 source=source,
-                device_count=device_count,
             )
             
         except Exception as e:

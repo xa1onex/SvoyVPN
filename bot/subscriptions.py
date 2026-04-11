@@ -5,6 +5,7 @@ from typing import Optional, List, Dict
 import asyncio
 
 from .database import get_connection
+from .traffic import apply_subscription_anchor_on_payment
 from .xui_client import XUIClient
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ async def set_new_subscription(user_id: int, months: int, conn=None) -> None:
             )
             # Сбрасываем уведомления при покупке новой подписки
             await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
+            await apply_subscription_anchor_on_payment(conn, user_id)
     else:
         await conn.execute(
             """
@@ -64,6 +66,7 @@ async def set_new_subscription(user_id: int, months: int, conn=None) -> None:
             str(days),
         )
         await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
+        await apply_subscription_anchor_on_payment(conn, user_id)
 
 
 async def extend_subscription(user_id: int, months: int, conn=None) -> None:
@@ -82,6 +85,7 @@ async def extend_subscription(user_id: int, months: int, conn=None) -> None:
             )
             # Сбрасываем уведомления при продлении
             await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
+            await apply_subscription_anchor_on_payment(conn, user_id)
     else:
         await conn.execute(
             """
@@ -94,6 +98,7 @@ async def extend_subscription(user_id: int, months: int, conn=None) -> None:
             str(months),
         )
         await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
+        await apply_subscription_anchor_on_payment(conn, user_id)
 
 
 async def create_keys_for_specific_server(server_id: int) -> None:
