@@ -46,6 +46,7 @@ class AdminStates(StatesGroup):
     REFERRAL_INVITER_DAYS = State()
     REFERRAL_INVITED_DAYS = State()
     DISCOUNT_DAYS_THRESHOLD = State()
+    DEVICE_LIMIT_VALUE = State()
     TRIAL_DAYS = State()
     SERVER_NAME = State()
     SERVER_IP = State()
@@ -125,6 +126,7 @@ def get_admin_panel_keyboard():
     builder.row(InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"))
     builder.row(InlineKeyboardButton(text="🔔 Логи активности", callback_data="admin_realtime_logs"))
     builder.row(InlineKeyboardButton(text="💰 Управление ценами", callback_data="admin_prices"))
+    builder.row(InlineKeyboardButton(text="📲 Лимиты устройств", callback_data="admin_device_limits"))
     builder.row(InlineKeyboardButton(text="🎁 Управление скидками", callback_data="admin_discounts"))
     builder.row(InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast"))
     builder.row(InlineKeyboardButton(text="✏️ Редактировать объявление", callback_data="edit_announcement"))
@@ -708,6 +710,113 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
         )
+        await state.clear()
+
+    @dp.callback_query(F.data == "admin_device_limits")
+    async def handle_admin_device_limits(callback: CallbackQuery):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        async with get_connection() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT max_devices, extra_price_rub, extra_price_stars
+                FROM device_limit_settings
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            )
+            max_devices = int(row["max_devices"]) if row else 5
+            extra_rub = int(row["extra_price_rub"]) if row else 1000
+            extra_stars = int(row["extra_price_stars"]) if row else 10
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="✏️ Максимум устройств", callback_data="admin_device_limits_edit:max"))
+        builder.row(InlineKeyboardButton(text="✏️ Наценка доп. устройства (₽)", callback_data="admin_device_limits_edit:rub"))
+        builder.row(InlineKeyboardButton(text="✏️ Наценка доп. устройства (⭐)", callback_data="admin_device_limits_edit:stars"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        await callback.message.edit_text(
+            "📲 <b>Лимиты устройств</b>\n\n"
+            f"• Максимум устройств: <b>{max_devices}</b>\n"
+            f"• Наценка за 2+ устройство: <b>{extra_rub // 100}₽</b> и <b>{extra_stars}⭐</b>\n\n"
+            "Формула цены: база + (N-1) × наценка.\n"
+            "Пример: 1 устройство — базовая цена, 2 устройства — + наценка один раз.",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data.startswith("admin_device_limits_edit:"))
+    async def handle_admin_device_limits_edit(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        mode = callback.data.split(":")[1]
+        prompts = {
+            "max": "Введите максимальное количество устройств (минимум 1, максимум 20):",
+            "rub": "Введите наценку за доп. устройство в копейках (например 1000 = 10₽):",
+            "stars": "Введите наценку за доп. устройство в звездах (например 10):",
+        }
+        await state.set_state(AdminStates.DEVICE_LIMIT_VALUE)
+        await state.update_data(device_limit_mode=mode)
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_device_limits"))
+        await callback.message.edit_text(
+            f"📲 <b>Настройка лимитов устройств</b>\n\n{prompts.get(mode, 'Введите значение:')}",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+        await safe_callback_answer(callback)
+
+    @dp.message(AdminStates.DEVICE_LIMIT_VALUE)
+    async def process_admin_device_limits_value(message: Message, state: FSMContext):
+        if not is_admin(message.from_user.id, config):
+            await message.answer("❌ Нет доступа")
+            await state.clear()
+            return
+        data = await state.get_data()
+        mode = data.get("device_limit_mode")
+        try:
+            val = int((message.text or "").strip())
+        except ValueError:
+            await message.answer("❌ Введите целое число")
+            return
+
+        if mode == "max" and (val < 1 or val > 20):
+            await message.answer("❌ Допустимо от 1 до 20")
+            return
+        if mode in ("rub", "stars") and val < 0:
+            await message.answer("❌ Значение не может быть отрицательным")
+            return
+
+        async with get_connection() as conn:
+            row = await conn.fetchrow("SELECT id FROM device_limit_settings ORDER BY id DESC LIMIT 1")
+            if not row:
+                await conn.execute(
+                    """
+                    INSERT INTO device_limit_settings (max_devices, extra_price_rub, extra_price_stars, updated_at)
+                    VALUES (5, 1000, 10, CURRENT_TIMESTAMP)
+                    """
+                )
+            if mode == "max":
+                await conn.execute(
+                    "UPDATE device_limit_settings SET max_devices = $1, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM device_limit_settings ORDER BY id DESC LIMIT 1)",
+                    val,
+                )
+            elif mode == "rub":
+                await conn.execute(
+                    "UPDATE device_limit_settings SET extra_price_rub = $1, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM device_limit_settings ORDER BY id DESC LIMIT 1)",
+                    val,
+                )
+            else:
+                await conn.execute(
+                    "UPDATE device_limit_settings SET extra_price_stars = $1, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM device_limit_settings ORDER BY id DESC LIMIT 1)",
+                    val,
+                )
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="◀️ К лимитам устройств", callback_data="admin_device_limits"))
+        await message.answer("✅ Настройка сохранена", reply_markup=builder.as_markup())
         await state.clear()
     
     # Управление скидками

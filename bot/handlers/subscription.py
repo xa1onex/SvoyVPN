@@ -509,7 +509,13 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         plan_id = callback.data.split(":")[1]
         user_id = callback.from_user.id
         
-        from bot.plans import get_user_tariffs, get_subscription_plans, get_renewal_plans
+        from bot.plans import (
+            get_user_tariffs,
+            get_subscription_plans,
+            get_renewal_plans,
+            get_device_limit_settings,
+            calc_total_price_with_devices,
+        )
         current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
         
         if plan_id not in current_tariffs:
@@ -530,11 +536,18 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         
         # Определяем действие
         action = "buy_renewal" if is_renew else "buy_subscription"
+        device_cfg = await get_device_limit_settings()
+        max_devices = int(device_cfg.get("max_devices", 5))
+        extra_rub = int(device_cfg.get("extra_price_rub", 1000))
+        extra_stars = int(device_cfg.get("extra_price_stars", 10))
+        selected_devices = 1
         
         # Показываем методы оплаты
         text = f"💳 <b>{plan_data['title']}</b>\n\n"
         text += f"Срок: {plan_data['duration']} месяцев\n"
         text += f"Трафик: {plan_data.get('traffic_gb', 'Безлимитный')} ГБ\n\n"
+        text += f"Устройств: <b>{selected_devices}</b> из {max_devices}\n"
+        text += f"Доп. устройство: +{extra_rub // 100}₽ / +{extra_stars}⭐\n\n"
         text += "Выберите способ оплаты:"
         
         builder = InlineKeyboardBuilder()
@@ -543,7 +556,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         builder.row(
             InlineKeyboardButton(
                 text=f"⭐ Telegram Stars ({format_price_stars(plan_data['price_stars'])})",
-                callback_data=f"{action}:{plan_id}:stars"
+                callback_data=f"{action}:{plan_id}:stars:{selected_devices}"
             )
         )
         
@@ -552,7 +565,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             builder.row(
                 InlineKeyboardButton(
                     text=f"💳 Банковская карта ({format_price_rub(plan_data['price_rub'])})",
-                    callback_data=f"{action}:{plan_id}:yookassa"
+                    callback_data=f"{action}:{plan_id}:yookassa:{selected_devices}"
                 )
             )
             
@@ -561,12 +574,75 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             builder.row(
                 InlineKeyboardButton(
                     text=f"💎 Crypto Pay ({format_price_rub(plan_data['price_rub'])})",
-                    callback_data=f"{action}:{plan_id}:cryptopay"
+                    callback_data=f"{action}:{plan_id}:cryptopay:{selected_devices}"
                 )
             )
+        if max_devices > 1:
+            device_buttons = []
+            for dc in range(1, max_devices + 1):
+                total_rub = calc_total_price_with_devices(plan_data['price_rub'], dc, extra_rub)
+                device_buttons.append(
+                    InlineKeyboardButton(
+                        text=f"{dc} ({format_price_rub(total_rub)})",
+                        callback_data=f"plan_device:{plan_id}:{dc}",
+                    )
+                )
+            builder.row(*device_buttons[:4])
+            if len(device_buttons) > 4:
+                builder.row(*device_buttons[4:])
         
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
         
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        await callback.answer()
+
+    @dp.callback_query(F.data.startswith("plan_device:"))
+    async def handle_select_plan_device(callback: CallbackQuery):
+        parts = callback.data.split(":")
+        if len(parts) < 3:
+            await callback.answer("Неверные данные", show_alert=True)
+            return
+        plan_id = parts[1]
+        try:
+            device_count = int(parts[2])
+        except Exception:
+            device_count = 1
+        user_id = callback.from_user.id
+        from bot.plans import (
+            get_user_tariffs,
+            get_device_limit_settings,
+            calc_total_price_with_devices,
+            clamp_device_count,
+        )
+        current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
+        if plan_id not in current_tariffs:
+            await callback.answer("План недоступен", show_alert=True)
+            return
+        plan_data = current_tariffs[plan_id]
+        cfg = await get_device_limit_settings()
+        max_devices = int(cfg.get("max_devices", 5))
+        extra_rub = int(cfg.get("extra_price_rub", 1000))
+        extra_stars = int(cfg.get("extra_price_stars", 10))
+        dc = clamp_device_count(device_count, max_devices)
+        action = "buy_renewal" if is_renew else "buy_subscription"
+
+        rub_total = calc_total_price_with_devices(plan_data['price_rub'], dc, extra_rub)
+        stars_total = calc_total_price_with_devices(plan_data['price_stars'], dc, extra_stars)
+        text = (
+            f"💳 <b>{plan_data['title']}</b>\n\n"
+            f"Срок: {plan_data['duration']} месяцев\n"
+            f"Устройств: <b>{dc}</b> из {max_devices}\n"
+            f"Доп. устройство: +{extra_rub // 100}₽ / +{extra_stars}⭐\n\n"
+            f"Итого: <b>{format_price_rub(rub_total)}</b> или <b>{format_price_stars(stars_total)}</b>\n\n"
+            f"Выберите способ оплаты:"
+        )
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=f"⭐ Telegram Stars ({format_price_stars(stars_total)})", callback_data=f"{action}:{plan_id}:stars:{dc}"))
+        if config.yookassa.enabled:
+            builder.row(InlineKeyboardButton(text=f"💳 Банковская карта ({format_price_rub(rub_total)})", callback_data=f"{action}:{plan_id}:yookassa:{dc}"))
+        if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
+            builder.row(InlineKeyboardButton(text=f"💎 Crypto Pay ({format_price_rub(rub_total)})", callback_data=f"{action}:{plan_id}:cryptopay:{dc}"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"plan:{plan_id}"))
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await callback.answer()
     
@@ -582,7 +658,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
     
     async def process_payment(callback: CallbackQuery, is_renewal: bool):
         """Обработка платежа (общая функция для покупки и продления)"""
-        # Парсим callback_data: buy_subscription:plan_id:method_id или buy_renewal:plan_id:method_id
+        # Парсим callback_data: buy_subscription:plan_id:method_id[:device_count]
         parts = callback.data.split(":")
         if len(parts) < 3:
             await callback.answer("❌ Неверный формат данных", show_alert=True)
@@ -590,10 +666,19 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         
         plan_id = parts[1]
         method_id = parts[2]
+        try:
+            device_count = int(parts[3]) if len(parts) > 3 else 1
+        except Exception:
+            device_count = 1
         user_id = callback.from_user.id
         
         # Получаем актуальные планы
-        from bot.plans import get_user_tariffs
+        from bot.plans import (
+            get_user_tariffs,
+            get_device_limit_settings,
+            clamp_device_count,
+            calc_total_price_with_devices,
+        )
         current_tariffs, user_is_renew, _ = await get_user_tariffs(user_id)
         
         # Убедимся, что тариф доступен
@@ -609,6 +694,9 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             return
         
         method_data = PAYMENT_METHODS[method_id]
+        device_cfg = await get_device_limit_settings()
+        max_devices = int(device_cfg.get("max_devices", 5))
+        device_count = clamp_device_count(device_count, max_devices)
         
         # Определяем цену
         currency_type = 'stars' if method_data['currency'] == 'XTR' else 'rub'
@@ -632,6 +720,8 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             await callback.answer("❌ Ошибка: цена должна быть больше нуля", show_alert=True)
             logger.error(f"Invalid price value for plan {plan_id}: {price}")
             return
+        extra_per_device = int(device_cfg.get("extra_price_stars", 10)) if currency_type == "stars" else int(device_cfg.get("extra_price_rub", 1000))
+        price = calc_total_price_with_devices(price, device_count, extra_per_device)
         
         # Обработка разных методов оплаты
         if method_id == "yookassa":
@@ -660,7 +750,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 # The original metadata was a dictionary. The instruction implies changing to a colon-separated string.
                 # Assuming the intent is to store a colon-separated string within the metadata.
                 # The provided edit was malformed, so we'll add a 'payload' key to the metadata dictionary.
-                payload_str = f"{callback.from_user.id}:{plan_id}:{method_id}"
+                payload_str = f"{callback.from_user.id}:{plan_id}:{method_id}:{device_count}"
                 payment_data = yookassa_client.create_payment(
                     amount=amount_rub,
                     description=f"VPN подписка - {plan_data['title']}",
@@ -669,6 +759,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                         "user_id": callback.from_user.id,
                         "plan_id": plan_id,
                         "method_id": method_id,
+                        "device_count": device_count,
                         "payload": payload_str # Adding the colon-separated string here
                     }
                 )
@@ -699,6 +790,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 await callback.message.edit_text(
                     f"💳 <b>Оплата через ЮKassa</b>\n\n"
                     f"План: <i>{plan_data['title']}</i>\n"
+                    f"Лимит устройств: <i>{device_count}</i>\n"
                     f"Сумма: <i>{format_price_rub(price)}</i>\n\n"
                     f"Нажмите кнопку ниже, чтобы перейти к оплате.\n"
                     f"После успешной оплаты подписка будет активирована автоматически.\n\n"
@@ -722,7 +814,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             amount_rub = price / 100.0
             api_url = "https://testnet-pay.crypt.bot/api/createInvoice" if config.cryptopay.testnet else "https://pay.crypt.bot/api/createInvoice"
             # Using simple string payload to avoid JSON stripping issues
-            payload_str = f"{callback.from_user.id}:{plan_id}:{method_id}"
+            payload_str = f"{callback.from_user.id}:{plan_id}:{method_id}:{device_count}"
             
             try:
                 import aiohttp
@@ -765,6 +857,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                             await callback.message.edit_text(
                                 f"💎 <b>Оплата через Crypto Pay</b>\n\n"
                                 f"План: <i>{plan_data['title']}</i>\n"
+                                f"Лимит устройств: <i>{device_count}</i>\n"
                                 f"Сумма: <i>{format_price_rub(price)}</i>\n\n"
                                 f"Нажмите кнопку ниже, чтобы перейти к оплате.\n"
                                 f"После успешной оплаты подписка будет активирована автоматически.\n\n",
@@ -786,14 +879,14 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 return
             
             # Создаем payload
-            payload = f"{plan_id}|{method_id}"
+            payload = f"{plan_id}|{method_id}|{device_count}"
             
             # Отправляем инвойс
             try:
                 await bot.send_invoice(
                     chat_id=callback.message.chat.id,
                     title=f"VPN подписка - {plan_data['title']}",
-                    description=f"Нажимая кнопку «Заплатить» Вы соглашаетесь с правилами VPN бота (/help)",
+                    description=f"Подписка на {device_count} устройств. Нажимая кнопку «Заплатить» Вы соглашаетесь с правилами VPN бота (/help)",
                     provider_token=method_data.get('provider_token', ''),
                     currency=method_data['currency'],
                     prices=[LabeledPrice(label="VPN подписка", amount=price)],
@@ -839,7 +932,8 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                                 metadata = {
                                     "user_id": int(parts[0]),
                                     "plan_id": parts[1],
-                                    "method_id": parts[2] if len(parts) > 2 else "cryptopay"
+                                    "method_id": parts[2] if len(parts) > 2 else "cryptopay",
+                                    "device_count": int(parts[3]) if len(parts) > 3 and str(parts[3]).isdigit() else 1,
                                 }
                             
                             success = await process_webhook_payment(

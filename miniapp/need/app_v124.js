@@ -39,6 +39,7 @@
     servers: [],
     selectedTariff: null,
     selectedPM: null,
+    selectedDeviceCount: 1,
     esimCountries: [],
     esimPackages: [],
     esimSelectedCountry: '',
@@ -564,6 +565,7 @@
       el.addEventListener('click', () => {
         S.selectedTariff = t;
         renderTariffs();
+        renderDeviceCountControl();
         updateTotal();
         haptic('light');
       });
@@ -603,11 +605,30 @@
         S.selectedPM = m;
         renderPM();
         renderTariffs();
+        renderDeviceCountControl();
         updateTotal();
         haptic('light');
       });
       w.appendChild(el);
     });
+  }
+
+  function renderDeviceCountControl() {
+    const box = document.getElementById('deviceCountBox');
+    const range = document.getElementById('deviceCountRange');
+    const valueEl = document.getElementById('deviceCountValue');
+    const hintEl = document.getElementById('deviceCountHint');
+    if (!box || !range || !valueEl) return;
+    const maxDevices = Math.max(1, Number(S.selectedTariff && S.selectedTariff.maxDevices ? S.selectedTariff.maxDevices : 1));
+    range.min = '1';
+    range.max = String(maxDevices);
+    if (!S.selectedDeviceCount || S.selectedDeviceCount > maxDevices) S.selectedDeviceCount = 1;
+    range.value = String(S.selectedDeviceCount);
+    valueEl.textContent = String(S.selectedDeviceCount);
+    const rubExtra = Number(S.selectedTariff && S.selectedTariff.extraPricePerDevice ? S.selectedTariff.extraPricePerDevice : 0);
+    const starsExtra = Number(S.selectedTariff && S.selectedTariff.extraPricePerDeviceStars ? S.selectedTariff.extraPricePerDeviceStars : 0);
+    if (hintEl) hintEl.textContent = `2+ устройство: +${fmtPrice(rubExtra)} ₽ / +${fmtPrice(starsExtra)} ⭐`;
+    box.style.display = maxDevices > 1 ? 'block' : 'none';
   }
 
   /* ═══════ Render: Servers ═══════ */
@@ -730,7 +751,14 @@
       const isStars = S.selectedPM && S.selectedPM.id === 'stars';
       const starIcon = `<svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em;fill:var(--accent_text_color, #3aa8fc)"><path d="M12 2.3l2.4 7.4 7.6.6-5.8 4.7 1.8 7.3-6-4.3-6 4.3 1.8-7.3-5.8-4.7 7.6-.6z" stroke="var(--accent_text_color, #3aa8fc)" stroke-width="2" stroke-linejoin="round"/></svg>`;
       const currency = isStars ? starIcon : '₽';
-      const price = isStars && S.selectedTariff.priceStars ? S.selectedTariff.priceStars : S.selectedTariff.price;
+      const dc = Math.max(1, Number(S.selectedDeviceCount || 1));
+      const rubBase = Number(S.selectedTariff.basePrice ?? S.selectedTariff.price ?? 0);
+      const rubExtra = Number(S.selectedTariff.extraPricePerDevice ?? 0);
+      const starsBase = Number(S.selectedTariff.basePriceStars ?? S.selectedTariff.priceStars ?? 0);
+      const starsExtra = Number(S.selectedTariff.extraPricePerDeviceStars ?? 0);
+      const price = isStars
+        ? (starsBase + (dc - 1) * starsExtra)
+        : (rubBase + (dc - 1) * rubExtra);
 
       el.innerHTML = fmtPrice(price) + ' ' + currency;
       btn.disabled = !S.selectedPM;
@@ -1568,7 +1596,9 @@
     if (Array.isArray(tariffs) && tariffs.length) {
       S.tariffs = tariffs;
       S.selectedTariff = tariffs.reduce((prev, curr) => (curr.price > prev.price ? curr : prev));
+      S.selectedDeviceCount = 1;
       renderTariffs();
+      renderDeviceCountControl();
       updateTotal();
     }
     if (Array.isArray(pm) && pm.length) {
@@ -1581,6 +1611,7 @@
       S.paymentMethods = pm;
       S.selectedPM = pm[0];
       renderPM();
+      renderDeviceCountControl();
       updateTotal();
     }
 
@@ -1705,8 +1736,8 @@
       return;
     }
     const payBody = IS_ANDROID
-      ? { tariffId: S.selectedTariff.id, paymentMethod: S.selectedPM.id, deviceCount: 1 }
-      : { initData: tg.initData, tariffId: S.selectedTariff.id, paymentMethod: S.selectedPM.id, deviceCount: 1 };
+      ? { tariffId: S.selectedTariff.id, paymentMethod: S.selectedPM.id, deviceCount: Number(S.selectedDeviceCount || 1) }
+      : { initData: tg.initData, tariffId: S.selectedTariff.id, paymentMethod: S.selectedPM.id, deviceCount: Number(S.selectedDeviceCount || 1) };
     const payHeaders = IS_ANDROID
       ? { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ANDROID_JWT }
       : { 'Content-Type': 'application/json' };
@@ -2062,6 +2093,15 @@
 
     // Pay
     addClick('btnPay', handlePay);
+    const dcRange = document.getElementById('deviceCountRange');
+    if (dcRange) {
+      dcRange.addEventListener('input', () => {
+        S.selectedDeviceCount = Number(dcRange.value || 1);
+        const valueEl = document.getElementById('deviceCountValue');
+        if (valueEl) valueEl.textContent = String(S.selectedDeviceCount);
+        updateTotal();
+      });
+    }
 
     // Links
     addClick('btnChannel', () => {

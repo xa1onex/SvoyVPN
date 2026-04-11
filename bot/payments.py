@@ -17,6 +17,7 @@ from . import esim_service
 from .config import AppConfig
 from .database import get_connection
 from .subscriptions import create_or_activate_keys_for_all_servers, extend_subscription, set_new_subscription
+from .plans import get_device_limit_settings, clamp_device_count
 
 logger = logging.getLogger(__name__)
 
@@ -351,7 +352,8 @@ async def process_telegram_stars_payment(
     method_data: dict,
     is_new_subscription: bool,
     config: AppConfig,
-    source: str = 'bot'
+    source: str = 'bot',
+    device_count: int = 1,
 ) -> bool:
     """
     Обрабатывает платеж через Telegram Stars
@@ -398,12 +400,19 @@ async def process_telegram_stars_payment(
         # ✅ ИСПОЛЬЗУЕМ ТРАНЗАКЦИЮ
         async with conn.transaction():
             duration_months = plan_data['duration']
+            device_cfg = await get_device_limit_settings()
+            dc = clamp_device_count(device_count, int(device_cfg.get("max_devices", 5)))
             
             # Обновляем подписку
             if is_new_subscription:
                 await set_new_subscription(user_id, duration_months, conn)
             else:
                 await extend_subscription(user_id, duration_months, conn)
+            await conn.execute(
+                "UPDATE users SET device_limit = $1 WHERE user_id = $2",
+                dc,
+                user_id,
+            )
             
             # Получаем обновленную дату окончания
             subscription_end_row = await conn.fetchrow(
@@ -464,6 +473,7 @@ async def process_telegram_stars_payment(
             f"<b>Детали подписки</b>:\n"
             f"• План: <i>{plan_data['title']}</i>\n"
             f"• Трафик: <i>{plan_data.get('traffic_gb', 'Безлимитный')} ГБ</i>\n"
+            f"• Лимит устройств: <i>{dc}</i>\n"
             f"• Срок: <i>{duration_months} месяцев</i>\n\n"
             f"✅ Теперь вы можете получить VPN ссылку через кнопку <b>🔗 Получить VPN</b>!\n\n"
             f"ID транзакции: <code>{charge_id}</code>"
@@ -529,6 +539,7 @@ async def process_webhook_payment(
     plan_id = metadata.get("plan_id")
     method_id = metadata.get("method_id", "yookassa")
     payment_source = metadata.get("payment_source", "bot")
+    device_count = metadata.get("device_count", 1)
     
     logger.info(f"Processing webhook payment: id={payment_id}, method={method_id}, user={user_id}, plan={plan_id}, source={payment_source}")
 
@@ -557,6 +568,8 @@ async def process_webhook_payment(
         return False
     
     try:
+        device_cfg = await get_device_limit_settings()
+        device_count = clamp_device_count(device_count, int(device_cfg.get("max_devices", 5)))
         # Определяем тип подписки
         if plan_id in subscription_plans:
             plan_data = subscription_plans[plan_id]
@@ -616,6 +629,11 @@ async def process_webhook_payment(
                     await set_new_subscription(user_id, duration_months, conn)
                 else:
                     await extend_subscription(user_id, duration_months, conn)
+                await conn.execute(
+                    "UPDATE users SET device_limit = $1 WHERE user_id = $2",
+                    device_count,
+                    user_id,
+                )
                 
                 # Получаем обновлённую дату окончания
                 sub_row = await conn.fetchrow(
@@ -673,6 +691,7 @@ async def process_webhook_payment(
                         f"• ID транзакции: <code>{payment_id}</code>\n\n"
                         f"💎 <b>Подписка:</b>\n"
                         f"• План: <i>{plan_data['title']}</i>\n"
+                        f"• Лимит устройств: <i>{device_count}</i>\n"
                         f"• Активна до: <b>{end_str}</b>\n\n"
                         f"Нажмите кнопку ниже, чтобы получить настройки VPN."
                     )

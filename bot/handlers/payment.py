@@ -50,27 +50,38 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
                 return
 
             source = 'bot'
+            device_count = 1
             if payload.startswith("stars_"):
                 method_id = "stars"
                 if payload.endswith("_miniapp"):
                     source = 'miniapp'
                     payload = payload[:-8]
                 parts = payload.split("_")
-                # stars_{user_id}_{tariff_id}_{timestamp}
-                plan_id = "_".join(parts[2:-1])
+                # stars_{user_id}_{tariff_id}_{device_count}_{timestamp}
+                if len(parts) >= 5 and parts[-2].isdigit():
+                    device_count = int(parts[-2])
+                    plan_id = "_".join(parts[2:-2])
+                else:
+                    plan_id = "_".join(parts[2:-1])
             elif payload.startswith("yoo_"):
                 method_id = "yookassa"
                 if payload.endswith("_miniapp"):
                     source = 'miniapp'
                     payload = payload[:-8]
                 parts = payload.split("_")
-                # yoo_{user_id}_{tariff_id}_{timestamp}
-                plan_id = "_".join(parts[2:-1])
+                # yoo_{user_id}_{tariff_id}_{device_count}_{timestamp}
+                if len(parts) >= 5 and parts[-2].isdigit():
+                    device_count = int(parts[-2])
+                    plan_id = "_".join(parts[2:-2])
+                else:
+                    plan_id = "_".join(parts[2:-1])
             elif "|" in payload:
                 parts = payload.split("|")
-                # tariff_id|method|user_id[|miniapp]
+                # tariff_id|method|device_count[|miniapp]
                 plan_id = parts[0]
                 method_id = parts[1]
+                if len(parts) > 2 and str(parts[2]).isdigit():
+                    device_count = int(parts[2])
                 if len(parts) > 3 and parts[3] == "miniapp":
                     source = 'miniapp'
             else:
@@ -107,7 +118,8 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
                 method_data=method_data,
                 is_new_subscription=is_new_subscription,
                 config=config,
-                source=source
+                source=source,
+                device_count=device_count,
             )
             
         except Exception as e:
