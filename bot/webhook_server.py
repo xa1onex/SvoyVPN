@@ -429,11 +429,10 @@ class WebhookServer:
                         missing_ids = [int(r["id"]) for r in servers_without_keys]
                         logger.info(
                             f"User {user_id} has {len(missing_ids)} servers without keys, "
-                            f"creating only for those ids={missing_ids}..."
+                            f"scheduling background XUI sync for ids={missing_ids} (no wait — fast /sub for Happ)"
                         )
                         try:
-                            # Раньше вызывали create_or_activate_keys_for_all_servers — он
-                            # проходил все серверы и XUI; Happ и др. клиенты рвали запрос по таймауту.
+
                             async def _finish_missing_keys():
                                 try:
                                     await ensure_user_keys_for_server_ids(user_id, missing_ids)
@@ -444,34 +443,10 @@ class WebhookServer:
                                         exc_info=True,
                                     )
 
-                            try:
-                                await asyncio.wait_for(
-                                    ensure_user_keys_for_server_ids(user_id, missing_ids),
-                                    timeout=12.0,
-                                )
-                            except asyncio.TimeoutError:
-                                logger.warning(
-                                    f"ensure_user_keys_for_server_ids timed out (12s) for user {user_id}; "
-                                    f"continuing in background for server_ids={missing_ids}"
-                                )
-                                asyncio.create_task(_finish_missing_keys())
-                            # Повторно запрашиваем ключи и информацию о сервере для сортировки
-                            keys_data = await conn.fetch('''
-                                SELECT DISTINCT ON (k.server_id) 
-                                    k.vless_link, k.server_id, s.display_order, s.id as sid
-                                FROM vpn_keys k
-                                INNER JOIN servers s ON k.server_id = s.id
-                                WHERE k.user_id = $1 
-                                  AND k.is_active = TRUE
-                                  AND s.is_active = TRUE
-                                  AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
-                                ORDER BY k.server_id, k.id ASC
-                            ''', user_id)
-                            
-                            # Сортируем ключи по display_order, затем по id сервера
-                            keys = sorted(keys_data, key=lambda x: (x.get('display_order', 100), x.get('sid', 0)))
+                            asyncio.create_task(_finish_missing_keys())
+                            # keys уже загружены выше; новые узлы появятся после фона — пользователь обновит подписку
                         except Exception as e:
-                            logger.error(f"Failed to auto-create keys for user {user_id}: {e}")
+                            logger.error(f"Failed to schedule key creation for user {user_id}: {e}")
                 
                 # Формируем ответ
                 if is_active and used_devices > device_limit:
@@ -1549,7 +1524,8 @@ class WebhookServer:
                     "SELECT ip FROM servers WHERE id = $1 AND is_active = TRUE", server_id
                 )
                 if not row:
-                    return web.json_response({"error": "Server not found"}, status=404)
+                    # 200 + ping -1: миниапп так же покажет «Недоступен», без 404 в логах и у прокси
+                    return web.json_response({"ping": -1, "ip": None})
                 
                 ip = row['ip']
             
