@@ -676,7 +676,7 @@ class WebhookServer:
                 timeout = aiohttp.ClientTimeout(total=2)
                 async with aiohttp.ClientSession(timeout=timeout) as session:
                     await session.post(
-                        "https://app.konnektclub.online/api/payments/webhook",
+                        "https://app.konnektclub.com/api/payments/webhook",
                         json=data,
                     )
             except Exception:
