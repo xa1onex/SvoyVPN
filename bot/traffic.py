@@ -15,6 +15,30 @@ logger = logging.getLogger(__name__)
 
 BYTES_PER_GB = 1024**3
 
+# После смены биллингового периода: первый sync с панелей должен записать baseline (lifetime) в base_bytes.
+TRAFFIC_BASELINE_PENDING_SNAPSHOT = -1
+
+
+def _safe_int(v: object) -> int:
+    try:
+        return int(v)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+def _norm_xui_identity(raw: object) -> str:
+    """UUID с панели и в БД могут отличаться дефисами — сравниваем в одном виде."""
+    return str(raw or "").strip().lower().replace("-", "")
+
+
+def _client_norm_ids_from_record(c: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    for k in ("id", "clientId", "password"):
+        n = _norm_xui_identity(c.get(k))
+        if n and n not in out:
+            out.append(n)
+    return out
+
 
 def last_day_of_month(year: int, month: int) -> int:
     return calendar.monthrange(year, month)[1]
@@ -55,17 +79,29 @@ def compute_billing_period(today: date, anchor_day: int) -> tuple[date, date]:
 
 
 def _client_usage_bytes(c: dict[str, Any]) -> int:
-    try:
-        up = int(c.get("up") or 0)
-        down = int(c.get("down") or 0)
-        if up or down:
-            return up + down
-    except (TypeError, ValueError):
-        pass
-    try:
-        return int(c.get("total") or 0)
-    except (TypeError, ValueError):
-        return 0
+    stats = c.get("stats")
+    if isinstance(stats, str):
+        try:
+            stats = json.loads(stats)
+        except (json.JSONDecodeError, TypeError):
+            stats = {}
+    if not isinstance(stats, dict):
+        stats = {}
+
+    def pick_up_down(d: dict[str, Any]) -> tuple[int, int]:
+        up = _safe_int(d.get("up")) if d.get("up") is not None else _safe_int(d.get("upload"))
+        down = _safe_int(d.get("down")) if d.get("down") is not None else _safe_int(d.get("download"))
+        return up, down
+
+    up, down = pick_up_down(c)
+    if not up and not down:
+        up2, down2 = pick_up_down(stats)
+        up, down = up or up2, down or down2
+    if up or down:
+        return up + down
+
+    tot = _safe_int(c.get("total")) if c.get("total") is not None else _safe_int(stats.get("total"))
+    return tot
 
 
 async def get_traffic_settings(conn) -> dict[str, int]:
@@ -165,12 +201,13 @@ async def ensure_traffic_anchor_and_period(conn, user_id: int) -> None:
                 traffic_used_bytes = 0,
                 traffic_bonus_gb = 0,
                 traffic_last_sync_at = NULL,
-                traffic_period_base_bytes = NULL
+                traffic_period_base_bytes = $4
             WHERE user_id = $3
             """,
             start,
             end_excl,
             user_id,
+            TRAFFIC_BASELINE_PENDING_SNAPSHOT,
         )
 
 
@@ -262,23 +299,45 @@ async def sync_user_traffic_bytes_from_panels(conn, user_id: int, min_interval_s
             clients = settings.get("clients") or []
             if not isinstance(clients, list):
                 clients = []
-            want = {str(cid).lower() for cid in client_ids}
+            want = {_norm_xui_identity(cid) for cid in client_ids if _norm_xui_identity(cid)}
+            matched_here = 0
             for c in clients:
-                cid = str(c.get("id", "")).lower()
-                if cid in want:
-                    total += _client_usage_bytes(c)
+                if not isinstance(c, dict):
+                    continue
+                for nk in _client_norm_ids_from_record(c):
+                    if nk in want:
+                        total += _client_usage_bytes(c)
+                        matched_here += 1
+                        break
+            if not matched_here and want and clients:
+                logger.info(
+                    "traffic sync server %s user %s: inbound matched 0 clients (db_ids=%s inbound_count=%s)",
+                    sid,
+                    user_id,
+                    list(want)[:3],
+                    len(clients),
+                )
             await client.close()
         except Exception as e:
             logger.warning("traffic sync server %s user %s: %s", sid, user_id, e)
 
-    base_bytes = urow.get("traffic_period_base_bytes")
-    if base_bytes is None:
-        # Bootstrap текущего периода:
-        # если раньше уже успели накопить used_bytes, сохраняем это значение.
-        prev_used = max(0, int(urow.get("traffic_used_bytes") or 0))
-        base_bytes = max(0, int(total) - prev_used)
+    base_raw = urow.get("traffic_period_base_bytes")
+    prev_used = max(0, int(urow.get("traffic_used_bytes") or 0))
 
-    used_period = max(0, int(total) - int(base_bytes))
+    if base_raw == TRAFFIC_BASELINE_PENDING_SNAPSHOT:
+        # Новый биллинговый период: фиксируем «ноль периода» как текущий lifetime total с панелей.
+        base_bytes = int(total)
+        used_period = 0
+    elif base_raw is None:
+        # Первый учёт / старые строки: при prev_used=0 весь total считаем расходом периода (base=0).
+        if prev_used > 0:
+            base_bytes = max(0, int(total) - prev_used)
+        else:
+            base_bytes = 0
+        used_period = max(0, int(total) - int(base_bytes))
+    else:
+        base_bytes = int(base_raw)
+        used_period = max(0, int(total) - int(base_bytes))
 
     await conn.execute(
         """
