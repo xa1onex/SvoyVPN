@@ -612,12 +612,17 @@ async def handle_expired_subscriptions(bot=None):
                         WHERE user_id = $1 AND is_active = TRUE
                     ''', user_id)
                     
-                    # Обновляем статус подписки
-                    await conn.execute('''
-                        UPDATE users 
-                        SET pay_subscribed = FALSE, renewal_used = FALSE
+                    # Обновляем статус подписки; докупленный трафик сгорает вместе с подпиской
+                    await conn.execute(
+                        """
+                        UPDATE users
+                        SET pay_subscribed = FALSE,
+                            renewal_used = FALSE,
+                            traffic_bonus_gb = 0
                         WHERE user_id = $1
-                    ''', user_id)
+                        """,
+                        user_id,
+                    )
                     
                     # Сбрасываем уведомления
                     await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)

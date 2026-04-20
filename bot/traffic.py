@@ -199,13 +199,16 @@ async def ensure_traffic_anchor_and_period(conn, user_id: int) -> None:
             """,
             user_id,
         )
+        # Сброс только расхода периода. Докупленные ГБ (traffic_bonus_gb) НЕ обнуляем здесь:
+        # они «живут» до конца активной подписки и сгорают при её окончании
+        # (см. handle_expired_subscriptions). Иначе пользователь теряет оплаченный
+        # пакет, если купил в конце расчётного месяца.
         await conn.execute(
             """
             UPDATE users SET
                 traffic_period_start = $1,
                 traffic_period_end_excl = $2,
                 traffic_used_bytes = 0,
-                traffic_bonus_gb = 0,
                 traffic_last_sync_at = NULL
             WHERE user_id = $3
             """,
