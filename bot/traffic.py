@@ -9,14 +9,9 @@ import logging
 from datetime import date, datetime
 from typing import Any
 
-from .xui_client import XUIClient
-
 logger = logging.getLogger(__name__)
 
 BYTES_PER_GB = 1024**3
-
-# После смены биллингового периода: первый sync с панелей должен записать baseline (lifetime) в base_bytes.
-TRAFFIC_BASELINE_PENDING_SNAPSHOT = -1
 
 
 def _safe_int(v: object) -> int:
@@ -193,6 +188,17 @@ async def ensure_traffic_anchor_and_period(conn, user_id: int) -> None:
             user_id,
         )
     elif stored != start:
+        # Смена биллингового периода: фиксируем baseline на всех активных
+        # ключах пользователя как текущий lifetime — с этого момента
+        # трафик периода начинается с нуля.
+        await conn.execute(
+            """
+            UPDATE vpn_keys
+            SET traffic_period_baseline_bytes = traffic_lifetime_bytes
+            WHERE user_id = $1 AND is_active = TRUE
+            """,
+            user_id,
+        )
         await conn.execute(
             """
             UPDATE users SET
@@ -200,14 +206,12 @@ async def ensure_traffic_anchor_and_period(conn, user_id: int) -> None:
                 traffic_period_end_excl = $2,
                 traffic_used_bytes = 0,
                 traffic_bonus_gb = 0,
-                traffic_last_sync_at = NULL,
-                traffic_period_base_bytes = $4
+                traffic_last_sync_at = NULL
             WHERE user_id = $3
             """,
             start,
             end_excl,
             user_id,
-            TRAFFIC_BASELINE_PENDING_SNAPSHOT,
         )
 
 
@@ -232,126 +236,18 @@ async def user_traffic_allowance_bytes(conn, user_id: int) -> tuple[int, int, in
 
 async def sync_user_traffic_bytes_from_panels(conn, user_id: int, min_interval_sec: int) -> int:
     """
-    Суммирует up+down по всем активным ключам пользователя на панелях X-UI.
-    Обновляет traffic_used_bytes не чаще min_interval_sec.
+    Совместимость: актуальный учёт ведёт фоновой воркер (bot/traffic_worker.py),
+    который пишет в vpn_keys.traffic_lifetime_bytes и агрегирует
+    users.traffic_used_bytes. Здесь просто возвращаем текущее значение из БД.
     """
-    urow = await conn.fetchrow(
-        "SELECT traffic_used_bytes, traffic_last_sync_at, traffic_period_base_bytes FROM users WHERE user_id = $1",
+    _ = min_interval_sec  # не используется, оставлен для обратной совместимости
+    row = await conn.fetchrow(
+        "SELECT traffic_used_bytes FROM users WHERE user_id = $1",
         user_id,
     )
-    if not urow:
+    if not row:
         return 0
-    last = urow["traffic_last_sync_at"]
-    if last:
-        delta = datetime.utcnow() - last.replace(tzinfo=None) if last.tzinfo else datetime.utcnow() - last
-        if delta.total_seconds() < min_interval_sec:
-            return int(urow["traffic_used_bytes"] or 0)
-
-    keys = await conn.fetch(
-        """
-        SELECT DISTINCT k.server_id, k.vless_client_id, s.base_url, s.username, s.password,
-               s.inbound_id
-        FROM vpn_keys k
-        INNER JOIN servers s ON s.id = k.server_id
-        WHERE k.user_id = $1 AND k.is_active = TRUE
-          AND s.is_active = TRUE
-        """,
-        user_id,
-    )
-    if not keys:
-        await conn.execute(
-            "UPDATE users SET traffic_used_bytes = 0, traffic_last_sync_at = NOW() WHERE user_id = $1",
-            user_id,
-        )
-        return 0
-
-    by_server: dict[int, list[str]] = {}
-    server_cfg: dict[int, dict[str, Any]] = {}
-    for r in keys:
-        sid = int(r["server_id"])
-        server_cfg[sid] = dict(r)
-        by_server.setdefault(sid, []).append(r["vless_client_id"])
-
-    total = 0
-    for sid, client_ids in by_server.items():
-        cfg = server_cfg[sid]
-        try:
-            client = XUIClient(
-                base_url=cfg["base_url"],
-                username=cfg.get("username"),
-                password=cfg.get("password"),
-                api_token=None,
-                inbound_id=int(cfg["inbound_id"]),
-            )
-            await client.ensure_login()
-            resp = await client._client.get("panel/api/inbounds/list")
-            data = resp.json()
-            inbounds = data.get("obj") or []
-            chosen = next((i for i in inbounds if int(i.get("id", 0)) == int(cfg["inbound_id"])), None)
-            if not chosen:
-                await client.close()
-                continue
-            settings_str = chosen.get("settings", "{}")
-            try:
-                settings = json.loads(settings_str) if isinstance(settings_str, str) else settings_str
-            except Exception:
-                settings = {}
-            clients = settings.get("clients") or []
-            if not isinstance(clients, list):
-                clients = []
-            want = {_norm_xui_identity(cid) for cid in client_ids if _norm_xui_identity(cid)}
-            matched_here = 0
-            for c in clients:
-                if not isinstance(c, dict):
-                    continue
-                for nk in _client_norm_ids_from_record(c):
-                    if nk in want:
-                        total += _client_usage_bytes(c)
-                        matched_here += 1
-                        break
-            if not matched_here and want and clients:
-                logger.info(
-                    "traffic sync server %s user %s: inbound matched 0 clients (db_ids=%s inbound_count=%s)",
-                    sid,
-                    user_id,
-                    list(want)[:3],
-                    len(clients),
-                )
-            await client.close()
-        except Exception as e:
-            logger.warning("traffic sync server %s user %s: %s", sid, user_id, e)
-
-    base_raw = urow.get("traffic_period_base_bytes")
-    prev_used = max(0, int(urow.get("traffic_used_bytes") or 0))
-
-    if base_raw == TRAFFIC_BASELINE_PENDING_SNAPSHOT:
-        # Новый биллинговый период: фиксируем «ноль периода» как текущий lifetime total с панелей.
-        base_bytes = int(total)
-        used_period = 0
-    elif base_raw is None:
-        # Первый учёт / старые строки: при prev_used=0 весь total считаем расходом периода (base=0).
-        if prev_used > 0:
-            base_bytes = max(0, int(total) - prev_used)
-        else:
-            base_bytes = 0
-        used_period = max(0, int(total) - int(base_bytes))
-    else:
-        base_bytes = int(base_raw)
-        used_period = max(0, int(total) - int(base_bytes))
-
-    await conn.execute(
-        """
-        UPDATE users
-        SET traffic_used_bytes = $1,
-            traffic_last_sync_at = NOW(),
-            traffic_period_base_bytes = $2
-        WHERE user_id = $3
-        """,
-        used_period,
-        int(base_bytes),
-        user_id,
-    )
-    return int(used_period)
+    return int(row["traffic_used_bytes"] or 0)
 
 
 def blocked_traffic_vless(used_bytes: int, limit_bytes: int) -> str:

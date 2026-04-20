@@ -402,23 +402,13 @@ class WebhookServer:
                 used_bytes = 0
                 limit_bytes = 0
                 if is_active:
-                    # Синхронный опрос всех XUI в этом запросе ломает Happ при импорте по диплинку
-                    # (happ://import → GET /sub с коротким таймаутом). Сначала отдаём данные из БД,
-                    # счётчики с панелей подтягиваем в фоне для следующих запросов.
+                    # Читаем готовые значения из БД — их непрерывно обновляет
+                    # фоновой воркер bot/traffic_worker.py.
                     snap = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
                     used_bytes = int(snap["usedBytes"])
                     limit_bytes = int(snap["limitBytes"])
                     if snap.get("trafficEnforced") and snap.get("trafficExceeded"):
                         traffic_blocked = True
-
-                    async def _bg_traffic_refresh(uid: int):
-                        try:
-                            async with get_connection() as c2:
-                                await user_traffic_snapshot(c2, uid, sync_from_panels=True)
-                        except Exception as e:
-                            logger.warning("Background traffic refresh failed for user %s: %s", uid, e)
-
-                    asyncio.create_task(_bg_traffic_refresh(user_id))
 
                 if is_active and traffic_blocked:
                     body = blocked_traffic_vless(used_bytes, limit_bytes)
@@ -445,7 +435,7 @@ class WebhookServer:
                     "profile-web-page-url": "https://t.me/SvoyVPN_robot",
                     "announce": announce_text,
                     "subscription-userinfo": (
-                        f"upload={used_bytes}; download=0; total={limit_bytes}; expire={expire_ts}"
+                        f"upload=0; download={used_bytes}; total={limit_bytes}; expire={expire_ts}"
                         if is_active
                         else "Inactive"
                     ),

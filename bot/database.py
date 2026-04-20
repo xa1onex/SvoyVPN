@@ -258,6 +258,32 @@ async def init_db() -> None:
             """
         )
 
+        try:
+            vk_columns = await conn.fetch(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'vpn_keys'
+                """
+            )
+            vk_existing = {row['column_name'] for row in vk_columns}
+            if 'traffic_lifetime_bytes' not in vk_existing:
+                await conn.execute(
+                    "ALTER TABLE vpn_keys ADD COLUMN traffic_lifetime_bytes BIGINT NOT NULL DEFAULT 0"
+                )
+                logging.info("Added traffic_lifetime_bytes column to vpn_keys table")
+            if 'traffic_period_baseline_bytes' not in vk_existing:
+                await conn.execute(
+                    "ALTER TABLE vpn_keys ADD COLUMN traffic_period_baseline_bytes BIGINT"
+                )
+                logging.info("Added traffic_period_baseline_bytes column to vpn_keys table")
+            if 'traffic_last_sync_at' not in vk_existing:
+                await conn.execute(
+                    "ALTER TABLE vpn_keys ADD COLUMN traffic_last_sync_at TIMESTAMP"
+                )
+                logging.info("Added traffic_last_sync_at column to vpn_keys table")
+        except Exception as e:
+            logging.warning(f"Could not migrate vpn_keys traffic columns: {e}")
+
         # payments (упрощённо)
         await conn.execute(
             """

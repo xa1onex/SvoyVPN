@@ -19,6 +19,7 @@ from .yookassa_client import YooKassaClient
 from .flyer_client import FlyerClient
 from .payments import process_webhook_payment
 from .plans import get_subscription_plans, get_renewal_plans, PAYMENT_METHODS
+from .traffic_worker import run_traffic_sync_loop
 
 # Импортируем обработчики
 from .handlers import start, subscription, payment, admin
@@ -32,6 +33,7 @@ bot = Bot(token=config.bot.bot_token)
 dp = Dispatcher()
 scheduler: AsyncIOScheduler | None = None
 webhook_server: WebhookServer | None = None
+traffic_worker_task: asyncio.Task | None = None
 _shutdown_in_progress = False
 
 
@@ -128,6 +130,19 @@ async def shutdown():
         except Exception as e:
             logger.error(f"Error stopping scheduler: {e}")
     
+    # Останавливаем фоновый воркер трафика
+    global traffic_worker_task
+    if traffic_worker_task and not traffic_worker_task.done():
+        try:
+            traffic_worker_task.cancel()
+            try:
+                await traffic_worker_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            logger.info("Traffic worker stopped")
+        except Exception as e:
+            logger.error(f"Error stopping traffic worker: {e}")
+
     # Останавливаем вебхук сервер
     global webhook_server
     if webhook_server:
@@ -216,6 +231,15 @@ async def main():
     elif config.cryptopay.enabled:
         logger.error("⚠️ CryptoPay is ENABLED but CRYPTOPAY_API_TOKEN is MISSING!")
     
+    # Фоновый воркер учёта трафика: раз в N секунд опрашивает панели X-UI,
+    # пишет traffic_lifetime_bytes в vpn_keys и агрегирует users.traffic_used_bytes.
+    global traffic_worker_task
+    try:
+        traffic_worker_task = asyncio.create_task(run_traffic_sync_loop())
+        logger.info("Traffic sync worker scheduled")
+    except Exception as e:
+        logger.error(f"Failed to start traffic worker: {e}")
+
     webhook_task = None
     if webhook_server:
         try:
