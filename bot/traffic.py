@@ -99,21 +99,77 @@ def _client_usage_bytes(c: dict[str, Any]) -> int:
     return tot
 
 
-async def get_traffic_settings(conn) -> dict[str, int]:
+async def get_traffic_settings(conn) -> dict[str, Any]:
     row = await conn.fetchrow(
         """
-        SELECT default_monthly_gb, panel_sync_min_seconds
+        SELECT default_monthly_gb, panel_sync_min_seconds, tg_relay_server_id
         FROM traffic_settings
         ORDER BY id DESC
         LIMIT 1
         """
     )
     if not row:
-        return {"default_monthly_gb": 50, "panel_sync_min_seconds": 240}
+        return {
+            "default_monthly_gb": 50,
+            "panel_sync_min_seconds": 240,
+            "tg_relay_server_id": None,
+        }
     return {
         "default_monthly_gb": int(row["default_monthly_gb"] or 50),
         "panel_sync_min_seconds": int(row["panel_sync_min_seconds"] or 240),
+        "tg_relay_server_id": int(row["tg_relay_server_id"])
+        if row.get("tg_relay_server_id") is not None
+        else None,
     }
+
+
+def vless_set_fragment_display_name(vless_link: str, display: str) -> str:
+    """Имя узла в клиенте — фрагмент после # в vless://…"""
+    from urllib.parse import quote
+
+    enc = quote(display, safe="")
+    s = vless_link.strip()
+    if "#" in s:
+        return s.rsplit("#", 1)[0] + "#" + enc
+    return s + "#" + enc
+
+
+async def get_tg_relay_server_id(conn) -> int | None:
+    row = await conn.fetchrow(
+        """
+        SELECT tg_relay_server_id
+        FROM traffic_settings
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    )
+    if not row or row["tg_relay_server_id"] is None:
+        return None
+    return int(row["tg_relay_server_id"])
+
+
+async def get_user_tg_relay_vless_line(conn, user_id: int) -> str | None:
+    """
+    Один рабочий vless для режима «лимит трафика»: сервер из traffic_settings.tg_relay_server_id,
+    отображаемое имя «ТГ БЕЗЛИМИТ». TG-only настраивается на inbound в панели.
+    """
+    sid = await get_tg_relay_server_id(conn)
+    if sid is None:
+        return None
+    key = await conn.fetchrow(
+        """
+        SELECT k.vless_link
+        FROM vpn_keys k
+        WHERE k.user_id = $1 AND k.server_id = $2 AND k.is_active = TRUE
+          AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
+        LIMIT 1
+        """,
+        user_id,
+        sid,
+    )
+    if not key or not key.get("vless_link"):
+        return None
+    return vless_set_fragment_display_name(str(key["vless_link"]), "ТГ БЕЗЛИМИТ")
 
 
 async def ensure_traffic_anchor_and_period(conn, user_id: int) -> None:

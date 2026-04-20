@@ -467,6 +467,21 @@ async def init_db() -> None:
                     VALUES (50, 240, CURRENT_TIMESTAMP)
                     """
                 )
+            ts_cols = await conn.fetch(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'traffic_settings'
+                """
+            )
+            ts_names = {r["column_name"] for r in ts_cols}
+            if "tg_relay_server_id" not in ts_names:
+                await conn.execute(
+                    """
+                    ALTER TABLE traffic_settings
+                    ADD COLUMN tg_relay_server_id INTEGER REFERENCES servers(id)
+                    """
+                )
+                logging.info("Added tg_relay_server_id to traffic_settings")
         except Exception as e:
             logging.warning(f"Could not create traffic_settings: {e}")
 

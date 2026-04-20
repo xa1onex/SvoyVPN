@@ -36,6 +36,8 @@ from .plans import get_subscription_plans, get_renewal_plans
 from .traffic import (
     user_traffic_snapshot,
     blocked_traffic_vless,
+    get_tg_relay_server_id,
+    get_user_tg_relay_vless_line,
     subscription_relay_hint_vless,
     apply_subscription_anchor_on_payment,
 )
@@ -427,10 +429,27 @@ class WebhookServer:
                 site_url = self.subscription_public_base_url
 
                 if is_active and traffic_blocked:
-                    # Сначала рабочие узлы — иначе клиент берёт первый «сервер» (плейсхолдер) и TG не грузится.
-                    real_lines = "\n".join([k["vless_link"] for k in keys if k.get("vless_link")])
-                    notice = blocked_traffic_vless(used_bytes, limit_bytes, cta_name, site_url)
-                    body = (real_lines + "\n" if real_lines else "") + notice
+                    # Только один узел «ТГ БЕЗЛИМИТ» (сервер задаётся в админке); без выбора — плейсхолдеры.
+                    tg_line = await get_user_tg_relay_vless_line(conn, user_id)
+                    if tg_line:
+                        body = tg_line
+                    else:
+                        relay_sid = await get_tg_relay_server_id(conn)
+                        if relay_sid is not None:
+
+                            async def _ensure_relay_keys():
+                                try:
+                                    await ensure_user_keys_for_server_ids(user_id, [relay_sid])
+                                except Exception as bg_e:
+                                    logger.error(
+                                        f"Background ensure_user_keys_for_server_ids (TG relay) "
+                                        f"failed for user {user_id}: {bg_e}",
+                                        exc_info=True,
+                                    )
+
+                            asyncio.create_task(_ensure_relay_keys())
+                        notice = blocked_traffic_vless(used_bytes, limit_bytes, cta_name, site_url)
+                        body = notice
                 else:
                     link_lines = [k["vless_link"] for k in keys if k.get("vless_link")]
                     hint = subscription_relay_hint_vless(cta_name, site_url)
