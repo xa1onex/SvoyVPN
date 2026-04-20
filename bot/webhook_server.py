@@ -1487,7 +1487,7 @@ class WebhookServer:
                     SELECT id, title, gb_amount, price_rub, price_stars, display_order
                     FROM gb_pack_products
                     WHERE is_active = TRUE
-                    ORDER BY display_order ASC, id ASC
+                    ORDER BY gb_amount ASC, display_order ASC, id ASC
                     """
                 )
             packs = [

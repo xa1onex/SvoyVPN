@@ -46,7 +46,8 @@ async def _admin_traffic_panel_builder() -> tuple[str, InlineKeyboardBuilder]:
         packs = await conn.fetch(
             """
             SELECT id, title, gb_amount, price_rub, price_stars, is_active, display_order
-            FROM gb_pack_products ORDER BY display_order ASC, id ASC
+            FROM gb_pack_products
+            ORDER BY gb_amount ASC, display_order ASC, id ASC
             """
         )
     lines = [

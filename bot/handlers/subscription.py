@@ -1,6 +1,7 @@
 """
 Обработчики подписки и получения VPN ссылки
 """
+import html
 import logging
 import time
 from datetime import datetime
@@ -69,7 +70,7 @@ async def send_traffic_packs_menu(bot: Bot, event: Message | CallbackQuery, conf
             SELECT id, title, gb_amount, price_rub, price_stars
             FROM gb_pack_products
             WHERE is_active = TRUE
-            ORDER BY display_order ASC, id ASC
+            ORDER BY gb_amount ASC, display_order ASC, id ASC
             """,
         )
 
@@ -87,12 +88,14 @@ async def send_traffic_packs_menu(bot: Bot, event: Message | CallbackQuery, conf
     else:
         parts = [
             "📶 <b>Увеличить лимит трафика</b>\n",
-            "Объём добавится к текущему месячному лимиту:\n",
+            "Дополнительный объём суммируется с месячным лимитом.\n"
+            "Ниже — ориентир в рублях; <b>Stars</b> увидишь на шаге оплаты, если выберешь Stars.\n",
         ]
         for p in packs:
+            title_esc = html.escape(str(p["title"]).strip())
+            rub_line = format_price_rub(int(p["price_rub"] or 0)) if int(p["price_rub"] or 0) > 0 else "—"
             parts.append(
-                f"• <b>{p['title']}</b> — +{p['gb_amount']} ГБ — "
-                f"{format_price_both(p['price_rub'], p['price_stars'])}"
+                f"• <b>+{int(p['gb_amount'])} ГБ</b> · {title_esc} · {rub_line}"
             )
         text = "\n".join(parts)
 
