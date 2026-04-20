@@ -1061,7 +1061,7 @@ class WebhookServer:
 
                 referral = await self._referral_bundle_for_user(conn, user_id)
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
-                traffic = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
+                traffic = await user_traffic_snapshot(conn, user_id, sync_from_panels=True)
 
                 return web.json_response({
                     "user": {
@@ -3052,7 +3052,7 @@ class WebhookServer:
 
                 referral = await self._referral_bundle_for_user(conn, user_id)
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
-                traffic = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
+                traffic = await user_traffic_snapshot(conn, user_id, sync_from_panels=True)
 
                 return web.json_response({
                     "user": {

@@ -90,7 +90,7 @@ async def ensure_traffic_anchor_and_period(conn, user_id: int) -> None:
     row = await conn.fetchrow(
         """
         SELECT traffic_anchor_day, traffic_period_start, traffic_period_end_excl,
-               traffic_used_bytes, traffic_bonus_gb
+               traffic_used_bytes, traffic_bonus_gb, pay_subscribed, subscription_end
         FROM users WHERE user_id = $1
         """,
         user_id,
@@ -100,15 +100,63 @@ async def ensure_traffic_anchor_and_period(conn, user_id: int) -> None:
 
     anchor = row["traffic_anchor_day"]
     today = datetime.now().date()
-    # Пока нет «дня подписки» (первая оплата / триал) — период и сброс не ведём, лимит не режем.
     if anchor is None:
-        return
+        # Для старых активных пользователей, созданных до внедрения трафика:
+        # пытаемся восстановить "день оплаты" из последнего completed платежа.
+        is_active = bool(row.get("pay_subscribed")) and row.get("subscription_end") is not None
+        if is_active:
+            inferred_day = None
+            last_paid_ts = await conn.fetchval(
+                """
+                SELECT timestamp
+                FROM payments
+                WHERE user_id = $1
+                  AND status = 'completed'
+                  AND COALESCE(plan_type, '') NOT IN ('gb_pack', 'esim')
+                  AND COALESCE(plan_id, '') NOT LIKE 'gb_pack:%'
+                  AND COALESCE(plan_id, '') NOT LIKE 'esim:%'
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                user_id,
+            )
+            if last_paid_ts is not None:
+                inferred_day = int(last_paid_ts.day if hasattr(last_paid_ts, "day") else today.day)
+            else:
+                # Фолбэк: якорим по дню окончания текущей подписки.
+                sub_end = row.get("subscription_end")
+                if sub_end is not None and hasattr(sub_end, "day"):
+                    inferred_day = int(sub_end.day)
+                else:
+                    inferred_day = int(today.day)
+
+            anchor = min(max(int(inferred_day), 1), 31)
+            await conn.execute(
+                "UPDATE users SET traffic_anchor_day = $1 WHERE user_id = $2",
+                anchor,
+                user_id,
+            )
+        else:
+            # Пока нет «дня подписки» (первая оплата / триал) — период и сброс не ведём.
+            return
 
     start, end_excl = compute_billing_period(today, int(anchor))
     stored = row["traffic_period_start"]
     if hasattr(stored, "date"):
         stored = stored.date()
-    if stored is None or stored != start:
+    if stored is None:
+        await conn.execute(
+            """
+            UPDATE users SET
+                traffic_period_start = $1,
+                traffic_period_end_excl = $2
+            WHERE user_id = $3
+            """,
+            start,
+            end_excl,
+            user_id,
+        )
+    elif stored != start:
         await conn.execute(
             """
             UPDATE users SET
@@ -116,7 +164,8 @@ async def ensure_traffic_anchor_and_period(conn, user_id: int) -> None:
                 traffic_period_end_excl = $2,
                 traffic_used_bytes = 0,
                 traffic_bonus_gb = 0,
-                traffic_last_sync_at = NULL
+                traffic_last_sync_at = NULL,
+                traffic_period_base_bytes = NULL
             WHERE user_id = $3
             """,
             start,
@@ -150,7 +199,7 @@ async def sync_user_traffic_bytes_from_panels(conn, user_id: int, min_interval_s
     Обновляет traffic_used_bytes не чаще min_interval_sec.
     """
     urow = await conn.fetchrow(
-        "SELECT traffic_used_bytes, traffic_last_sync_at FROM users WHERE user_id = $1",
+        "SELECT traffic_used_bytes, traffic_last_sync_at, traffic_period_base_bytes FROM users WHERE user_id = $1",
         user_id,
     )
     if not urow:
@@ -222,15 +271,28 @@ async def sync_user_traffic_bytes_from_panels(conn, user_id: int, min_interval_s
         except Exception as e:
             logger.warning("traffic sync server %s user %s: %s", sid, user_id, e)
 
+    base_bytes = urow.get("traffic_period_base_bytes")
+    if base_bytes is None:
+        # Bootstrap текущего периода:
+        # если раньше уже успели накопить used_bytes, сохраняем это значение.
+        prev_used = max(0, int(urow.get("traffic_used_bytes") or 0))
+        base_bytes = max(0, int(total) - prev_used)
+
+    used_period = max(0, int(total) - int(base_bytes))
+
     await conn.execute(
         """
-        UPDATE users SET traffic_used_bytes = $1, traffic_last_sync_at = NOW()
-        WHERE user_id = $2
+        UPDATE users
+        SET traffic_used_bytes = $1,
+            traffic_last_sync_at = NOW(),
+            traffic_period_base_bytes = $2
+        WHERE user_id = $3
         """,
-        total,
+        used_period,
+        int(base_bytes),
         user_id,
     )
-    return int(total)
+    return int(used_period)
 
 
 def blocked_traffic_vless(used_bytes: int, limit_bytes: int) -> str:

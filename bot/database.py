@@ -120,6 +120,9 @@ async def init_db() -> None:
             if 'traffic_last_sync_at' not in existing_columns:
                 await conn.execute("ALTER TABLE users ADD COLUMN traffic_last_sync_at TIMESTAMP")
                 logging.info("Added traffic_last_sync_at column to users table")
+            if 'traffic_period_base_bytes' not in existing_columns:
+                await conn.execute("ALTER TABLE users ADD COLUMN traffic_period_base_bytes BIGINT")
+                logging.info("Added traffic_period_base_bytes column to users table")
             
             if 'balance' not in existing_columns:
                 await conn.execute("ALTER TABLE users ADD COLUMN balance INTEGER DEFAULT 0")
