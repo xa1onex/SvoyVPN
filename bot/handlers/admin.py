@@ -32,6 +32,60 @@ DEVICE_TYPES = {
 }
 
 
+async def _admin_traffic_panel_builder() -> tuple[str, InlineKeyboardBuilder]:
+    """Текст и клавиатура экрана «Трафик и пакеты ГБ» (список пакетов из БД)."""
+    async with get_connection() as conn:
+        ts = await conn.fetchrow(
+            """
+            SELECT default_monthly_gb, panel_sync_min_seconds
+            FROM traffic_settings ORDER BY id DESC LIMIT 1
+            """
+        )
+        default_gb = int(ts["default_monthly_gb"] or 50) if ts else 50
+        sync_sec = int(ts["panel_sync_min_seconds"] or 240) if ts else 240
+        packs = await conn.fetch(
+            """
+            SELECT id, title, gb_amount, price_rub, price_stars, is_active, display_order
+            FROM gb_pack_products ORDER BY display_order ASC, id ASC
+            """
+        )
+    lines = [
+        "📶 <b>Трафик и пакеты ГБ</b>\n",
+        f"• Лимит по умолчанию: <b>{default_gb} ГБ</b> / месяц (день сброса = день первой оплаты)\n",
+        f"• Мин. интервал синхронизации с панелями: <b>{sync_sec}</b> сек\n",
+        "\n<b>Пакеты доп. ГБ</b> (хранятся в таблице <code>gb_pack_products</code>):",
+    ]
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✏️ Лимит по умолчанию (ГБ)", callback_data="admin_traffic_edit:default_gb")
+    )
+    builder.row(
+        InlineKeyboardButton(text="✏️ Интервал синхронизации (сек)", callback_data="admin_traffic_edit:sync_sec")
+    )
+    builder.row(InlineKeyboardButton(text="➕ Новый пакет ГБ", callback_data="admin_gb_pack_add"))
+    if packs:
+        for p in packs:
+            st = "✅" if p["is_active"] else "⏸"
+            lines.append(
+                f"\n{st} <b>#{p['id']}</b> {html_std.escape(str(p['title']))} — +{p['gb_amount']} ГБ, "
+                f"{p['price_rub'] // 100}₽ / {p['price_stars']}⭐"
+            )
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"✏️ #{p['id']}",
+                    callback_data=f"admin_gb_pack_manage:{p['id']}",
+                ),
+                InlineKeyboardButton(
+                    text=f"{st} вкл",
+                    callback_data=f"admin_gb_pack_toggle:{p['id']}",
+                ),
+            )
+    else:
+        lines.append("\n<i>Пакетов пока нет — добавь через «Новый пакет ГБ».</i>")
+    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+    return "\n".join(lines), builder
+
+
 class AdminStates(StatesGroup):
     BROADCAST_MESSAGE = State()
     BROADCAST_MEDIA = State()
@@ -51,6 +105,7 @@ class AdminStates(StatesGroup):
     GB_PACK_GB = State()
     GB_PACK_PRICE_RUB = State()
     GB_PACK_PRICE_STARS = State()
+    GB_PACK_EDIT_FIELD = State()
     TRIAL_DAYS = State()
     SERVER_NAME = State()
     SERVER_IP = State()
@@ -722,53 +777,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
         await state.clear()
-        async with get_connection() as conn:
-            ts = await conn.fetchrow(
-                """
-                SELECT default_monthly_gb, panel_sync_min_seconds
-                FROM traffic_settings ORDER BY id DESC LIMIT 1
-                """
-            )
-            default_gb = int(ts["default_monthly_gb"] or 50) if ts else 50
-            sync_sec = int(ts["panel_sync_min_seconds"] or 240) if ts else 240
-            packs = await conn.fetch(
-                """
-                SELECT id, title, gb_amount, price_rub, price_stars, is_active, display_order
-                FROM gb_pack_products ORDER BY display_order ASC, id ASC
-                """
-            )
-        lines = [
-            "📶 <b>Трафик и пакеты ГБ</b>\n",
-            f"• Лимит по умолчанию: <b>{default_gb} ГБ</b> / месяц (день сброса = день первой оплаты)\n",
-            f"• Мин. интервал синхронизации с панелями: <b>{sync_sec}</b> сек\n",
-            "\n<b>Пакеты доп. ГБ:</b>",
-        ]
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="✏️ Лимит по умолчанию (ГБ)", callback_data="admin_traffic_edit:default_gb")
-        )
-        builder.row(
-            InlineKeyboardButton(text="✏️ Интервал синхронизации (сек)", callback_data="admin_traffic_edit:sync_sec")
-        )
-        builder.row(InlineKeyboardButton(text="➕ Новый пакет ГБ", callback_data="admin_gb_pack_add"))
-        if packs:
-            for p in packs:
-                st = "✅" if p["is_active"] else "⏸"
-                lines.append(
-                    f"\n{st} <b>#{p['id']}</b> {p['title']} — +{p['gb_amount']} ГБ, "
-                    f"{p['price_rub'] // 100}₽ / {p['price_stars']}⭐"
-                )
-                builder.row(
-                    InlineKeyboardButton(
-                        text=f"{st} #{p['id']} {p['title'][:18]}",
-                        callback_data=f"admin_gb_pack_toggle:{p['id']}",
-                    )
-                )
-        else:
-            lines.append("\n<i>Пакетов пока нет.</i>")
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        text, builder = await _admin_traffic_panel_builder()
         await callback.message.edit_text(
-            "\n".join(lines),
+            text,
             reply_markup=builder.as_markup(),
             parse_mode="HTML",
         )
@@ -922,8 +933,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             next_ord = await conn.fetchval("SELECT COALESCE(MAX(display_order), 0) + 10 FROM gb_pack_products")
             await conn.execute(
                 """
-                INSERT INTO gb_pack_products (title, gb_amount, price_rub, price_stars, is_active, display_order)
-                VALUES ($1, $2, $3, $4, TRUE, $5)
+                INSERT INTO gb_pack_products (title, gb_amount, price_rub, price_stars, is_active, display_order, updated_at)
+                VALUES ($1, $2, $3, $4, TRUE, $5, CURRENT_TIMESTAMP)
                 """,
                 title,
                 gb,
@@ -948,12 +959,214 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             return
         async with get_connection() as conn:
             await conn.execute(
-                "UPDATE gb_pack_products SET is_active = NOT COALESCE(is_active, TRUE) WHERE id = $1",
+                """
+                UPDATE gb_pack_products
+                SET is_active = NOT COALESCE(is_active, TRUE), updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1
+                """,
                 pid,
             )
         await state.clear()
-        new_cb = callback.model_copy(update={"data": "admin_traffic"})
-        await handle_admin_traffic(new_cb, state)
+        text, builder = await _admin_traffic_panel_builder()
+        await callback.message.edit_text(
+            text,
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+        await safe_callback_answer(callback, "Статус обновлён")
+
+    @dp.callback_query(F.data.startswith("admin_gb_pack_manage:"))
+    async def handle_admin_gb_pack_manage(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        try:
+            pid = int(callback.data.split(":")[1])
+        except (IndexError, ValueError):
+            await safe_callback_answer(callback, "Ошибка id", show_alert=True)
+            return
+        await state.clear()
+        async with get_connection() as conn:
+            p = await conn.fetchrow(
+                """
+                SELECT id, title, gb_amount, price_rub, price_stars, is_active
+                FROM gb_pack_products WHERE id = $1
+                """,
+                pid,
+            )
+        if not p:
+            await safe_callback_answer(callback, "Пакет не найден", show_alert=True)
+            return
+        st = "✅ активен" if p["is_active"] else "⏸ выключен"
+        body = (
+            f"✏️ <b>Пакет #{p['id']}</b> ({st})\n\n"
+            f"• Название: <b>{html_std.escape(str(p['title']))}</b>\n"
+            f"• Объём: <b>+{p['gb_amount']} ГБ</b>\n"
+            f"• Цена (коп.): <b>{p['price_rub']}</b> ({p['price_rub'] // 100} ₽)\n"
+            f"• Stars: <b>{p['price_stars']}</b>\n\n"
+            "Выберите, что изменить:"
+        )
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(text="📝 Название", callback_data=f"admin_gb_pack_field:{pid}:title"))
+        b.row(InlineKeyboardButton(text="📦 Объём (ГБ)", callback_data=f"admin_gb_pack_field:{pid}:gb"))
+        b.row(InlineKeyboardButton(text="₽ Цена (коп.)", callback_data=f"admin_gb_pack_field:{pid}:rub"))
+        b.row(InlineKeyboardButton(text="⭐ Stars", callback_data=f"admin_gb_pack_field:{pid}:stars"))
+        b.row(InlineKeyboardButton(text="🗑 Удалить пакет", callback_data=f"admin_gb_pack_askdel:{pid}"))
+        b.row(InlineKeyboardButton(text="◀️ К списку пакетов", callback_data="admin_traffic"))
+        await callback.message.edit_text(body, reply_markup=b.as_markup(), parse_mode="HTML")
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data.startswith("admin_gb_pack_field:"))
+    async def handle_admin_gb_pack_field(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        parts = callback.data.split(":")
+        if len(parts) != 3:
+            await safe_callback_answer(callback, "Ошибка данных", show_alert=True)
+            return
+        try:
+            pid = int(parts[1])
+        except ValueError:
+            await safe_callback_answer(callback, "Ошибка id", show_alert=True)
+            return
+        field = parts[2]
+        prompts = {
+            "title": "Введите новое <b>название</b> пакета (от 2 символов):",
+            "gb": "Введите новый объём в <b>ГБ</b> (целое число, 1–100000):",
+            "rub": "Введите цену в <b>копейках</b> (целое число ≥ 0, например 9900 = 99₽):",
+            "stars": "Введите цену в <b>Telegram Stars</b> (целое число ≥ 0):",
+        }
+        if field not in prompts:
+            await safe_callback_answer(callback, "Неизвестное поле", show_alert=True)
+            return
+        await state.set_state(AdminStates.GB_PACK_EDIT_FIELD)
+        await state.update_data(gb_pack_edit_id=pid, gb_pack_edit_field=field)
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(text="◀️ Отмена", callback_data=f"admin_gb_pack_manage:{pid}"))
+        await callback.message.edit_text(
+            f"📶 <b>Редактирование пакета #{pid}</b>\n\n{prompts[field]}",
+            reply_markup=b.as_markup(),
+            parse_mode="HTML",
+        )
+        await safe_callback_answer(callback)
+
+    @dp.message(AdminStates.GB_PACK_EDIT_FIELD)
+    async def process_gb_pack_edit_field(message: Message, state: FSMContext):
+        if not is_admin(message.from_user.id, config):
+            await state.clear()
+            return
+        data = await state.get_data()
+        pid = data.get("gb_pack_edit_id")
+        field = data.get("gb_pack_edit_field")
+        if pid is None or field not in ("title", "gb", "rub", "stars"):
+            await message.answer("❌ Сессия устарела. Откройте пакет снова из админки.")
+            await state.clear()
+            return
+        raw = (message.text or "").strip()
+        try:
+            async with get_connection() as conn:
+                if field == "title":
+                    if len(raw) < 2:
+                        await message.answer("❌ Слишком короткое название")
+                        return
+                    await conn.execute(
+                        """
+                        UPDATE gb_pack_products
+                        SET title = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
+                        """,
+                        raw,
+                        int(pid),
+                    )
+                elif field == "gb":
+                    gb = int(raw)
+                    if gb < 1 or gb > 100000:
+                        await message.answer("❌ От 1 до 100000")
+                        return
+                    await conn.execute(
+                        """
+                        UPDATE gb_pack_products
+                        SET gb_amount = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
+                        """,
+                        gb,
+                        int(pid),
+                    )
+                elif field == "rub":
+                    rub = int(raw)
+                    if rub < 0:
+                        await message.answer("❌ Не может быть отрицательной")
+                        return
+                    await conn.execute(
+                        """
+                        UPDATE gb_pack_products
+                        SET price_rub = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
+                        """,
+                        rub,
+                        int(pid),
+                    )
+                elif field == "stars":
+                    stars = int(raw)
+                    if stars < 0:
+                        await message.answer("❌ Не может быть отрицательной")
+                        return
+                    await conn.execute(
+                        """
+                        UPDATE gb_pack_products
+                        SET price_stars = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
+                        """,
+                        stars,
+                        int(pid),
+                    )
+        except ValueError:
+            await message.answer("❌ Введите целое число")
+            return
+        await state.clear()
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(text="◀️ К пакету", callback_data=f"admin_gb_pack_manage:{pid}"))
+        kb.row(InlineKeyboardButton(text="📶 К списку трафика", callback_data="admin_traffic"))
+        await message.answer("✅ Сохранено", reply_markup=kb.as_markup())
+
+    @dp.callback_query(F.data.startswith("admin_gb_pack_askdel:"))
+    async def handle_admin_gb_pack_askdel(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        try:
+            pid = int(callback.data.split(":")[1])
+        except (IndexError, ValueError):
+            await safe_callback_answer(callback, "Ошибка id", show_alert=True)
+            return
+        await state.clear()
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"admin_gb_pack_del:{pid}"))
+        b.row(InlineKeyboardButton(text="◀️ Нет, назад", callback_data=f"admin_gb_pack_manage:{pid}"))
+        await callback.message.edit_text(
+            f"🗑 Удалить пакет <b>#{pid}</b> из базы?\nЭто действие необратимо.",
+            reply_markup=b.as_markup(),
+            parse_mode="HTML",
+        )
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data.startswith("admin_gb_pack_del:"))
+    async def handle_admin_gb_pack_del(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        try:
+            pid = int(callback.data.split(":")[1])
+        except (IndexError, ValueError):
+            await safe_callback_answer(callback, "Ошибка id", show_alert=True)
+            return
+        await state.clear()
+        async with get_connection() as conn:
+            await conn.execute("DELETE FROM gb_pack_products WHERE id = $1", pid)
+        text, builder = await _admin_traffic_panel_builder()
+        await callback.message.edit_text(
+            text,
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+        await safe_callback_answer(callback, "Пакет удалён")
     
     # Управление скидками
     @dp.callback_query(F.data == "admin_discounts")

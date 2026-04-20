@@ -470,24 +470,47 @@ async def init_db() -> None:
         except Exception as e:
             logging.warning(f"Could not create traffic_settings: {e}")
 
-        # Пакеты дополнительного трафика (ГБ)
+        # Пакеты дополнительного трафика (ГБ) — хранятся в БД, редактируются в админке
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS gb_pack_products (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                gb_amount INTEGER NOT NULL,
+                price_rub INTEGER NOT NULL DEFAULT 0,
+                price_stars INTEGER NOT NULL DEFAULT 0,
+                is_active BOOLEAN DEFAULT TRUE,
+                display_order INTEGER DEFAULT 100,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         try:
-            await conn.execute(
+            gbp_cols = await conn.fetch(
                 """
-                CREATE TABLE IF NOT EXISTS gb_pack_products (
-                    id SERIAL PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    gb_amount INTEGER NOT NULL,
-                    price_rub INTEGER NOT NULL DEFAULT 0,
-                    price_stars INTEGER NOT NULL DEFAULT 0,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    display_order INTEGER DEFAULT 100,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'gb_pack_products'
                 """
             )
+            gbp_existing = {r["column_name"] for r in gbp_cols}
+            if "updated_at" not in gbp_existing:
+                await conn.execute(
+                    "ALTER TABLE gb_pack_products ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                )
+                logging.info("Added updated_at column to gb_pack_products")
+            if "display_order" not in gbp_existing:
+                await conn.execute(
+                    "ALTER TABLE gb_pack_products ADD COLUMN display_order INTEGER DEFAULT 100"
+                )
+                logging.info("Added display_order column to gb_pack_products")
+            if "is_active" not in gbp_existing:
+                await conn.execute(
+                    "ALTER TABLE gb_pack_products ADD COLUMN is_active BOOLEAN DEFAULT TRUE"
+                )
+                logging.info("Added is_active column to gb_pack_products")
         except Exception as e:
-            logging.warning(f"Could not create gb_pack_products: {e}")
+            logging.warning(f"Could not migrate gb_pack_products columns: {e}")
         
         # Таблица для менеджеров (техподдержка)
         try:
