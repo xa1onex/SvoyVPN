@@ -831,6 +831,32 @@ async def get_subscription_status(user_id: int) -> str:
     return "неактивен"
 
 
+async def get_subscription_status_display(user_id: int) -> str:
+    """
+    Текст для главного меню: статус подписки + строка лимита трафика
+    (только при активной подписке и включённом учёте трафика).
+    """
+    base = await get_subscription_status(user_id)
+    if base == "неактивен":
+        return base
+    try:
+        from .traffic import user_traffic_snapshot
+
+        async with get_connection() as conn:
+            snap = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
+        if not snap.get("trafficEnforced"):
+            return base
+        used = float(snap.get("usedGb") or 0)
+        limit = float(snap.get("limitGb") or 0)
+        bonus = int(snap.get("bonusGb") or 0)
+        if bonus > 0:
+            return f"{base}\n📊 Трафик: {used:.1f} / {limit:.0f} ГБ (вкл. +{bonus} ГБ пакетами)"
+        return f"{base}\n📊 Трафик: {used:.1f} / {limit:.0f} ГБ в месяц"
+    except Exception as e:
+        logger.error("get_subscription_status_display: %s", e)
+        return base
+
+
 async def update_vless_links_for_server(server_id: int) -> None:
     """
     Обновляет VLESS ссылки для всех пользователей при редактировании сервера.

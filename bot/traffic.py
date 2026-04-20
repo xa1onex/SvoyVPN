@@ -253,16 +253,23 @@ async def sync_user_traffic_bytes_from_panels(conn, user_id: int, min_interval_s
     return int(row["traffic_used_bytes"] or 0)
 
 
-def blocked_traffic_vless(used_bytes: int, limit_bytes: int) -> str:
+def blocked_traffic_vless(used_bytes: int, limit_bytes: int, bot_username: str | None = None) -> str:
+    """Две «пустые» строки подписки: факт лимита и подсказка открыть бота для докупки."""
     from urllib.parse import quote
 
+    handle = (bot_username or "SvoyVPN_robot").strip().lstrip("@")
     used_g = used_bytes / BYTES_PER_GB
     lim_g = limit_bytes / BYTES_PER_GB
-    name = quote(f"Лимит трафика ({used_g:.1f}/{lim_g:.0f} ГБ)", safe="")
-    return (
-        "vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1"
-        f"?type=tcp&security=none&flow=none#{name}"
+    name1 = quote(f"Лимит трафика ({used_g:.1f}/{lim_g:.0f} ГБ)", safe="")
+    name2 = quote(
+        f"Лимит исчерпан — увеличить: @{handle} → Подписка → «Увеличить лимит»",
+        safe="",
     )
+    fake = (
+        "vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1"
+        "?type=tcp&security=none&flow=none#"
+    )
+    return f"{fake}{name1}\n{fake}{name2}"
 
 
 async def apply_subscription_anchor_on_payment(conn, user_id: int) -> None:

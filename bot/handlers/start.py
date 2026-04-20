@@ -10,7 +10,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
 
 from ..database import get_connection, generate_subscription_token, ensure_subscription_token
-from ..subscriptions import get_subscription_status, get_user_subscription_url
+from ..subscriptions import get_subscription_status_display, get_user_subscription_url
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,20 @@ async def setup_start_handler(dp, bot: Bot, config):
         
         # Парсим deep link аргумент
         deep_link_arg = args[1] if len(args) > 1 else None
+
+        # Докупка трафика по ссылке t.me/Bot?start=traffic
+        if deep_link_arg in ("traffic", "boost"):
+            async with get_connection() as conn:
+                exists = await conn.fetchval("SELECT 1 FROM users WHERE user_id = $1", user_id)
+            if exists:
+                from .subscription import send_traffic_packs_menu
+                await send_traffic_packs_menu(bot, message, config, edit=False)
+            else:
+                await message.answer(
+                    "Сначала нажми <b>/start</b> без параметров, затем открой ссылку снова.",
+                    parse_mode="HTML",
+                )
+            return
         
         # ── Android Auth Confirmation ──
         if deep_link_arg and deep_link_arg.startswith('auth_'):
@@ -51,7 +65,13 @@ async def setup_start_handler(dp, bot: Bot, config):
             return
 
         referral_code = deep_link_arg[4:] if deep_link_arg and deep_link_arg.startswith('ref_') else None
-        utm_tag = deep_link_arg if deep_link_arg and not deep_link_arg.startswith('ref_') else None
+        utm_tag = (
+            deep_link_arg
+            if deep_link_arg
+            and not deep_link_arg.startswith('ref_')
+            and deep_link_arg not in ('traffic', 'boost')
+            else None
+        )
         
         async with get_connection() as conn:
             user = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
@@ -257,7 +277,7 @@ async def setup_start_handler(dp, bot: Bot, config):
                     except Exception as e:
                         logger.warning(f"Could not log UTM visit for existing user: {e}")
                 
-                subscription_status = await get_subscription_status(user_id)
+                subscription_status = await get_subscription_status_display(user_id)
                 await message.answer(
                     await get_main_text(first_name, subscription_status, user_id),
                     parse_mode="HTML",
@@ -367,11 +387,35 @@ async def get_main_keyboard(user_id: int, config):
     if show_trial:
         builder.row(InlineKeyboardButton(text="🆓 Пробный период", callback_data="activate_trial"))
 
-    
-    builder.row(
-        InlineKeyboardButton(text="💳 Подписка", callback_data="open_premium"),
-        InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite")
-    )
+    show_traffic_boost = False
+    try:
+        from ..database import get_connection as _gc
+        async with _gc() as _conn:
+            u2 = await _conn.fetchrow(
+                "SELECT pay_subscribed, subscription_end FROM users WHERE user_id = $1",
+                user_id,
+            )
+        if u2 and u2["pay_subscribed"] and u2["subscription_end"]:
+            ed = u2["subscription_end"]
+            if isinstance(ed, str):
+                ed = datetime.strptime(ed.split()[0], "%Y-%m-%d").date()
+            elif hasattr(ed, "date"):
+                ed = ed.date()
+            show_traffic_boost = ed >= datetime.now().date()
+    except Exception as e:
+        logger.error(f"Error checking subscription for traffic button: {e}")
+
+    if show_traffic_boost:
+        builder.row(
+            InlineKeyboardButton(text="💳 Подписка", callback_data="open_premium"),
+            InlineKeyboardButton(text="📶 Лимит", callback_data="open_traffic_packs"),
+            InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(text="💳 Подписка", callback_data="open_premium"),
+            InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
+        )
     builder.row(
         InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"),
     )
@@ -476,8 +520,8 @@ async def setup_other_handlers(dp, bot: Bot, config):
         """Обработчик кнопки Назад"""
         user_id = callback.from_user.id
         first_name = callback.from_user.first_name or "Пользователь"
-        from ..subscriptions import get_subscription_status
-        subscription_status = await get_subscription_status(user_id)
+        from ..subscriptions import get_subscription_status_display
+        subscription_status = await get_subscription_status_display(user_id)
         
         await callback.message.edit_text(
             text=await get_main_text(first_name, subscription_status, user_id),

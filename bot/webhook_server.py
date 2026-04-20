@@ -151,12 +151,14 @@ class WebhookServer:
         bot_instance=None,
         yookassa_client=None,
         payment_processor=None,
-        admin_ids: list[int] = None
+        admin_ids: list[int] = None,
+        bot_public_username: str | None = None,
     ):
         self.flyer_config = flyer_config
         self.yookassa_config = yookassa_config
         self.cryptopay_config = cryptopay_config
         self.bot = bot_instance
+        self.bot_public_username = (bot_public_username or "").strip().lstrip("@") or None
         WebhookServer._notify_bot = bot_instance
         self.yookassa_client = yookassa_client
         self.payment_processor = payment_processor
@@ -411,7 +413,14 @@ class WebhookServer:
                         traffic_blocked = True
 
                 if is_active and traffic_blocked:
-                    body = blocked_traffic_vless(used_bytes, limit_bytes)
+                    cta_name = self.bot_public_username
+                    if not cta_name and self.bot:
+                        try:
+                            me = await self.bot.get_me()
+                            cta_name = (me.username or None) if me else None
+                        except Exception:
+                            cta_name = None
+                    body = blocked_traffic_vless(used_bytes, limit_bytes, cta_name)
                 else:
                     body = "\n".join([k["vless_link"] for k in keys if k.get("vless_link")])
 

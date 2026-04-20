@@ -13,6 +13,10 @@ class XUIConfig(BaseModel):
 class BotConfig(BaseModel):
     bot_token: str
     admin_ids: list[int] = Field(default_factory=list)
+    public_username: str | None = Field(
+        None,
+        description="Username бота без @ (для ссылок в подписке / Happ). Иначе BOT_PUBLIC_USERNAME из .env",
+    )
 
 
 class DatabaseConfig(BaseModel):
@@ -64,9 +68,11 @@ def load_config() -> AppConfig:
     """Load configuration from environment (.env)."""
     load_dotenv()
 
+    _pub = os.getenv("BOT_PUBLIC_USERNAME", "").strip().lstrip("@") or None
     bot = BotConfig(
         bot_token=os.environ["BOT_TOKEN"],
         admin_ids=[int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()],
+        public_username=_pub,
     )
 
     xui = XUIConfig(

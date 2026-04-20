@@ -2,6 +2,7 @@
 Обработчики подписки и получения VPN ссылки
 """
 import logging
+import time
 from datetime import datetime
 from aiogram import Bot, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
@@ -41,6 +42,76 @@ ONBOARDING_APPS = {
         {"id": "v2raytun", "name": "V2RayTun", "url": "https://apps.apple.com/app/v2raytun/id6476628951"}
     ]
 }
+
+
+async def send_traffic_packs_menu(bot: Bot, event: Message | CallbackQuery, config: AppConfig, *, edit: bool = False) -> None:
+    """Список пакетов доп. ГБ (из главного меню, /start traffic или кнопки «Лимит»)."""
+    if isinstance(event, CallbackQuery):
+        message = event.message
+        user_id = event.from_user.id
+    else:
+        message = event
+        user_id = event.from_user.id
+
+    async with get_connection() as conn:
+        ok_sub = await conn.fetchval(
+            """
+            SELECT CASE
+                WHEN pay_subscribed = TRUE AND subscription_end IS NOT NULL
+                     AND DATE(subscription_end) >= CURRENT_DATE
+                THEN TRUE ELSE FALSE END
+            FROM users WHERE user_id = $1
+            """,
+            user_id,
+        )
+        packs = await conn.fetch(
+            """
+            SELECT id, title, gb_amount, price_rub, price_stars
+            FROM gb_pack_products
+            WHERE is_active = TRUE
+            ORDER BY display_order ASC, id ASC
+            """,
+        )
+
+    if not ok_sub:
+        text = (
+            "📶 <b>Дополнительный трафик</b>\n\n"
+            "Доступно только при <b>активной подписке</b>.\n"
+            "Сначала оформи или продли VPN в разделе «Подписка»."
+        )
+    elif not packs:
+        text = (
+            "📶 <b>Дополнительный трафик</b>\n\n"
+            "Пакеты сейчас недоступны. Загляни позже или напиши в поддержку."
+        )
+    else:
+        parts = [
+            "📶 <b>Увеличить лимит трафика</b>\n",
+            "Объём добавится к текущему месячному лимиту:\n",
+        ]
+        for p in packs:
+            parts.append(
+                f"• <b>{p['title']}</b> — +{p['gb_amount']} ГБ — "
+                f"{format_price_both(p['price_rub'], p['price_stars'])}"
+            )
+        text = "\n".join(parts)
+
+    builder = InlineKeyboardBuilder()
+    if ok_sub and packs:
+        for p in packs:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"+{p['gb_amount']} ГБ — {p['title'][:24]}",
+                    callback_data=f"traffic_pack_choose:{int(p['id'])}",
+                )
+            )
+    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
+    markup = builder.as_markup()
+
+    if edit and isinstance(event, CallbackQuery):
+        await message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+    else:
+        await message.answer(text, parse_mode="HTML", reply_markup=markup)
 
 
 async def should_show_discount(days_remaining: int) -> bool:
@@ -350,7 +421,22 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
         else:
             text += "✅ Ваш VPN <b>активен</b>!\n"
         text += "Вы можете пользоваться приложением.\n\n"
-        
+        try:
+            from ..traffic import user_traffic_snapshot
+
+            async with get_connection() as conn:
+                snap = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
+            if snap.get("trafficEnforced"):
+                u_g = float(snap.get("usedGb") or 0)
+                l_g = float(snap.get("limitGb") or 0)
+                b_g = int(snap.get("bonusGb") or 0)
+                text += f"📊 <b>Трафик</b>: {u_g:.1f} / {l_g:.0f} ГБ"
+                if b_g > 0:
+                    text += f" (вкл. +{b_g} ГБ пакетами)"
+                text += "\n\n"
+        except Exception as e:
+            logger.warning("build_subscription_message traffic line: %s", e)
+
         if show_discount:
             text += "🎁 <b>Специальное предложение!</b>\n\n"
             text += "🔥 Успей продлить <b>VPN</b> по специальной цене:\n\n"
@@ -364,7 +450,9 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
             text += "\n"
         else:
             text += "💡 Вы можете продлить подписку в любое время:\n\n"
-            
+
+        builder.row(InlineKeyboardButton(text="📶 Увеличить лимит трафика", callback_data="open_traffic_packs"))
+
         # Кнопки для продления (с использованием уже подготовленных current_tariffs)
         for plan_id, plan_data in current_tariffs.items():
             builder.button(
@@ -881,16 +969,206 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             logger.error(f"Error checking Crypto Pay payment: {e}", exc_info=True)
             await callback.answer("❌ Ошибка при проверке. Попробуйте позже.", show_alert=True)
 
+    @dp.callback_query(F.data == "open_traffic_packs")
+    async def handle_open_traffic_packs(callback: CallbackQuery):
+        await send_traffic_packs_menu(bot, callback, config, edit=True)
+        await callback.answer()
+
+    @dp.callback_query(F.data.startswith("traffic_pack_choose:"))
+    async def handle_traffic_pack_choose(callback: CallbackQuery):
+        user_id = callback.from_user.id
+        try:
+            pack_id = int(callback.data.split(":")[1])
+        except (IndexError, ValueError):
+            await callback.answer("❌ Неверный пакет", show_alert=True)
+            return
+
+        async with get_connection() as conn:
+            ok_sub = await conn.fetchval(
+                """
+                SELECT CASE
+                    WHEN pay_subscribed = TRUE AND subscription_end IS NOT NULL
+                         AND DATE(subscription_end) >= CURRENT_DATE
+                    THEN TRUE ELSE FALSE END
+                FROM users WHERE user_id = $1
+                """,
+                user_id,
+            )
+            pack = await conn.fetchrow(
+                """
+                SELECT id, title, gb_amount, price_rub, price_stars
+                FROM gb_pack_products
+                WHERE id = $1 AND is_active = TRUE
+                """,
+                pack_id,
+            )
+
+        if not ok_sub:
+            await callback.answer("Нужна активная подписка", show_alert=True)
+            return
+        if not pack:
+            await callback.answer("Пакет недоступен", show_alert=True)
+            return
+
+        text = (
+            f"📶 <b>Оплата пакета</b>\n\n"
+            f"{pack['title']} — <b>+{pack['gb_amount']} ГБ</b> к лимиту\n\n"
+            "Выберите способ оплаты:"
+        )
+        b = InlineKeyboardBuilder()
+        if int(pack["price_stars"] or 0) >= 1:
+            b.row(
+                InlineKeyboardButton(
+                    text=f"⭐ Telegram Stars ({format_price_stars(pack['price_stars'])})",
+                    callback_data=f"traffic_pack_pay:{pack_id}:stars",
+                )
+            )
+        if config.yookassa.enabled and int(pack["price_rub"] or 0) >= 100:
+            b.row(
+                InlineKeyboardButton(
+                    text=f"💳 Карта ({format_price_rub(pack['price_rub'])})",
+                    callback_data=f"traffic_pack_pay:{pack_id}:yookassa",
+                )
+            )
+        b.row(InlineKeyboardButton(text="◀️ К списку пакетов", callback_data="open_traffic_packs"))
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
+        await callback.answer()
+
+    @dp.callback_query(F.data.startswith("traffic_pack_pay:"))
+    async def handle_traffic_pack_pay(callback: CallbackQuery):
+        parts = callback.data.split(":")
+        if len(parts) < 3:
+            await callback.answer("❌ Ошибка данных", show_alert=True)
+            return
+        try:
+            pack_id = int(parts[1])
+        except ValueError:
+            await callback.answer("❌ Ошибка данных", show_alert=True)
+            return
+        method_id = parts[2]
+        user_id = callback.from_user.id
+
+        async with get_connection() as conn:
+            ok_sub = await conn.fetchval(
+                """
+                SELECT CASE
+                    WHEN pay_subscribed = TRUE AND subscription_end IS NOT NULL
+                         AND DATE(subscription_end) >= CURRENT_DATE
+                    THEN TRUE ELSE FALSE END
+                FROM users WHERE user_id = $1
+                """,
+                user_id,
+            )
+            pack = await conn.fetchrow(
+                """
+                SELECT id, title, gb_amount, price_rub, price_stars
+                FROM gb_pack_products
+                WHERE id = $1 AND is_active = TRUE
+                """,
+                pack_id,
+            )
+
+        if not ok_sub or not pack:
+            await callback.answer("Пакет или подписка недоступны", show_alert=True)
+            return
+
+        if method_id not in PAYMENT_METHODS:
+            await callback.answer("❌ Неизвестный способ оплаты", show_alert=True)
+            return
+        method_data = PAYMENT_METHODS[method_id]
+
+        if method_id == "yookassa":
+            if not config.yookassa.enabled:
+                await callback.answer("❌ ЮKassa не настроена", show_alert=True)
+                return
+            price = int(pack["price_rub"])
+            if price < 100:
+                await callback.answer("❌ Минимальная сумма — 1 ₽", show_alert=True)
+                return
+            try:
+                yk = YooKassaClient(config.yookassa)
+                bot_info = await bot.get_me()
+                bot_username = bot_info.username or "bot"
+                amount_rub = price / 100.0
+                payment_data = yk.create_payment(
+                    amount=amount_rub,
+                    description=f"Доп. трафик VPN — {pack['title']}",
+                    return_url=f"https://t.me/{bot_username}?start=payment_success",
+                    metadata={
+                        "user_id": user_id,
+                        "product_type": "gb_pack",
+                        "pack_id": pack_id,
+                        "payment_source": "bot",
+                    },
+                )
+                payment_id = payment_data["id"]
+                confirmation_url = payment_data["confirmation_url"]
+                async with get_connection() as conn:
+                    await conn.execute(
+                        """
+                        INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        """,
+                        user_id,
+                        price,
+                        "RUB",
+                        f"gb_pack:{pack_id}",
+                        "gb_pack",
+                        "pending",
+                        payment_id,
+                    )
+                pay_kb = InlineKeyboardBuilder()
+                pay_kb.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=confirmation_url))
+                pay_kb.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"traffic_pack_choose:{pack_id}"))
+                await callback.message.edit_text(
+                    f"💳 <b>Оплата пакета</b>\n\n"
+                    f"{pack['title']} — +{pack['gb_amount']} ГБ\n"
+                    f"Сумма: <i>{format_price_rub(price)}</i>\n\n"
+                    "После оплаты ГБ начислятся автоматически.",
+                    parse_mode="HTML",
+                    reply_markup=pay_kb.as_markup(),
+                )
+                await callback.answer()
+            except Exception as e:
+                logger.error("traffic_pack yookassa: %s", e, exc_info=True)
+                await callback.answer("❌ Ошибка создания платежа", show_alert=True)
+            return
+
+        if method_id == "stars":
+            price = int(pack["price_stars"] or 0)
+            if price < 1:
+                await callback.answer("❌ Неверная цена", show_alert=True)
+                return
+            ts = int(time.time())
+            payload = f"stars_gbpack_{user_id}_{pack_id}_{ts}"
+            try:
+                await bot.send_invoice(
+                    chat_id=callback.message.chat.id,
+                    title=f"Доп. трафик: {pack['title']}",
+                    description=f"+{pack['gb_amount']} ГБ к месячному лимиту",
+                    provider_token=method_data.get("provider_token", ""),
+                    currency=method_data["currency"],
+                    prices=[LabeledPrice(label=str(pack["title"])[:32], amount=price)],
+                    payload=payload,
+                    start_parameter=f"gbp{pack_id}",
+                )
+                await callback.answer()
+            except Exception as e:
+                logger.error("traffic_pack stars invoice: %s", e, exc_info=True)
+                await callback.answer("❌ Не удалось выставить счёт", show_alert=True)
+            return
+
+        await callback.answer("❌ Способ оплаты не поддерживается", show_alert=True)
 
     @dp.callback_query(F.data == "go_back_subscription")
     async def handle_go_back_subscription(callback: CallbackQuery, state: FSMContext):
         """Возврат на главное меню"""
         user_id = callback.from_user.id
         first_name = callback.from_user.first_name or "Пользователь"
-        from ..subscriptions import get_subscription_status
+        from ..subscriptions import get_subscription_status_display
         from ..handlers.start import get_main_text, get_main_keyboard
         
-        subscription_status = await get_subscription_status(user_id)
+        subscription_status = await get_subscription_status_display(user_id)
         
         try:
             await callback.message.edit_text(
