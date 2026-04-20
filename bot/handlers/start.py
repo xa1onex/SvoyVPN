@@ -14,6 +14,11 @@ from ..subscriptions import get_subscription_status_display, get_user_subscripti
 
 logger = logging.getLogger(__name__)
 
+# Публичная оферта и политика конфиденциальности (актуальная версия на Telegraph)
+OFFER_PRIVACY_TELEGRAPH_URL = (
+    "https://telegra.ph/PUBLICHNAYA-OFERTA-I-POLITIKA-KONFIDENCIALNOSTI-04-20"
+)
+
 
 async def setup_start_handler(dp, bot: Bot, config):
     """Настраивает обработчик /start"""
@@ -252,7 +257,8 @@ async def setup_start_handler(dp, bot: Bot, config):
                     "• Обход блокировок\n"
                     "• Высокая скорость\n\n"
                     "👉 Больше информации в разделе <b>помощь</b> - /help\n\n"
-                    "‼️ Продолжая использовать бота, вы принимаете <a href='https://telegra.ph/Konfidencialnost-i-usloviya-02-01'>нашу политику и конфиденциальность</a>!\n\n"
+                    f"‼️ Продолжая использовать бота, вы принимаете "
+                    f"<a href='{OFFER_PRIVACY_TELEGRAPH_URL}'>публичную оферту и политику конфиденциальности</a>!\n\n"
                 ])
 
                 welcome_msg = "".join(welcome_msg_parts)
@@ -560,10 +566,18 @@ async def setup_other_handlers(dp, bot: Bot, config):
         builder = InlineKeyboardBuilder()
         if support_link:
             builder.row(InlineKeyboardButton(text="🛟 Техподдержка", url=support_link))
+        builder.row(
+            InlineKeyboardButton(
+                text="📄 Оферта и политика конфиденциальности",
+                url=OFFER_PRIVACY_TELEGRAPH_URL,
+            )
+        )
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
-        
+
         help_text = (
             "🤖<b>VPN бот</b> — быстрый и надежный VPN сервис\n\n"
+            f"📄 <a href=\"{OFFER_PRIVACY_TELEGRAPH_URL}\">Публичная оферта и политика конфиденциальности</a> "
+            "— условия услуги и обработки персональных данных.\n\n"
             "<b>Бот предоставляет</b>:\n"
             "• Быстрый и безопасный VPN\n"
             "• Обход всех блокировок\n"
@@ -588,13 +602,15 @@ async def setup_other_handlers(dp, bot: Bot, config):
             await callback.message.edit_text(
                 help_text,
                 reply_markup=builder.as_markup(),
-                parse_mode="HTML"
+                parse_mode="HTML",
+                disable_web_page_preview=True,
             )
         else:
             await message.answer(
                 help_text,
                 reply_markup=builder.as_markup(),
-                parse_mode="HTML"
+                parse_mode="HTML",
+                disable_web_page_preview=True,
             )
     
     # Админ-панель обрабатывается в admin.py
