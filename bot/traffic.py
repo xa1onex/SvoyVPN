@@ -359,7 +359,7 @@ def blocked_traffic_vless(
     lim_g = limit_bytes / BYTES_PER_GB
     name1 = quote(f"Лимит трафика ({used_g:.1f}/{lim_g:.0f} ГБ)", safe="")
     name2 = quote(
-        f"Увеличить лимит: @{handle} → Подписка → «Увеличить лимит»",
+        f"Увеличить: @{handle} → Подписка → «Увеличить лимит»",
         safe="",
     )
     fake = (
