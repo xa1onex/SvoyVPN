@@ -253,8 +253,49 @@ async def sync_user_traffic_bytes_from_panels(conn, user_id: int, min_interval_s
     return int(row["traffic_used_bytes"] or 0)
 
 
-def blocked_traffic_vless(used_bytes: int, limit_bytes: int, bot_username: str | None = None) -> str:
-    """Две «пустые» строки подписки: факт лимита и подсказка открыть бота для докупки."""
+def subscription_relay_hint_vless(
+    bot_username: str | None = None,
+    public_site_url: str | None = None,
+) -> str:
+    """
+    Информационная строка подписки (не рабочий узел): «безлимит» для Telegram и сайта,
+    чтобы пользователь мог зайти в бота / на сайт и продлить подписку или докупить трафик.
+    """
+    from urllib.parse import quote, urlparse
+
+    handle = (bot_username or "SvoyVPN_robot").strip().lstrip("@")
+    site_host = ""
+    if public_site_url:
+        u = (public_site_url or "").strip()
+        if u and not u.startswith("http"):
+            u = "https://" + u.lstrip("/")
+        try:
+            site_host = (urlparse(u).netloc or "").strip()
+            if not site_host:
+                site_host = u.replace("https://", "").replace("http://", "").split("/")[0].strip()
+        except Exception:
+            site_host = ""
+    if not site_host:
+        site_host = "сайт"
+    # Отдельный UUID от «лимит»-строк, чтобы в клиенте выглядело как отдельный пункт.
+    name = quote(
+        f"БЕЗЛИМИТ: Telegram + {site_host} — продлить @{handle}",
+        safe="",
+    )
+    fake = (
+        "vless://11111111-1111-1111-1111-111111111111@0.0.0.0:1"
+        "?type=tcp&security=none&flow=none#"
+    )
+    return f"{fake}{name}"
+
+
+def blocked_traffic_vless(
+    used_bytes: int,
+    limit_bytes: int,
+    bot_username: str | None = None,
+    public_site_url: str | None = None,
+) -> str:
+    """Три «пустые» строки: лимит, докупка трафика, подсказка TG+сайт для продления."""
     from urllib.parse import quote
 
     handle = (bot_username or "SvoyVPN_robot").strip().lstrip("@")
@@ -269,7 +310,8 @@ def blocked_traffic_vless(used_bytes: int, limit_bytes: int, bot_username: str |
         "vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1"
         "?type=tcp&security=none&flow=none#"
     )
-    return f"{fake}{name1}\n{fake}{name2}"
+    hint = subscription_relay_hint_vless(handle, public_site_url)
+    return f"{fake}{name1}\n{fake}{name2}\n{hint}"
 
 
 async def apply_subscription_anchor_on_payment(conn, user_id: int) -> None:

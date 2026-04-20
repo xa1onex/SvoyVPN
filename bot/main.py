@@ -224,6 +224,7 @@ async def main():
         payment_processor=payment_processor,
         admin_ids=config.bot.admin_ids,
         bot_public_username=config.bot.public_username,
+        subscription_public_base_url=config.subscription_base_url,
     )
     
     logger.info(f"Payment methods: YooKassa={'ENABLED' if config.yookassa.enabled else 'DISABLED'}, CryptoPay={'ENABLED' if config.cryptopay.enabled else 'DISABLED'} (testnet={config.cryptopay.testnet})")

@@ -36,6 +36,7 @@ from .plans import get_subscription_plans, get_renewal_plans
 from .traffic import (
     user_traffic_snapshot,
     blocked_traffic_vless,
+    subscription_relay_hint_vless,
     apply_subscription_anchor_on_payment,
 )
 from . import esim_service
@@ -153,12 +154,16 @@ class WebhookServer:
         payment_processor=None,
         admin_ids: list[int] = None,
         bot_public_username: str | None = None,
+        subscription_public_base_url: str | None = None,
     ):
         self.flyer_config = flyer_config
         self.yookassa_config = yookassa_config
         self.cryptopay_config = cryptopay_config
         self.bot = bot_instance
         self.bot_public_username = (bot_public_username or "").strip().lstrip("@") or None
+        self.subscription_public_base_url = (
+            (subscription_public_base_url or "").strip().rstrip("/") or None
+        )
         WebhookServer._notify_bot = bot_instance
         self.yookassa_client = yookassa_client
         self.payment_processor = payment_processor
@@ -412,17 +417,25 @@ class WebhookServer:
                     if snap.get("trafficEnforced") and snap.get("trafficExceeded"):
                         traffic_blocked = True
 
+                cta_name = self.bot_public_username
+                if not cta_name and self.bot:
+                    try:
+                        me = await self.bot.get_me()
+                        cta_name = (me.username or None) if me else None
+                    except Exception:
+                        cta_name = None
+                site_url = self.subscription_public_base_url
+
                 if is_active and traffic_blocked:
-                    cta_name = self.bot_public_username
-                    if not cta_name and self.bot:
-                        try:
-                            me = await self.bot.get_me()
-                            cta_name = (me.username or None) if me else None
-                        except Exception:
-                            cta_name = None
-                    body = blocked_traffic_vless(used_bytes, limit_bytes, cta_name)
+                    body = blocked_traffic_vless(used_bytes, limit_bytes, cta_name, site_url)
                 else:
-                    body = "\n".join([k["vless_link"] for k in keys if k.get("vless_link")])
+                    link_lines = [k["vless_link"] for k in keys if k.get("vless_link")]
+                    hint = subscription_relay_hint_vless(cta_name, site_url)
+                    if not is_active:
+                        # Подписка неактивна: к реальным ключам (если есть) добавляем подсказку TG+сайт.
+                        body = "\n".join(link_lines) + ("\n" if link_lines else "") + hint
+                    else:
+                        body = "\n".join(link_lines)
 
                 logger.info(
                     f"Returning subscription for user {user_id}: {len(keys)} keys, active={is_active}, "
