@@ -121,6 +121,7 @@ class AdminStates(StatesGroup):
     REFERRAL_INVITED_DAYS = State()
     DISCOUNT_DAYS_THRESHOLD = State()
     TRAFFIC_SETTING_VALUE = State()
+    TRAFFIC_TG_RELAY_SERVER_ID = State()
     GB_PACK_TITLE = State()
     GB_PACK_GB = State()
     GB_PACK_PRICE_RUB = State()
@@ -841,6 +842,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 """
             )
         builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(
+                text="⌨️ Указать по ID (любой сервер в БД)",
+                callback_data="admin_traffic_tg_relay_by_id",
+            )
+        )
         for s in servers:
             nm = (s["name"] or "")[:40]
             builder.row(
@@ -861,17 +868,79 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             "При превышении месячного лимита в подписке пользователь увидит "
             "<b>одну</b> рабочую ссылку на выбранный узел (в клиенте имя <b>ТГ БЕЗЛИМИТ</b>). "
             "Ограничение «только Telegram» задаётся в <b>Xray</b> на inbound этого сервера.\n\n"
-            "Выберите сервер:",
+            "Выберите активный сервер из списка или укажите <b>ID вручную</b> (в т.ч. выключенный в продаже).",
             reply_markup=builder.as_markup(),
             parse_mode="HTML",
         )
         await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data == "admin_traffic_tg_relay_by_id")
+    async def handle_admin_traffic_tg_relay_by_id(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        await state.set_state(AdminStates.TRAFFIC_TG_RELAY_SERVER_ID)
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(text="◀️ К списку серверов", callback_data="admin_traffic_tg_relay_pick"))
+        b.row(InlineKeyboardButton(text="◀️ К трафику", callback_data="admin_traffic"))
+        await callback.message.edit_text(
+            "⌨️ <b>ID сервера для «ТГ безлимит»</b>\n\n"
+            "Отправьте одним сообщением <b>числовой id</b> записи в таблице серверов "
+            "(тот же номер, что в админке «Серверы» — колонка id).\n\n"
+            "Так можно привязать узел, которого <b>нет</b> в списке выше (например, выключен для продажи, "
+            "но оставлен для реле).",
+            reply_markup=b.as_markup(),
+            parse_mode="HTML",
+        )
+        await safe_callback_answer(callback)
+
+    @dp.message(AdminStates.TRAFFIC_TG_RELAY_SERVER_ID)
+    async def process_admin_traffic_tg_relay_server_id(message: Message, state: FSMContext):
+        if not is_admin(message.from_user.id, config):
+            await message.answer("❌ Нет доступа")
+            await state.clear()
+            return
+        raw = (message.text or "").strip()
+        try:
+            sid = int(raw)
+        except ValueError:
+            await message.answer("❌ Нужно целое число — id сервера (например <code>12</code>).", parse_mode="HTML")
+            return
+        if sid < 1:
+            await message.answer("❌ ID должен быть положительным.")
+            return
+        async with get_connection() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, name, is_active FROM servers WHERE id = $1",
+                sid,
+            )
+            if not row:
+                await message.answer(f"❌ Сервера с id=<b>{sid}</b> в базе нет.", parse_mode="HTML")
+                return
+            await conn.execute(
+                """
+                UPDATE traffic_settings
+                SET tg_relay_server_id = $1, updated_at = CURRENT_TIMESTAMP
+                WHERE id = (SELECT id FROM traffic_settings ORDER BY id DESC LIMIT 1)
+                """,
+                sid,
+            )
+        await state.clear()
+        nm = html_std.escape(str(row["name"] or ""))
+        st = "активен" if row["is_active"] else "⚠️ выключен в продаже"
+        text, builder = await _admin_traffic_panel_builder()
+        await message.answer(
+            f"✅ «ТГ безлимит» → сервер <b>#{sid}</b> {nm} ({st}).",
+            parse_mode="HTML",
+        )
+        await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
 
     @dp.callback_query(F.data.startswith("admin_traffic_tg_relay_set:"))
     async def handle_admin_traffic_tg_relay_set(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
             await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
+        await state.clear()
         try:
             sid = int(callback.data.split(":")[1])
         except (IndexError, ValueError):
@@ -899,6 +968,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         if not is_admin(callback.from_user.id, config):
             await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
+        await state.clear()
         async with get_connection() as conn:
             await conn.execute(
                 """

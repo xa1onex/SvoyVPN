@@ -429,10 +429,11 @@ class WebhookServer:
                 site_url = self.subscription_public_base_url
 
                 if is_active and traffic_blocked:
-                    # Только один узел «ТГ БЕЗЛИМИТ» (сервер задаётся в админке); без выбора — плейсхолдеры.
+                    # Рабочий узел «ТГ БЕЗЛИМИТ» первым (клиенты берут первую строку), затем плейсхолдеры про лимит.
+                    notice = blocked_traffic_vless(used_bytes, limit_bytes, cta_name, site_url)
                     tg_line = await get_user_tg_relay_vless_line(conn, user_id)
                     if tg_line:
-                        body = tg_line
+                        body = f"{tg_line}\n{notice}"
                     else:
                         relay_sid = await get_tg_relay_server_id(conn)
                         if relay_sid is not None:
@@ -448,7 +449,6 @@ class WebhookServer:
                                     )
 
                             asyncio.create_task(_ensure_relay_keys())
-                        notice = blocked_traffic_vless(used_bytes, limit_bytes, cta_name, site_url)
                         body = notice
                 else:
                     link_lines = [k["vless_link"] for k in keys if k.get("vless_link")]
