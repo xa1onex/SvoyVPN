@@ -83,6 +83,7 @@ async def send_traffic_packs_menu(bot: Bot, event: Message | CallbackQuery, conf
     elif not packs:
         text = (
             "📶 <b>Дополнительный трафик</b>\n\n"
+            "Нехватило трафика? Купи дополнительный объём пакетов гб\n"
             "Пакеты сейчас недоступны. Загляни позже или напиши в поддержку."
         )
     else:
