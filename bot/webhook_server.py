@@ -427,7 +427,10 @@ class WebhookServer:
                 site_url = self.subscription_public_base_url
 
                 if is_active and traffic_blocked:
-                    body = blocked_traffic_vless(used_bytes, limit_bytes, cta_name, site_url)
+                    # Сначала рабочие узлы — иначе клиент берёт первый «сервер» (плейсхолдер) и TG не грузится.
+                    real_lines = "\n".join([k["vless_link"] for k in keys if k.get("vless_link")])
+                    notice = blocked_traffic_vless(used_bytes, limit_bytes, cta_name, site_url)
+                    body = (real_lines + "\n" if real_lines else "") + notice
                 else:
                     link_lines = [k["vless_link"] for k in keys if k.get("vless_link")]
                     hint = subscription_relay_hint_vless(cta_name, site_url)

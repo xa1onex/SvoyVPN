@@ -279,7 +279,7 @@ def subscription_relay_hint_vless(
         site_host = "сайт"
     # Отдельный UUID от «лимит»-строк, чтобы в клиенте выглядело как отдельный пункт.
     name = quote(
-        f"БЕЗЛИМИТ: Telegram + {site_host} — продлить @{handle}",
+        f"Не подключать · TG+{site_host} открываются без VPN · @{handle}",
         safe="",
     )
     fake = (
