@@ -88,8 +88,7 @@ async def send_traffic_packs_menu(bot: Bot, event: Message | CallbackQuery, conf
     else:
         parts = [
             "📶 <b>Увеличить лимит трафика</b>\n",
-            "Дополнительный объём суммируется с месячным лимитом.\n"
-            "Ниже — ориентир в рублях; <b>Stars</b> увидишь на шаге оплаты, если выберешь Stars.\n",
+            "Дополнительный объём суммируется с месячным лимитом.\n",
         ]
         for p in packs:
             title_esc = html.escape(str(p["title"]).strip())
