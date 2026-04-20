@@ -227,6 +227,15 @@ async def init_db() -> None:
             if 'is_system' not in srv_existing:
                 await conn.execute("ALTER TABLE servers ADD COLUMN is_system BOOLEAN DEFAULT FALSE")
                 logging.info("Added is_system column to servers table")
+
+            if 'exclude_from_subscription' not in srv_existing:
+                await conn.execute(
+                    """
+                    ALTER TABLE servers
+                    ADD COLUMN exclude_from_subscription BOOLEAN NOT NULL DEFAULT FALSE
+                    """
+                )
+                logging.info("Added exclude_from_subscription column to servers table")
         except Exception as e:
             logging.warning(f"Could not migrate servers table (display_order/is_system): {e}")
 

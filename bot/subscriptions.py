@@ -117,7 +117,14 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                 """,
                 server_id,
             )
-            if not server or not server['is_active']:
+            relay_sid = await conn.fetchval(
+                """
+                SELECT tg_relay_server_id FROM traffic_settings ORDER BY id DESC LIMIT 1
+                """
+            )
+            if not server or (
+                not server["is_active"] and server_id != relay_sid
+            ):
                 logger.warning(f"Server {server_id} not found or not active")
                 return
             
@@ -272,16 +279,27 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
             expiry_ms = int(end_dt.timestamp() * 1000)
             expires_at = end_date.date() if isinstance(end_date, datetime) else end_date
 
+            relay_sid = await conn.fetchval(
+                """
+                SELECT tg_relay_server_id
+                FROM traffic_settings
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            )
             servers = await conn.fetch(
                 """
                 SELECT id, name, ip, username, password, inbound_id, base_url
                 FROM servers
                 WHERE is_active = TRUE
-                """
+                   OR id IS NOT DISTINCT FROM $1::bigint
+                """,
+                relay_sid,
             )
-            
-            # Деактивируем ключи для неактивных серверов
-            await conn.execute('''
+
+            # Деактивируем ключи для неактивных серверов (кроме узла «ТГ безлимит» — он может быть на паузе в продаже)
+            await conn.execute(
+                """
                 UPDATE vpn_keys
                 SET is_active = FALSE
                 WHERE user_id = $1
@@ -289,7 +307,15 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                   AND server_id IN (
                       SELECT id FROM servers WHERE is_active = FALSE
                   )
-            ''', user_id)
+                  AND server_id IS DISTINCT FROM (
+                      SELECT tg_relay_server_id
+                      FROM traffic_settings
+                      ORDER BY id DESC
+                      LIMIT 1
+                  )
+                """,
+                user_id,
+            )
             
             if not servers:
                 return
@@ -415,13 +441,20 @@ async def ensure_user_keys_for_server_ids(user_id: int, server_ids: List[int]) -
             expiry_ms = int(end_dt.timestamp() * 1000)
             expires_at = end_date.date() if isinstance(end_date, datetime) else end_date
 
+            relay_sid = await conn.fetchval(
+                """
+                SELECT tg_relay_server_id FROM traffic_settings ORDER BY id DESC LIMIT 1
+                """
+            )
             servers = await conn.fetch(
                 """
                 SELECT id, name, ip, username, password, inbound_id, base_url
                 FROM servers
-                WHERE is_active = TRUE AND id = ANY($1::int[])
+                WHERE id = ANY($1::int[])
+                  AND (is_active = TRUE OR id IS NOT DISTINCT FROM $2::bigint)
                 """,
                 server_ids,
+                relay_sid,
             )
             if not servers:
                 return
@@ -867,7 +900,10 @@ async def update_vless_links_for_server(server_id: int) -> None:
                 "SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url, is_active FROM servers WHERE id = $1",
                 server_id,
             )
-            if not server or not server['is_active']:
+            relay_sid = await conn.fetchval(
+                "SELECT tg_relay_server_id FROM traffic_settings ORDER BY id DESC LIMIT 1"
+            )
+            if not server or (not server["is_active"] and server_id != relay_sid):
                 return
             
             keys = await conn.fetch('''

@@ -868,7 +868,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             "При превышении месячного лимита в подписке пользователь увидит "
             "<b>одну</b> рабочую ссылку на выбранный узел (в клиенте имя <b>ТГ БЕЗЛИМИТ</b>). "
             "Ограничение «только Telegram» задаётся в <b>Xray</b> на inbound этого сервера.\n\n"
-            "Выберите активный сервер из списка или укажите <b>ID вручную</b> (в т.ч. выключенный в продаже).",
+            "<b>Обычным пользователям</b> узел не показывай: в карточке сервера — "
+            "<b>«Скрыть из подписки Happ»</b>. Сервер для реле можно держать на паузе — "
+            "для id, выбранного здесь, ключи при паузе <b>не снимаются</b> автоматически.\n\n"
+            "Выберите активный сервер из списка или укажите <b>ID вручную</b>.",
             reply_markup=builder.as_markup(),
             parse_mode="HTML",
         )
@@ -929,8 +932,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         nm = html_std.escape(str(row["name"] or ""))
         st = "активен" if row["is_active"] else "⚠️ выключен в продаже"
         text, builder = await _admin_traffic_panel_builder()
+        tip = (
+            "\n\nВ карточке сервера нажми <b>«Скрыть из подписки Happ»</b>, если узел не должен быть в общем списке."
+            if row["is_active"]
+            else "\n\nСервер на паузе — для реле это ок: ключи для этого id не снимаются. При желании включи обратно и скрой из подписки."
+        )
         await message.answer(
-            f"✅ «ТГ безлимит» → сервер <b>#{sid}</b> {nm} ({st}).",
+            f"✅ «ТГ безлимит» → сервер <b>#{sid}</b> {nm} ({st}).{tip}",
             parse_mode="HTML",
         )
         await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
@@ -2512,21 +2520,39 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             new_status = not server['is_active']
             await conn.execute('UPDATE servers SET is_active = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', new_status, server_id)
             
-            # Если сервер переведен на паузу - деактивируем все ключи этого сервера
+            # Если сервер переведен на паузу — деактивируем ключи (кроме узла «ТГ безлимит»)
             if not new_status:
-                # Сначала получаем количество ключей для деактивации
-                deactivated_count = await conn.fetchval('''
-                    SELECT COUNT(*) FROM vpn_keys
-                    WHERE server_id = $1 AND is_active = TRUE
-                ''', server_id)
-                
-                if deactivated_count and deactivated_count > 0:
-                    await conn.execute('''
-                        UPDATE vpn_keys
-                        SET is_active = FALSE
+                relay_id = await conn.fetchval(
+                    """
+                    SELECT tg_relay_server_id FROM traffic_settings ORDER BY id DESC LIMIT 1
+                    """
+                )
+                if relay_id is not None and int(relay_id) == int(server_id):
+                    logger.info(
+                        "Server %s is TG relay — keys stay active in DB while server paused",
+                        server_id,
+                    )
+                else:
+                    deactivated_count = await conn.fetchval(
+                        """
+                        SELECT COUNT(*) FROM vpn_keys
                         WHERE server_id = $1 AND is_active = TRUE
-                    ''', server_id)
-                    logger.info(f"Deactivated {deactivated_count} keys for server {server_id} (server paused)")
+                        """,
+                        server_id,
+                    )
+
+                    if deactivated_count and deactivated_count > 0:
+                        await conn.execute(
+                            """
+                            UPDATE vpn_keys
+                            SET is_active = FALSE
+                            WHERE server_id = $1 AND is_active = TRUE
+                            """,
+                            server_id,
+                        )
+                        logger.info(
+                            f"Deactivated {deactivated_count} keys for server {server_id} (server paused)"
+                        )
         
         status_text = "активирован" if new_status else "приостановлен"
         await message.answer(f"✅ Сервер {status_text}")
@@ -3175,7 +3201,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         try:
             async with get_connection() as conn:
-                servers = await conn.fetch('SELECT id, name, ip, is_active, display_order FROM servers ORDER BY display_order, id')
+                servers = await conn.fetch(
+                    """
+                    SELECT id, name, ip, is_active, display_order,
+                           COALESCE(exclude_from_subscription, FALSE) AS exclude_from_subscription
+                    FROM servers
+                    ORDER BY display_order, id
+                    """
+                )
             
             if not servers:
                 builder = InlineKeyboardBuilder()
@@ -3194,12 +3227,15 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 builder = InlineKeyboardBuilder()
                 
                 for server in servers:
-                    status = "✅ Активен" if server['is_active'] else "⏸️ На паузе"
-                    button_text = f"{server['name']} ({server['ip']}) - {status}"
-                    builder.row(InlineKeyboardButton(
-                        text=button_text,
-                        callback_data=f"admin_server_view:{server['id']}"
-                    ))
+                    status = "✅ Активен" if server["is_active"] else "⏸️ На паузе"
+                    hid = " 🙈" if server.get("exclude_from_subscription") else ""
+                    button_text = f"{server['name']} ({server['ip']}) - {status}{hid}"
+                    builder.row(
+                        InlineKeyboardButton(
+                            text=button_text,
+                            callback_data=f"admin_server_view:{server['id']}",
+                        )
+                    )
                 
                 builder.row(InlineKeyboardButton(text="➕ Добавить сервер", callback_data="admin_server_add"))
                 builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
@@ -3228,10 +3264,15 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         try:
             async with get_connection() as conn:
-                server = await conn.fetchrow('''
-                    SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url, is_active, created_at, display_order
+                server = await conn.fetchrow(
+                    """
+                    SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url,
+                           is_active, created_at, display_order,
+                           COALESCE(exclude_from_subscription, FALSE) AS exclude_from_subscription
                     FROM servers WHERE id = $1
-                ''', server_id)
+                    """,
+                    server_id,
+                )
                 
                 if not server:
                     await safe_callback_answer(callback, "❌ Сервер не найден", show_alert=True)
@@ -3241,8 +3282,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 keys_count = await conn.fetchval('SELECT COUNT(*) FROM vpn_keys WHERE server_id = $1', server_id)
                 active_keys = await conn.fetchval('SELECT COUNT(*) FROM vpn_keys WHERE server_id = $1 AND is_active = TRUE', server_id)
             
-            status = "✅ Активен" if server['is_active'] else "⏸️ На паузе"
-            created_at = server['created_at'].strftime('%d.%m.%Y %H:%M') if server['created_at'] else "Неизвестно"
+            status = "✅ Активен" if server["is_active"] else "⏸️ На паузе"
+            excl = bool(server.get("exclude_from_subscription"))
+            sub_line = (
+                "🙈 <b>Скрыт из подписки Happ</b> — в общем списке vless не показывается (узел «ТГ безлимит» и лимиты работают)."
+                if excl
+                else "📋 В подписке Happ — как обычный узел для всех с активной подпиской."
+            )
+            created_at = server["created_at"].strftime("%d.%m.%Y %H:%M") if server["created_at"] else "Неизвестно"
             
             # Обрезаем длинные значения для предотвращения MESSAGE_TOO_LONG
             base_url = server['base_url'] or ""
@@ -3261,6 +3308,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 f"<b>Порядок в списке:</b> {server.get('display_order', 100)}\n"
                 f"<b>Тип:</b> {'⚙️ Системный (скрыт)' if server.get('is_system') else '🌍 Публичный'}\n"
                 f"<b>Статус:</b> {status}\n"
+                f"{sub_line}\n"
                 f"<b>Создан:</b> {created_at}\n\n"
                 f"<b>Статистика:</b>\n"
                 f"• Всего ключей: {keys_count}\n"
@@ -3272,10 +3320,18 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 text = text[:4050] + "\n\n⚠️ <i>Сообщение обрезано из-за ограничения длины</i>"
             
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(
-                text="⏸️ Пауза" if server['is_active'] else "▶️ Активировать",
-                callback_data=f"admin_server_toggle:{server_id}"
-            ))
+            builder.row(
+                InlineKeyboardButton(
+                    text="⏸️ Пауза" if server["is_active"] else "▶️ Активировать",
+                    callback_data=f"admin_server_toggle:{server_id}",
+                )
+            )
+            builder.row(
+                InlineKeyboardButton(
+                    text="📋 Показывать в подписке Happ" if excl else "🙈 Скрыть из подписки Happ",
+                    callback_data=f"admin_server_toggle_sub_exclude:{server_id}",
+                )
+            )
             builder.row(InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"admin_server_edit:{server_id}"))
             builder.row(InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"admin_server_delete:{server_id}"))
             builder.row(InlineKeyboardButton(text="◀️ Назад к серверам", callback_data="admin_servers"))
@@ -3305,32 +3361,74 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 new_status = not server['is_active']
                 await conn.execute('UPDATE servers SET is_active = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', new_status, server_id)
                 
-                # Если сервер переведен на паузу - деактивируем все ключи этого сервера
+                # Если сервер переведен на паузу — деактивируем ключи (кроме узла «ТГ безлимит»)
                 if not new_status:
-                    # Сначала получаем количество ключей для деактивации
-                    deactivated_count = await conn.fetchval('''
-                        SELECT COUNT(*) FROM vpn_keys
-                        WHERE server_id = $1 AND is_active = TRUE
-                    ''', server_id)
-                    
-                    if deactivated_count and deactivated_count > 0:
-                        await conn.execute('''
-                            UPDATE vpn_keys
-                            SET is_active = FALSE
+                    relay_id = await conn.fetchval(
+                        """
+                        SELECT tg_relay_server_id FROM traffic_settings ORDER BY id DESC LIMIT 1
+                        """
+                    )
+                    if relay_id is not None and int(relay_id) == int(server_id):
+                        logger.info(
+                            "Server %s is TG relay — keys stay active while server paused",
+                            server_id,
+                        )
+                    else:
+                        deactivated_count = await conn.fetchval(
+                            """
+                            SELECT COUNT(*) FROM vpn_keys
                             WHERE server_id = $1 AND is_active = TRUE
-                        ''', server_id)
-                        logger.info(f"Deactivated {deactivated_count} keys for server {server_id} (server paused)")
+                            """,
+                            server_id,
+                        )
+
+                        if deactivated_count and deactivated_count > 0:
+                            await conn.execute(
+                                """
+                                UPDATE vpn_keys
+                                SET is_active = FALSE
+                                WHERE server_id = $1 AND is_active = TRUE
+                                """,
+                                server_id,
+                            )
+                            logger.info(
+                                f"Deactivated {deactivated_count} keys for server {server_id} (server paused)"
+                            )
             
             status_text = "активирован" if new_status else "приостановлен"
             await safe_callback_answer(callback, f"✅ Сервер {status_text}")
-            
+
             # Обновляем интерфейс
-            new_callback = callback.model_copy(update={'data': f"admin_server_view:{server_id}"})
+            new_callback = callback.model_copy(update={"data": f"admin_server_view:{server_id}"})
             await handle_admin_server_view_callback(new_callback)
         except Exception as e:
             logger.error(f"Error in handle_admin_server_toggle: {e}", exc_info=True)
             await safe_callback_answer(callback, f"❌ Ошибка: {str(e)}", show_alert=True)
-    
+
+    @dp.callback_query(F.data.startswith("admin_server_toggle_sub_exclude:"))
+    async def handle_admin_server_toggle_sub_exclude_callback(callback: CallbackQuery):
+        """Скрыть/показать сервер в общей подписке Happ (vless-список)."""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        server_id = int(callback.data.split(":")[1])
+        try:
+            async with get_connection() as conn:
+                await conn.execute(
+                    """
+                    UPDATE servers
+                    SET exclude_from_subscription = NOT COALESCE(exclude_from_subscription, FALSE),
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = $1
+                    """,
+                    server_id,
+                )
+            new_callback = callback.model_copy(update={"data": f"admin_server_view:{server_id}"})
+            await handle_admin_server_view_callback(new_callback)
+        except Exception as e:
+            logger.error(f"Error in handle_admin_server_toggle_sub_exclude: {e}", exc_info=True)
+            await safe_callback_answer(callback, f"❌ Ошибка: {str(e)}", show_alert=True)
+
     @dp.callback_query(F.data.startswith("admin_server_delete:"))
     async def handle_admin_server_delete_callback(callback: CallbackQuery):
         """Удаление сервера"""

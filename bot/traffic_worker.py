@@ -199,6 +199,12 @@ async def run_sync_once() -> dict[str, int]:
             SELECT id, name, base_url, username, password, inbound_id
             FROM servers
             WHERE is_active = TRUE
+               OR id IS NOT DISTINCT FROM (
+                   SELECT tg_relay_server_id
+                   FROM traffic_settings
+                   ORDER BY id DESC
+                   LIMIT 1
+               )
             """
         )
 

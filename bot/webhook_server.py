@@ -348,6 +348,7 @@ class WebhookServer:
                     WHERE k.user_id = $1 
                       AND k.is_active = TRUE
                       AND s.is_active = TRUE
+                      AND COALESCE(s.exclude_from_subscription, FALSE) = FALSE
                       AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
                     ORDER BY k.server_id, k.id ASC
                 ''', user_id)
@@ -374,7 +375,15 @@ class WebhookServer:
                     servers_without_keys = await conn.fetch('''
                         SELECT s.id
                         FROM servers s
-                        WHERE s.is_active = TRUE
+                        WHERE (
+                            s.is_active = TRUE
+                            OR s.id IS NOT DISTINCT FROM (
+                                SELECT tg_relay_server_id
+                                FROM traffic_settings
+                                ORDER BY id DESC
+                                LIMIT 1
+                            )
+                          )
                           AND NOT EXISTS (
                               SELECT 1 FROM vpn_keys k
                               WHERE k.server_id = s.id
@@ -1726,7 +1735,14 @@ class WebhookServer:
         try:
             async with get_connection() as conn:
                 rows = await conn.fetch(
-                    "SELECT id, name, ip, port, protocol, is_active, display_order, is_system FROM servers WHERE is_active = TRUE AND is_system = FALSE ORDER BY display_order ASC, id"
+                    """
+                    SELECT id, name, ip, port, protocol, is_active, display_order, is_system
+                    FROM servers
+                    WHERE is_active = TRUE
+                      AND is_system = FALSE
+                      AND COALESCE(exclude_from_subscription, FALSE) = FALSE
+                    ORDER BY display_order ASC, id
+                    """
                 )
                 servers = []
                 for r in rows:
