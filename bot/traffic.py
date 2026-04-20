@@ -151,7 +151,7 @@ async def get_tg_relay_server_id(conn) -> int | None:
 async def get_user_tg_relay_vless_line(conn, user_id: int) -> str | None:
     """
     Один рабочий vless для режима «лимит трафика»: сервер из traffic_settings.tg_relay_server_id,
-    отображаемое имя «ТГ БЕЗЛИМИТ». TG-only настраивается на inbound в панели.
+    отображаемое имя «‼️ ТГ БЕЗЛИМИТ ‼️». TG-only настраивается на inbound в панели.
     """
     sid = await get_tg_relay_server_id(conn)
     if sid is None:
@@ -169,7 +169,7 @@ async def get_user_tg_relay_vless_line(conn, user_id: int) -> str | None:
     )
     if not key or not key.get("vless_link"):
         return None
-    return vless_set_fragment_display_name(str(key["vless_link"]), "ТГ БЕЗЛИМИТ")
+    return vless_set_fragment_display_name(str(key["vless_link"]), "‼️ ТГ БЕЗЛИМИТ ‼️")
 
 
 async def ensure_traffic_anchor_and_period(conn, user_id: int) -> None:
@@ -351,7 +351,7 @@ def blocked_traffic_vless(
     bot_username: str | None = None,
     public_site_url: str | None = None,
 ) -> str:
-    """Три «пустые» строки: лимит, докупка трафика, подсказка TG+сайт для продления."""
+    """Две информационные строки: лимит и как докупить трафик (без лишних «узлов»)."""
     from urllib.parse import quote
 
     handle = (bot_username or "SvoyVPN_robot").strip().lstrip("@")
@@ -366,8 +366,7 @@ def blocked_traffic_vless(
         "vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1"
         "?type=tcp&security=none&flow=none#"
     )
-    hint = subscription_relay_hint_vless(handle, public_site_url)
-    return f"{fake}{name1}\n{fake}{name2}\n{hint}"
+    return f"{fake}{name1}\n{fake}{name2}"
 
 
 async def apply_subscription_anchor_on_payment(conn, user_id: int) -> None:

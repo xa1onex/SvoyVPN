@@ -438,11 +438,11 @@ class WebhookServer:
                 site_url = self.subscription_public_base_url
 
                 if is_active and traffic_blocked:
-                    # Рабочий узел «ТГ БЕЗЛИМИТ» первым (клиенты берут первую строку), затем плейсхолдеры про лимит.
+                    # Сначала строки про лимит, в конце — рабочий узел «‼️ ТГ БЕЗЛИМИТ ‼️».
                     notice = blocked_traffic_vless(used_bytes, limit_bytes, cta_name, site_url)
                     tg_line = await get_user_tg_relay_vless_line(conn, user_id)
                     if tg_line:
-                        body = f"{tg_line}\n{notice}"
+                        body = f"{notice}\n{tg_line}"
                     else:
                         relay_sid = await get_tg_relay_server_id(conn)
                         if relay_sid is not None:
