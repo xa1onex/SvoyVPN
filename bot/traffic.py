@@ -21,6 +21,15 @@ def _safe_int(v: object) -> int:
         return 0
 
 
+def is_free_server_label(label: object) -> bool:
+    """Признак «лимитируемого» сервера: пометка 🆓 или [free]/free в названии."""
+    s = str(label or "")
+    if "🆓" in s:
+        return True
+    low = s.lower()
+    return "[free]" in low or " free " in f" {low} "
+
+
 def _norm_xui_identity(raw: object) -> str:
     """UUID с панели и в БД могут отличаться дефисами — сравниваем в одном виде."""
     return str(raw or "").strip().lower().replace("-", "")
@@ -367,6 +376,22 @@ def blocked_traffic_vless(
         "?type=tcp&security=none&flow=none#"
     )
     return f"{fake}{name1}\n{fake}{name2}"
+
+
+def traffic_remaining_vless(used_bytes: int, limit_bytes: int) -> str:
+    """
+    Системная строка для клиентов из /sub:
+    «Осталось: XX.XX GiB» как отдельный нерабочий VLESS-пункт.
+    """
+    from urllib.parse import quote
+
+    remain = max(int(limit_bytes) - int(used_bytes), 0) / BYTES_PER_GB
+    name = quote(f"Осталось: {remain:.2f} GiB", safe="")
+    fake = (
+        "vless://22222222-2222-2222-2222-222222222222@0.0.0.0:1"
+        "?type=tcp&security=none&flow=none#"
+    )
+    return f"{fake}{name}"
 
 
 async def apply_subscription_anchor_on_payment(conn, user_id: int) -> None:

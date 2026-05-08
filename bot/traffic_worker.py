@@ -166,7 +166,7 @@ async def _apply_server_usage(server_id: int, usage: dict[str, int]) -> int:
 
 
 async def _aggregate_users_traffic() -> None:
-    """Пересчитывает users.traffic_used_bytes из суммы по активным ключам."""
+    """Пересчитывает users.traffic_used_bytes только по серверам с пометкой 🆓."""
     async with get_connection() as conn:
         await conn.execute(
             """
@@ -182,8 +182,14 @@ async def _aggregate_users_traffic() -> None:
                                0
                            )
                        ) AS used
-                FROM vpn_keys
-                WHERE is_active = TRUE
+                FROM vpn_keys k
+                JOIN servers s ON s.id = k.server_id
+                WHERE k.is_active = TRUE
+                  AND (
+                      s.name LIKE '%🆓%'
+                      OR s.name ILIKE '%[free]%'
+                      OR s.name ~* '(^|[^a-z])free([^a-z]|$)'
+                  )
                 GROUP BY user_id
             ) agg
             WHERE u.user_id = agg.user_id

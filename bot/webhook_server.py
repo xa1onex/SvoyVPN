@@ -40,6 +40,8 @@ from .traffic import (
     get_user_tg_relay_vless_line,
     subscription_relay_hint_vless,
     apply_subscription_anchor_on_payment,
+    is_free_server_label,
+    traffic_remaining_vless,
 )
 from . import esim_service
 from .esim_invoice_payload import encode_esim_blob
@@ -342,7 +344,7 @@ class WebhookServer:
                 # Получаем ключи и информацию о сервере для сортировки
                 keys_data = await conn.fetch('''
                     SELECT DISTINCT ON (k.server_id) 
-                        k.vless_link, k.server_id, s.display_order, s.id as sid
+                        k.vless_link, k.server_id, s.display_order, s.id as sid, s.name as server_name
                     FROM vpn_keys k
                     INNER JOIN servers s ON k.server_id = s.id
                     WHERE k.user_id = $1 
@@ -437,28 +439,54 @@ class WebhookServer:
                         cta_name = None
                 site_url = self.subscription_public_base_url
 
+                if is_active:
+                    remaining_line = traffic_remaining_vless(used_bytes, limit_bytes)
+                else:
+                    remaining_line = None
+
                 if is_active and traffic_blocked:
-                    # Сначала строки про лимит, в конце — рабочий узел «‼️ ТГ БЕЗЛИМИТ ‼️».
-                    notice = blocked_traffic_vless(used_bytes, limit_bytes, cta_name, site_url)
-                    tg_line = await get_user_tg_relay_vless_line(conn, user_id)
-                    if tg_line:
-                        body = f"{notice}\n{tg_line}"
+                    # Лимит действует только на серверы с меткой 🆓.
+                    free_key_lines = [
+                        k["vless_link"]
+                        for k in keys
+                        if k.get("vless_link") and is_free_server_label(k.get("server_name"))
+                    ]
+                    regular_key_lines = [
+                        k["vless_link"]
+                        for k in keys
+                        if k.get("vless_link") and not is_free_server_label(k.get("server_name"))
+                    ]
+
+                    # Если есть что блокировать — показываем уведомление о лимите и скрываем только 🆓-узлы.
+                    if free_key_lines:
+                        notice = blocked_traffic_vless(used_bytes, limit_bytes, cta_name, site_url)
+                        body_parts = [notice]
+                        if remaining_line:
+                            body_parts.append(remaining_line)
+                        body_parts.extend(regular_key_lines)
+                        tg_line = await get_user_tg_relay_vless_line(conn, user_id)
+                        if tg_line:
+                            body_parts.append(tg_line)
+                        else:
+                            relay_sid = await get_tg_relay_server_id(conn)
+                            if relay_sid is not None:
+
+                                async def _ensure_relay_keys():
+                                    try:
+                                        await ensure_user_keys_for_server_ids(user_id, [relay_sid])
+                                    except Exception as bg_e:
+                                        logger.error(
+                                            f"Background ensure_user_keys_for_server_ids (TG relay) "
+                                            f"failed for user {user_id}: {bg_e}",
+                                            exc_info=True,
+                                        )
+
+                                asyncio.create_task(_ensure_relay_keys())
+                        body = "\n".join(p for p in body_parts if p)
                     else:
-                        relay_sid = await get_tg_relay_server_id(conn)
-                        if relay_sid is not None:
-
-                            async def _ensure_relay_keys():
-                                try:
-                                    await ensure_user_keys_for_server_ids(user_id, [relay_sid])
-                                except Exception as bg_e:
-                                    logger.error(
-                                        f"Background ensure_user_keys_for_server_ids (TG relay) "
-                                        f"failed for user {user_id}: {bg_e}",
-                                        exc_info=True,
-                                    )
-
-                            asyncio.create_task(_ensure_relay_keys())
-                        body = notice
+                        # У пользователя нет 🆓-серверов — просто отдаём обычные ключи и системную строку остатка.
+                        link_lines = [k["vless_link"] for k in keys if k.get("vless_link")]
+                        body = "\n".join(([remaining_line] if remaining_line else []) + link_lines)
                 else:
                     link_lines = [k["vless_link"] for k in keys if k.get("vless_link")]
                     hint = subscription_relay_hint_vless(cta_name, site_url)
@@ -466,7 +494,7 @@ class WebhookServer:
                         # Подписка неактивна: к реальным ключам (если есть) добавляем подсказку TG+сайт.
                         body = "\n".join(link_lines) + ("\n" if link_lines else "") + hint
                     else:
-                        body = "\n".join(link_lines)
+                        body = "\n".join(([remaining_line] if remaining_line else []) + link_lines)
 
                 logger.info(
                     f"Returning subscription for user {user_id}: {len(keys)} keys, active={is_active}, "
