@@ -882,8 +882,12 @@ async def get_subscription_status_display(user_id: int) -> str:
         used = float(snap.get("usedGb") or 0)
         limit = float(snap.get("limitGb") or 0)
         bonus = int(snap.get("bonusGb") or 0)
+        bonus_rem = float(snap.get("bonusRemainingGb") or 0)
         if bonus > 0:
-            return f"{base}\n📊 Трафик: {used:.1f} / {limit:.0f} ГБ (вкл. +{bonus} ГБ пакетами)"
+            return (
+                f"{base}\n📊 Трафик: {used:.1f} / {limit:.0f} ГБ"
+                f" (пакет: осталось {bonus_rem:.1f} из {bonus} ГБ)"
+            )
         return f"{base}\n📊 Трафик: {used:.1f} / {limit:.0f} ГБ в месяц"
     except Exception as e:
         logger.error("get_subscription_status_display: %s", e)

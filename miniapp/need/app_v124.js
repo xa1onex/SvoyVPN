@@ -951,7 +951,12 @@
           const lim = Number(tr.limitGb);
           const pct = lim > 0 ? Math.min(100, Math.round((used / lim) * 100)) : 0;
           const ex = tr.trafficExceeded ? ' <span style="color:#ff3b30;">Лимит исчерпан.</span>' : '';
-          trafficLine = `<p class="sub-status-hero__meta" style="margin-top:6px;">Трафик: <b>${used.toFixed(1)} / ${lim.toFixed(0)} ГБ</b> (${pct}%)${ex}</p>`;
+          const bonusTotal = Number(tr.bonusGb || 0);
+          const bonusRem = Number(tr.bonusRemainingGb || 0);
+          const bonusSuffix = bonusTotal > 0
+            ? ` · пакет: ${bonusRem.toFixed(1)} из ${bonusTotal} ГБ`
+            : '';
+          trafficLine = `<p class="sub-status-hero__meta" style="margin-top:6px;">Трафик: <b>${used.toFixed(1)} / ${lim.toFixed(0)} ГБ</b> (${pct}%)${bonusSuffix}${ex}</p>`;
         }
 
         let statusHtml = `

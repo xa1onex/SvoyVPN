@@ -433,9 +433,10 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
                 u_g = float(snap.get("usedGb") or 0)
                 l_g = float(snap.get("limitGb") or 0)
                 b_g = int(snap.get("bonusGb") or 0)
+                b_rem = float(snap.get("bonusRemainingGb") or 0)
                 text += f"📊 <b>Трафик</b>: {u_g:.1f} / {l_g:.0f} ГБ"
                 if b_g > 0:
-                    text += f" (вкл. +{b_g} ГБ пакетами)"
+                    text += f" (пакет: осталось {b_rem:.1f} из {b_g} ГБ)"
                 text += "\n\n"
         except Exception as e:
             logger.warning("build_subscription_message traffic line: %s", e)

@@ -30,6 +30,12 @@ def is_free_server_label(label: object) -> bool:
     return "[free]" in low or " free " in f" {low} "
 
 
+def is_free_header_server(label: object) -> bool:
+    """Сервер-заголовок секции 🆓 (содержит «обход белых списков»)."""
+    s = str(label or "").lower()
+    return "🆓" in str(label or "") and "обход" in s and "белых" in s
+
+
 def _norm_xui_identity(raw: object) -> str:
     """UUID с панели и в БД могут отличаться дефисами — сравниваем в одном виде."""
     return str(raw or "").strip().lower().replace("-", "")
@@ -264,16 +270,15 @@ async def ensure_traffic_anchor_and_period(conn, user_id: int) -> None:
             """,
             user_id,
         )
-        # Сброс только расхода периода. Докупленные ГБ (traffic_bonus_gb) НЕ обнуляем здесь:
-        # они «живут» до конца активной подписки и сгорают при её окончании
-        # (см. handle_expired_subscriptions). Иначе пользователь теряет оплаченный
-        # пакет, если купил в конце расчётного месяца.
+        # Сброс расхода периода И бонусных ГБ: пакеты действуют только
+        # до конца расчётного периода (как указано в UI miniapp).
         await conn.execute(
             """
             UPDATE users SET
                 traffic_period_start = $1,
                 traffic_period_end_excl = $2,
                 traffic_used_bytes = 0,
+                traffic_bonus_gb = 0,
                 traffic_last_sync_at = NULL
             WHERE user_id = $3
             """,
@@ -459,6 +464,12 @@ async def user_traffic_snapshot(conn, user_id: int, *, sync_from_panels: bool) -
     enforced = anchor is not None
     exceeded = enforced and limit_bytes > 0 and used >= limit_bytes
 
+    # Бонусные ГБ расходуются первыми: остаток = max(bonus - used, 0).
+    # Когда бонус исчерпан, оставшийся расход ложится на основной лимит.
+    bonus_bytes = bonus_gb * BYTES_PER_GB
+    bonus_remaining_gb = max(bonus_gb - round(used / BYTES_PER_GB, 3), 0)
+    base_used_bytes = max(used - bonus_bytes, 0)
+
     return {
         "hasAnchor": enforced,
         "trafficAnchorDay": int(anchor) if anchor is not None else None,
@@ -469,6 +480,8 @@ async def user_traffic_snapshot(conn, user_id: int, *, sync_from_panels: bool) -
         "usedGb": round(used / BYTES_PER_GB, 3),
         "limitGb": round(limit_bytes / BYTES_PER_GB, 3),
         "bonusGb": bonus_gb,
+        "bonusRemainingGb": round(bonus_remaining_gb, 3),
+        "baseUsedGb": round(base_used_bytes / BYTES_PER_GB, 3),
         "baseLimitGb": base_lim,
         "defaultMonthlyGb": default_gb,
         "trafficExceeded": exceeded,
