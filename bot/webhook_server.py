@@ -420,8 +420,11 @@ class WebhookServer:
                             logger.error(f"Failed to schedule key creation for user {user_id}: {e}")
                 
                 traffic_blocked = False
+                bypass_blocked = False
                 used_bytes = 0
                 limit_bytes = 0
+                bypass_used_bytes = 0
+                bypass_limit_bytes = 0
                 if is_active:
                     # Читаем готовые значения из БД — их непрерывно обновляет
                     # фоновой воркер bot/traffic_worker.py.
@@ -430,6 +433,14 @@ class WebhookServer:
                     limit_bytes = int(snap["limitBytes"])
                     if snap.get("trafficEnforced") and snap.get("trafficExceeded"):
                         traffic_blocked = True
+
+                    # Check bypass traffic limits (new tier system)
+                    from .traffic import user_bypass_traffic_snapshot
+                    bypass_snap = await user_bypass_traffic_snapshot(conn, user_id)
+                    bypass_used_bytes = int(bypass_snap.get("bypassUsedBytes") or 0)
+                    bypass_limit_bytes = int(bypass_snap.get("bypassLimitBytes") or 0)
+                    if bypass_limit_bytes > 0 and bypass_snap.get("bypassExceeded"):
+                        bypass_blocked = True
 
                 cta_name = self.bot_public_username
                 if not cta_name and self.bot:
@@ -450,9 +461,15 @@ class WebhookServer:
                     else None
                 )
 
-                if is_active and traffic_blocked:
-                    # Лимит действует только на серверы с меткой 🆓.
-                    # При превышении скрываем 🆓-ключи, оставляем обычные.
+                # Collect bypass server IDs for filtering
+                bypass_server_ids: set = set()
+                if bypass_blocked or bypass_limit_bytes > 0:
+                    bypass_servers = await conn.fetch(
+                        "SELECT id FROM servers WHERE is_bypass = TRUE"
+                    )
+                    bypass_server_ids = {r["id"] for r in bypass_servers}
+
+                if is_active and (traffic_blocked or bypass_blocked):
                     body_parts: list[str] = []
                     notice = blocked_traffic_vless(used_bytes, limit_bytes, cta_name, site_url)
                     has_free_keys = False
@@ -462,21 +479,40 @@ class WebhookServer:
                         if not link:
                             continue
                         sname = k.get("server_name")
-                        if is_free_header_server(sname):
-                            # Сервер-заголовок секции 🆓 — вставляем его + notice + remaining
-                            body_parts.append(link)
-                            body_parts.append(notice)
-                            if remaining_line:
-                                body_parts.append(remaining_line)
-                            has_free_keys = True
-                        elif is_free_server_label(sname):
-                            has_free_keys = True
-                            # 🆓-ключ скрыт при превышении лимита
+                        server_id = k.get("server_id")
+
+                        # Hide bypass servers when bypass limit exceeded
+                        if bypass_blocked and server_id in bypass_server_ids:
+                            continue
+
+                        if traffic_blocked:
+                            if is_free_header_server(sname):
+                                body_parts.append(link)
+                                body_parts.append(notice)
+                                if remaining_line:
+                                    body_parts.append(remaining_line)
+                                has_free_keys = True
+                            elif is_free_server_label(sname):
+                                has_free_keys = True
+                            else:
+                                body_parts.append(link)
                         else:
                             body_parts.append(link)
+                            if is_free_header_server(sname) and remaining_line:
+                                body_parts.append(remaining_line)
 
-                    if not has_free_keys:
-                        body_parts = [link for k in keys if (link := k.get("vless_link"))]
+                    if traffic_blocked and not has_free_keys:
+                        body_parts = [link for k in keys if (link := k.get("vless_link")) and k.get("server_id") not in bypass_server_ids]
+
+                    # Add bypass exhausted notice if applicable
+                    if bypass_blocked and bypass_limit_bytes > 0:
+                        from urllib.parse import quote
+                        bp_name = quote(
+                            f"Bypass лимит исчерпан ({bypass_used_bytes / (1024**3):.1f}/{bypass_limit_bytes / (1024**3):.0f} ГБ)",
+                            safe="",
+                        )
+                        bp_fake = "vless://33333333-3333-3333-3333-333333333333@0.0.0.0:1?type=tcp&security=none&flow=none#"
+                        body_parts.append(f"{bp_fake}{bp_name}")
 
                     tg_line = await get_user_tg_relay_vless_line(conn, user_id)
                     if tg_line:
@@ -525,6 +561,10 @@ class WebhookServer:
                     "Если что-то не работает или тормозит — обновите подписку кнопкой 🔄"
                 )
 
+                # Use bypass stats for subscription-userinfo if bypass is tracked
+                sub_download = bypass_used_bytes if bypass_limit_bytes > 0 else used_bytes
+                sub_total = bypass_limit_bytes if bypass_limit_bytes > 0 else limit_bytes
+
                 headers = {
                     "Cache-Control": "no-store",
                     "Content-Disposition": 'attachment; filename="SvoyVPN"',
@@ -534,7 +574,7 @@ class WebhookServer:
                     "profile-web-page-url": "https://t.me/SvoyVPN_robot",
                     "announce": announce_text,
                     "subscription-userinfo": (
-                        f"upload=0; download={used_bytes}; total={limit_bytes}; expire={expire_ts}"
+                        f"upload=0; download={sub_download}; total={sub_total}; expire={expire_ts}"
                         if is_active
                         else "Inactive"
                     ),

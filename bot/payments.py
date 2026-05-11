@@ -808,6 +808,37 @@ async def process_webhook_payment(
             payment_methods=payment_methods,
         )
 
+    # New tier system payments
+    if str(metadata.get("product_type") or "").lower() == "tier":
+        from .tier_payments import process_tier_webhook_payment
+        return await process_tier_webhook_payment(
+            payment_id=payment_id,
+            payment_obj=payment_obj,
+            metadata=metadata,
+            bot=bot,
+            config=config,
+        )
+
+    if str(metadata.get("product_type") or "").lower() == "tier_upgrade":
+        from .tier_payments import process_tier_upgrade_webhook_payment
+        return await process_tier_upgrade_webhook_payment(
+            payment_id=payment_id,
+            payment_obj=payment_obj,
+            metadata=metadata,
+            bot=bot,
+            config=config,
+        )
+
+    if str(metadata.get("product_type") or "").lower() == "bypass_pack":
+        from .tier_payments import process_bypass_pack_webhook_payment as _bp_wh
+        return await _bp_wh(
+            payment_id=payment_id,
+            payment_obj=payment_obj,
+            metadata=metadata,
+            bot=bot,
+            config=config,
+        )
+
     if user_id is None or plan_id is None:
         logger.warning(f"Webhook payment {payment_id} missing required metadata")
         return False

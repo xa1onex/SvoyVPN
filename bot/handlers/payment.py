@@ -14,6 +14,11 @@ from ..payments import (
     process_telegram_stars_payment,
     process_telegram_gb_pack_payment,
 )
+from ..tier_payments import (
+    process_tier_stars_payment,
+    process_tier_upgrade_stars_payment,
+    process_bypass_pack_stars_payment,
+)
 from ..plans import get_subscription_plans, get_renewal_plans, PAYMENT_METHODS
 from ..config import AppConfig
 
@@ -54,6 +59,30 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
                 return
 
             raw_pl = payload or ""
+
+            # --- New tier system payloads ---
+            if raw_pl.startswith("tier|"):
+                parts = raw_pl.split("|")
+                plan_id = parts[1] if len(parts) > 1 else ""
+                await process_tier_stars_payment(message, bot, plan_id, config, source="bot")
+                return
+
+            if raw_pl.startswith("tier_upgrade|"):
+                parts = raw_pl.split("|")
+                plan_id = parts[1] if len(parts) > 1 else ""
+                await process_tier_upgrade_stars_payment(message, bot, plan_id, config, source="bot")
+                return
+
+            if raw_pl.startswith("bypass_pack|"):
+                parts = raw_pl.split("|")
+                try:
+                    pack_id = int(parts[2]) if len(parts) > 2 else 0
+                except (ValueError, IndexError):
+                    raise ValueError("bad bypass_pack payload")
+                await process_bypass_pack_stars_payment(message, bot, pack_id, config, source="bot")
+                return
+
+            # --- Legacy payloads ---
             if raw_pl.startswith("stars_gbpack_") or raw_pl.startswith("yoo_gbpack_"):
                 is_mini = raw_pl.endswith("_miniapp")
                 src = "miniapp" if is_mini else "bot"

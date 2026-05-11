@@ -455,6 +455,7 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
         else:
             text += "💡 Вы можете продлить подписку в любое время:\n\n"
 
+        builder.row(InlineKeyboardButton(text="🚀 Новые тарифы (Lite/Standard/Pro)", callback_data="open_tiers"))
         builder.row(InlineKeyboardButton(text="📶 Увеличить лимит трафика", callback_data="open_traffic_packs"))
 
         # Кнопки для продления (с использованием уже подготовленных current_tariffs)
