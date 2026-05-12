@@ -64,7 +64,7 @@ async def init_db() -> None:
                 referral_count INTEGER DEFAULT 0,
                 invited_by BIGINT,
                 renewal_used BOOLEAN DEFAULT FALSE,
-                device_limit INTEGER DEFAULT 1
+                device_limit INTEGER DEFAULT 5
             )
             """
         )
@@ -96,7 +96,7 @@ async def init_db() -> None:
                 logging.info("Added renewal_used column to users table")
 
             if 'device_limit' not in existing_columns:
-                await conn.execute("ALTER TABLE users ADD COLUMN device_limit INTEGER DEFAULT 1")
+                await conn.execute("ALTER TABLE users ADD COLUMN device_limit INTEGER DEFAULT 5")
                 logging.info("Added device_limit column to users table")
 
             if 'traffic_anchor_day' not in existing_columns:
