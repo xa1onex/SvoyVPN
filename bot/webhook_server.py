@@ -479,11 +479,13 @@ class WebhookServer:
                 has_free_header = any(
                     is_free_header_server(k.get("server_name")) for k in keys
                 )
-                remaining_line = (
-                    traffic_remaining_vless(used_bytes, limit_bytes)
-                    if is_active and has_free_header
-                    else None
-                )
+                if is_active and has_free_header:
+                    if bypass_limit_bytes > 0:
+                        remaining_line = traffic_remaining_vless(bypass_used_bytes, bypass_limit_bytes)
+                    else:
+                        remaining_line = traffic_remaining_vless(used_bytes, limit_bytes)
+                else:
+                    remaining_line = None
 
                 # Collect bypass server IDs for filtering
                 bypass_server_ids: set = set()

@@ -386,12 +386,13 @@ def blocked_traffic_vless(
 def traffic_remaining_vless(used_bytes: int, limit_bytes: int) -> str:
     """
     Системная строка для клиентов из /sub:
-    «Осталось: XX.XX GiB» как отдельный нерабочий VLESS-пункт.
+    «X.XX / Y GiB» как отдельный нерабочий VLESS-пункт.
     """
     from urllib.parse import quote
 
-    remain = max(int(limit_bytes) - int(used_bytes), 0) / BYTES_PER_GB
-    name = quote(f"Осталось: {remain:.2f} GiB", safe="")
+    used_gb = int(used_bytes) / BYTES_PER_GB
+    limit_gb = int(limit_bytes) / BYTES_PER_GB
+    name = quote(f"📊 {used_gb:.2f} / {limit_gb:.0f} GiB", safe="")
     fake = (
         "vless://22222222-2222-2222-2222-222222222222@0.0.0.0:1"
         "?type=tcp&security=none&flow=none#"
