@@ -305,11 +305,305 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                     )
                 )
         builder.row(
+            InlineKeyboardButton(text="❌ Отменить подписку", callback_data="cancel_sub_start")
+        )
+        builder.row(
             InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers")
         )
 
         await callback.message.edit_text(
             text, parse_mode="HTML", reply_markup=builder.as_markup()
+        )
+        await callback.answer()
+
+    # ------------------------------------------------------------------
+    # Cancel subscription retention flow
+    # ------------------------------------------------------------------
+    @dp.callback_query(F.data == "cancel_sub_start")
+    async def handle_cancel_sub_start(callback: CallbackQuery):
+        """Step 1: Offer 50% discount on current or higher tier."""
+        user_id = callback.from_user.id
+
+        async with get_connection() as conn:
+            row = await conn.fetchrow(
+                "SELECT subscription_tier, cancel_retention_used FROM users WHERE user_id = $1",
+                user_id,
+            )
+
+        if not row or not row["subscription_tier"] or row["subscription_tier"] == "none":
+            await callback.answer("У вас нет активной подписки", show_alert=True)
+            return
+
+        current_tier = row["subscription_tier"]
+        already_used = row.get("cancel_retention_used") or False
+
+        if already_used:
+            # Already used retention offer — only offer 10 GB
+            text = (
+                "😢 <b>Жаль, что вы хотите уйти</b>\n\n"
+                "Мы можем добавить вам <b>+10 ГБ bypass</b> прямо сейчас.\n"
+            )
+            b = InlineKeyboardBuilder()
+            b.row(InlineKeyboardButton(text="🎁 Получить +10 ГБ", callback_data="cancel_accept_10gb"))
+            b.row(InlineKeyboardButton(text="❌ Всё равно отменить", callback_data="cancel_sub_final"))
+            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_info:{current_tier}"))
+        else:
+            # First time — offer 50% discount
+            text = (
+                "😢 <b>Жаль, что вы хотите уйти</b>\n\n"
+                "Специально для вас — <b>скидка 50%</b> на следующий месяц!\n"
+            )
+            b = InlineKeyboardBuilder()
+            plans = await get_tier_plans()
+            current_plan_id = f"{current_tier}_1m"
+            if current_plan_id in plans:
+                plan = plans[current_plan_id]
+                half_price = plan["price_rub"] // 2
+                b.row(InlineKeyboardButton(
+                    text=f"🔥 {TIERS[current_tier]['name']} за {format_price_rub(half_price)}",
+                    callback_data=f"cancel_offer_50:{current_plan_id}",
+                ))
+
+            # Offer upgrades at 50% too
+            if current_tier in TIER_ORDER:
+                idx = TIER_ORDER.index(current_tier)
+                for higher_tier in TIER_ORDER[idx + 1:]:
+                    higher_plan_id = f"{higher_tier}_1m"
+                    if higher_plan_id in plans:
+                        hp = plans[higher_plan_id]
+                        half = hp["price_rub"] // 2
+                        b.row(InlineKeyboardButton(
+                            text=f"⬆️ {TIERS[higher_tier]['name']} за {format_price_rub(half)}",
+                            callback_data=f"cancel_offer_50:{higher_plan_id}",
+                        ))
+
+            b.row(InlineKeyboardButton(text="❌ Всё равно отменить", callback_data="cancel_sub_step2"))
+            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_info:{current_tier}"))
+
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
+        await callback.answer()
+
+    @dp.callback_query(F.data.startswith("cancel_offer_50:"))
+    async def handle_cancel_offer_50(callback: CallbackQuery):
+        """User accepted 50% discount — create payment at half price."""
+        plan_id = callback.data.split(":")[1]
+        user_id = callback.from_user.id
+
+        plans = await get_tier_plans()
+        if plan_id not in plans:
+            await callback.answer("❌ План не найден", show_alert=True)
+            return
+
+        plan = plans[plan_id]
+        half_price = plan["price_rub"] // 2
+        if half_price < 100:
+            half_price = 100
+
+        try:
+            yk = YooKassaClient(config.yookassa)
+            bot_info = await bot.get_me()
+            payment_data = yk.create_payment(
+                amount=half_price / 100.0,
+                description=f"VPN {plan['title']} (скидка 50%)",
+                return_url=f"https://t.me/{bot_info.username}?start=payment_success",
+                metadata={
+                    "user_id": str(user_id),
+                    "plan_id": plan_id,
+                    "method_id": "yookassa",
+                    "product_type": "tier",
+                },
+                save_payment_method=True,
+                merchant_customer_id=str(user_id),
+            )
+            async with get_connection() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    user_id, half_price, "RUB", plan_id, "tier", "pending",
+                    payment_data["id"],
+                )
+                await conn.execute(
+                    "UPDATE users SET cancel_retention_used = TRUE WHERE user_id = $1",
+                    user_id,
+                )
+
+            b = InlineKeyboardBuilder()
+            b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
+            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"))
+            await callback.message.edit_text(
+                f"🔥 <b>{plan['title']}</b> со скидкой 50%\n\n"
+                f"Сумма: <b>{format_price_rub(half_price)}</b>",
+                parse_mode="HTML",
+                reply_markup=b.as_markup(),
+            )
+            await callback.answer()
+        except Exception as e:
+            logger.error("cancel_offer_50 error: %s", e, exc_info=True)
+            await callback.answer("❌ Ошибка", show_alert=True)
+
+    @dp.callback_query(F.data == "cancel_sub_step2")
+    async def handle_cancel_sub_step2(callback: CallbackQuery):
+        """Step 2: Offer 100 GB bonus bypass."""
+        user_id = callback.from_user.id
+        async with get_connection() as conn:
+            tier = await conn.fetchval(
+                "SELECT subscription_tier FROM users WHERE user_id = $1", user_id
+            )
+
+        text = (
+            "🎁 <b>Подождите!</b>\n\n"
+            "Мы добавим вам <b>+100 ГБ bypass</b> бесплатно прямо сейчас.\n"
+            "Они суммируются с вашим текущим лимитом."
+        )
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(text="🎁 Отлично, забираю!", callback_data="cancel_accept_100gb"))
+        b.row(InlineKeyboardButton(text="❌ Нет, отменить", callback_data="cancel_sub_step3"))
+        b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="cancel_sub_start"))
+
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
+        await callback.answer()
+
+    @dp.callback_query(F.data == "cancel_accept_100gb")
+    async def handle_cancel_accept_100gb(callback: CallbackQuery):
+        """User accepted 100 GB bonus."""
+        user_id = callback.from_user.id
+        async with get_connection() as conn:
+            await conn.execute(
+                "UPDATE users SET bypass_bonus_gb = COALESCE(bypass_bonus_gb, 0) + 100, cancel_retention_used = TRUE WHERE user_id = $1",
+                user_id,
+            )
+        await callback.message.edit_text(
+            "✅ <b>Готово!</b>\n\n"
+            "+100 ГБ bypass добавлены на ваш аккаунт.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardBuilder().row(
+                InlineKeyboardButton(text="🏠 На главную", callback_data="go_back")
+            ).as_markup(),
+        )
+        await callback.answer()
+
+    @dp.callback_query(F.data == "cancel_accept_10gb")
+    async def handle_cancel_accept_10gb(callback: CallbackQuery):
+        """User accepted 10 GB bonus (repeat canceller)."""
+        user_id = callback.from_user.id
+        async with get_connection() as conn:
+            await conn.execute(
+                "UPDATE users SET bypass_bonus_gb = COALESCE(bypass_bonus_gb, 0) + 10 WHERE user_id = $1",
+                user_id,
+            )
+        await callback.message.edit_text(
+            "✅ <b>Готово!</b>\n\n"
+            "+10 ГБ bypass добавлены на ваш аккаунт.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardBuilder().row(
+                InlineKeyboardButton(text="🏠 На главную", callback_data="go_back")
+            ).as_markup(),
+        )
+        await callback.answer()
+
+    @dp.callback_query(F.data == "cancel_sub_step3")
+    async def handle_cancel_sub_step3(callback: CallbackQuery):
+        """Step 3: Offer any tier for 1₽/month."""
+        text = (
+            "💰 <b>Последнее предложение!</b>\n\n"
+            "Любой тариф всего за <b>1₽</b> на следующий месяц:"
+        )
+        b = InlineKeyboardBuilder()
+        for tier_id in TIER_ORDER:
+            t = TIERS[tier_id]
+            b.row(InlineKeyboardButton(
+                text=f"{t['name']} за 1₽",
+                callback_data=f"cancel_offer_1rub:{tier_id}_1m",
+            ))
+        b.row(InlineKeyboardButton(text="❌ Нет, отменить подписку", callback_data="cancel_sub_final"))
+        b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="cancel_sub_step2"))
+
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
+        await callback.answer()
+
+    @dp.callback_query(F.data.startswith("cancel_offer_1rub:"))
+    async def handle_cancel_offer_1rub(callback: CallbackQuery):
+        """User accepted 1₽ offer — create payment for 1 RUB."""
+        plan_id = callback.data.split(":")[1]
+        user_id = callback.from_user.id
+
+        plans = await get_tier_plans()
+        if plan_id not in plans:
+            await callback.answer("❌ План не найден", show_alert=True)
+            return
+
+        plan = plans[plan_id]
+        price_kopecks = 100  # 1₽
+
+        try:
+            yk = YooKassaClient(config.yookassa)
+            bot_info = await bot.get_me()
+            payment_data = yk.create_payment(
+                amount=1.00,
+                description=f"VPN {plan['title']} (спецпредложение)",
+                return_url=f"https://t.me/{bot_info.username}?start=payment_success",
+                metadata={
+                    "user_id": str(user_id),
+                    "plan_id": plan_id,
+                    "method_id": "yookassa",
+                    "product_type": "tier",
+                },
+                save_payment_method=True,
+                merchant_customer_id=str(user_id),
+            )
+            async with get_connection() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    user_id, price_kopecks, "RUB", plan_id, "tier", "pending",
+                    payment_data["id"],
+                )
+                await conn.execute(
+                    "UPDATE users SET cancel_retention_used = TRUE WHERE user_id = $1",
+                    user_id,
+                )
+
+            b = InlineKeyboardBuilder()
+            b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
+            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"))
+            await callback.message.edit_text(
+                f"🔥 <b>{plan['title']}</b> за 1₽\n\n"
+                f"Сумма: <b>1₽</b>",
+                parse_mode="HTML",
+                reply_markup=b.as_markup(),
+            )
+            await callback.answer()
+        except Exception as e:
+            logger.error("cancel_offer_1rub error: %s", e, exc_info=True)
+            await callback.answer("❌ Ошибка", show_alert=True)
+
+    @dp.callback_query(F.data == "cancel_sub_final")
+    async def handle_cancel_sub_final(callback: CallbackQuery):
+        """Final cancellation: remove saved card and deactivate autopay."""
+        user_id = callback.from_user.id
+        async with get_connection() as conn:
+            await conn.execute(
+                """
+                UPDATE users
+                SET yookassa_recurring_payment_method_id = NULL,
+                    cancel_retention_used = FALSE
+                WHERE user_id = $1
+                """,
+                user_id,
+            )
+
+        await callback.message.edit_text(
+            "✅ <b>Подписка отменена</b>\n\n"
+            "Автоматическое продление отключено. "
+            "Текущая подписка будет действовать до конца оплаченного периода.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardBuilder().row(
+                InlineKeyboardButton(text="🏠 На главную", callback_data="go_back")
+            ).as_markup(),
         )
         await callback.answer()
 

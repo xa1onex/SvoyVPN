@@ -200,6 +200,11 @@ async def init_db() -> None:
                 logging.info(
                     "Added yookassa_recurring_payment_method_id column to users table"
                 )
+            if 'cancel_retention_used' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN cancel_retention_used BOOLEAN DEFAULT FALSE"
+                )
+                logging.info("Added cancel_retention_used column to users table")
         except Exception as e:
             logging.warning(f"Could not add columns to users table: {e}")
         
