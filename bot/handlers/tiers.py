@@ -139,7 +139,7 @@ async def build_tiers_message(user_id: int):
     if is_active:
         builder.row(
             InlineKeyboardButton(
-                text="📶 Докупить bypass ГБ",
+                text="📶 Лимиты",
                 callback_data="open_bypass_packs",
             )
         )
@@ -445,7 +445,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(
-                text="📶 Докупить bypass ГБ",
+                text="📶 Лимиты",
                 callback_data="open_bypass_packs",
             )
         )
