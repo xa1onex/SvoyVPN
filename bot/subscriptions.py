@@ -894,7 +894,18 @@ async def get_subscription_status_display(user_id: int) -> str:
         if tier != "legacy":
             tier_info = TIERS.get(tier, {})
             tier_name = tier_info.get("name", tier.capitalize())
-            header = f"<b>VPN {tier_name}</b> активен"
+            # Check if autopay is disabled (card unlinked)
+            has_card = False
+            async with get_connection() as conn:
+                has_card = await conn.fetchval(
+                    "SELECT yookassa_recurring_payment_method_id IS NOT NULL FROM users WHERE user_id = $1",
+                    user_id,
+                )
+            end_date = sub_end.strftime("%d.%m.%Y")
+            if has_card:
+                header = f"<b>VPN {tier_name}</b> активен"
+            else:
+                header = f"<b>VPN {tier_name}</b> активен до {end_date}"
 
             async with get_connection() as conn:
                 snap = await user_bypass_traffic_snapshot(conn, user_id)
