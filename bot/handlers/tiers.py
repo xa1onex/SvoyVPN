@@ -243,6 +243,8 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             await callback.message.edit_text(
                 f"💳 <b>Подписка: {plan['title']}</b>\n\n"
                 f"Сумма: <b>{format_price_rub(price)}</b>/мес\n\n"
+                f"<i>После оплаты картой подписка продлевается автоматически каждый месяц. "
+                f"Отменить автопродление можно в любой момент.</i>",
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
             )
