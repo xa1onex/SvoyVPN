@@ -866,56 +866,68 @@ async def get_subscription_status(user_id: int) -> str:
 
 async def get_subscription_status_display(user_id: int) -> str:
     """
-    Текст для главного меню: статус подписки + тариф + bypass трафик.
+    Текст для главного меню: статус подписки + bypass трафик.
+    Формат: «VPN Standard активен» или «VPN неактивен».
     """
-    base = await get_subscription_status(user_id)
-    if base == "неактивен":
-        return base
     try:
         from .traffic import user_traffic_snapshot, user_bypass_traffic_snapshot
         from .plans import TIERS
 
         async with get_connection() as conn:
             row = await conn.fetchrow(
-                "SELECT subscription_tier FROM users WHERE user_id = $1", user_id
+                "SELECT subscription_tier, pay_subscribed, subscription_end FROM users WHERE user_id = $1",
+                user_id,
             )
-            tier = (row["subscription_tier"] if row else None) or "legacy"
 
-            # Show bypass traffic for tier users
-            if tier != "legacy":
-                tier_info = TIERS.get(tier, {})
-                tier_name = tier_info.get("name", tier.capitalize())
+        if not row or not row["pay_subscribed"] or not row["subscription_end"]:
+            return "VPN неактивен"
+
+        sub_end = row["subscription_end"]
+        if isinstance(sub_end, str):
+            from datetime import datetime as _dt
+            sub_end = _dt.strptime(sub_end.split()[0], "%Y-%m-%d")
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        if sub_end.replace(hour=0, minute=0, second=0, microsecond=0) < today:
+            return "VPN неактивен"
+
+        tier = (row["subscription_tier"] or "legacy")
+        if tier != "legacy":
+            tier_info = TIERS.get(tier, {})
+            tier_name = tier_info.get("name", tier.capitalize())
+            header = f"VPN {tier_name} активен"
+
+            async with get_connection() as conn:
                 snap = await user_bypass_traffic_snapshot(conn, user_id)
-                used = float(snap.get("bypassUsedGb") or 0)
-                limit = float(snap.get("bypassLimitGb") or 0)
-                remaining = float(snap.get("bypassRemainingGb") or 0)
-                bonus = int(snap.get("bypassBonusGb") or 0)
-                result = f"{base}\n💎 Тариф: {tier_name}"
-                if limit > 0:
-                    result += f"\n🔓 Bypass: {used:.1f} / {limit:.0f} ГБ"
-                    if used > limit:
-                        result += " ⚠️"
-                    if bonus > 0:
-                        result += f" (+{bonus} ГБ пакет)"
-                return result
-
-            # Legacy users - show old traffic stats
-            snap = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
-        if not snap.get("trafficEnforced"):
-            return base
-        used = float(snap.get("usedGb") or 0)
-        limit = float(snap.get("limitGb") or 0)
-        bonus = int(snap.get("bonusGb") or 0)
-        bonus_rem = float(snap.get("bonusRemainingGb") or 0)
-        if bonus > 0:
-            return (
-                f"{base}\n📊 Трафик: {used:.1f} / {limit:.0f} ГБ"
-                f" (пакет: осталось {bonus_rem:.1f} из {bonus} ГБ)"
-            )
-        return f"{base}\n📊 Трафик: {used:.1f} / {limit:.0f} ГБ в месяц"
+            used = float(snap.get("bypassUsedGb") or 0)
+            limit = float(snap.get("bypassLimitGb") or 0)
+            bonus = int(snap.get("bypassBonusGb") or 0)
+            if limit > 0:
+                line = f"\nBypass(Лимит): {used:.1f} / {limit:.0f} ГБ"
+                if used > limit:
+                    line += " ⚠️"
+                if bonus > 0:
+                    line += f" (+{bonus} ГБ пакет)"
+                return header + line
+            return header
+        else:
+            header = "VPN активен"
+            async with get_connection() as conn:
+                snap = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
+            if not snap.get("trafficEnforced"):
+                return header
+            used = float(snap.get("usedGb") or 0)
+            limit = float(snap.get("limitGb") or 0)
+            bonus = int(snap.get("bonusGb") or 0)
+            bonus_rem = float(snap.get("bonusRemainingGb") or 0)
+            if bonus > 0:
+                return (
+                    f"{header}\n📊 Трафик: {used:.1f} / {limit:.0f} ГБ"
+                    f" (пакет: осталось {bonus_rem:.1f} из {bonus} ГБ)"
+                )
+            return f"{header}\n📊 Трафик: {used:.1f} / {limit:.0f} ГБ"
     except Exception as e:
         logger.error("get_subscription_status_display: %s", e)
-        return base
+        return "VPN неактивен"
 
 
 async def update_vless_links_for_server(server_id: int) -> None:

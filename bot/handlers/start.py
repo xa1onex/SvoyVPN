@@ -303,7 +303,7 @@ async def get_main_text(first_name: str, subscription_status: str, user_id: int 
             # Приветствие для пользователя, зарегистрировавшегося по реферальной ссылке
             msg = (
                 f"👋 Добро пожаловать, <b>{first_name}</b>!\n\n"
-                f"<b>VPN</b>: <i>{subscription_status}</i>\n\n"
+                f"<i>{subscription_status}</i>\n\n"
                 f"📌 <b>Команды:</b>\n"
                 "<i>/start</i> - Перезагрузить бота\n"
                 "<i>/prem</i> - Покупка VPN\n"
@@ -314,7 +314,7 @@ async def get_main_text(first_name: str, subscription_status: str, user_id: int 
             # Приветствие для пользователя, зарегистрировавшегося без реферальной ссылки
             msg = (
                 f"👋 Добро пожаловать, <b>{first_name}</b>!\n\n"
-                f"<b>VPN</b>: <i>{subscription_status}</i>\n\n"
+                f"<i>{subscription_status}</i>\n\n"
                 f"📌 <b>Команды:</b>\n"
                 "<i>/start</i> - Перезагрузить бота\n"
                 "<i>/prem</i> - Покупка VPN\n"
@@ -325,7 +325,7 @@ async def get_main_text(first_name: str, subscription_status: str, user_id: int 
         # Стандартное приветствие для существующих пользователей
         msg = (
             f"👋 Рады видеть тебя снова, <b>{first_name}</b>!\n\n"
-            f"<b>VPN</b>: <i>{subscription_status}</i>\n\n"
+            f"<i>{subscription_status}</i>\n\n"
             f"📌 <b>Команды:</b>\n"
             "<i>/start</i> - Перезагрузить бота\n"
             "<i>/prem</i> - Покупка VPN\n"

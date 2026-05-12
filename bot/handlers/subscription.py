@@ -14,7 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.exceptions import TelegramBadRequest
 
 from ..database import get_connection, ensure_subscription_token
-from ..subscriptions import get_subscription_status, get_user_subscription_url, format_subscription_status_label
+from ..subscriptions import get_subscription_status, get_user_subscription_url
 from ..plans import get_subscription_plans, get_renewal_plans, format_price_rub, format_price_stars, format_price_both, PAYMENT_METHODS
 from ..config import AppConfig
 from ..yookassa_client import YooKassaClient
@@ -461,35 +461,9 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
     builder = InlineKeyboardBuilder()
     
     if is_renew:
-        text = "💳 <b>Управление подпиской:</b>\n\n"
-        end_date_obj = info.get('end_date_obj')
-        if end_date_obj:
-            days_remaining = info.get('days_remaining')
-            if days_remaining == 0:
-                text += f"✅ Ваш VPN: <b>активен СЕГОДНЯ</b> ({info.get('end_date_str')})!\n"
-            elif days_remaining == 1:
-                text += f"✅ Ваш VPN: <b>активен ЗАВТРА</b> ({info.get('end_date_str')})!\n"
-            else:
-                text += f"✅ Ваш VPN <b>{format_subscription_status_label(end_date_obj)}</b>!\n"
-        else:
-            text += "✅ Ваш VPN <b>активен</b>!\n"
-        text += "Вы можете пользоваться приложением.\n\n"
-        try:
-            from ..traffic import user_traffic_snapshot
-
-            async with get_connection() as conn:
-                snap = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
-            if snap.get("trafficEnforced"):
-                u_g = float(snap.get("usedGb") or 0)
-                l_g = float(snap.get("limitGb") or 0)
-                b_g = int(snap.get("bonusGb") or 0)
-                b_rem = float(snap.get("bonusRemainingGb") or 0)
-                text += f"📊 <b>Трафик</b>: {u_g:.1f} / {l_g:.0f} ГБ"
-                if b_g > 0:
-                    text += f" (пакет: осталось {b_rem:.1f} из {b_g} ГБ)"
-                text += "\n\n"
-        except Exception as e:
-            logger.warning("build_subscription_message traffic line: %s", e)
+        from ..subscriptions import get_subscription_status_display
+        status_line = await get_subscription_status_display(user_id)
+        text = f"✅ <b>{status_line}</b>\n\n"
 
         if show_discount:
             text += "🎁 <b>Специальное предложение!</b>\n\n"
@@ -519,10 +493,9 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
             )
             
     else:
-        text = "💳 <b>Информация о вашем VPN:</b>\n\n"
-        text += (
-            "❌ Ваш VPN <b>неактивен</b>!\n\n"
-            "Что ты получишь с <b>VPN</b>?\n"
+        text = (
+            "❌ <b>VPN неактивен</b>\n\n"
+            "Что ты получишь с VPN?\n"
             "• Быстрый и безопасный VPN\n"
             "• Обход всех блокировок\n"
             "• Высокая скорость подключения\n\n"
