@@ -84,9 +84,11 @@ async def build_tiers_message(user_id: int):
 
     text = "\n".join(text_parts)
 
+    tier_icons = {"lite": "🆗", "standard": "🆒", "pro": "🆙"}
     builder = InlineKeyboardBuilder()
     for tier_id in TIER_ORDER:
         t = TIERS[tier_id]
+        icon = tier_icons.get(tier_id, "")
         if is_active and current_tier == tier_id:
             builder.row(
                 InlineKeyboardButton(
@@ -104,7 +106,7 @@ async def build_tiers_message(user_id: int):
         else:
             builder.row(
                 InlineKeyboardButton(
-                    text=f"💎 {t['name']}",
+                    text=f"{icon} {t['name']}",
                     callback_data=f"tier_select:{tier_id}",
                 )
             )
