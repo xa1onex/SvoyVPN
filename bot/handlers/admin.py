@@ -206,6 +206,7 @@ def get_admin_panel_keyboard():
     builder.row(InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"))
     builder.row(InlineKeyboardButton(text="🔔 Логи активности", callback_data="admin_realtime_logs"))
     builder.row(InlineKeyboardButton(text="💰 Управление ценами", callback_data="admin_prices"))
+    builder.row(InlineKeyboardButton(text="🚀 Тарифы (Lite/Standard/Pro)", callback_data="admin_tier_prices"))
     builder.row(InlineKeyboardButton(text="📶 Трафик и пакеты ГБ", callback_data="admin_traffic"))
     builder.row(InlineKeyboardButton(text="🎁 Управление скидками", callback_data="admin_discounts"))
     builder.row(InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast"))
@@ -715,16 +716,118 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     
     @dp.message(AdminStates.SETTING_PRICE)
     async def process_price_setting(message: Message, state: FSMContext):
-        """Обработка установки цены"""
+        """Обработка установки цены (legacy plans, tier plans, bypass packs)"""
         if not is_admin(message.from_user.id, config):
             await message.answer("❌ Нет доступа")
             await state.clear()
             return
-        
+
         data = await state.get_data()
+        tier_plan_id = data.get('tier_plan_id')
+        bypass_pack_id = data.get('bypass_pack_id')
         plan_id = data.get('plan_id')
-        
-        parts = message.text.strip().upper().split()
+
+        text_input = message.text.strip().upper()
+
+        # --- Handle bypass pack edit ---
+        if bypass_pack_id:
+            if text_input == "TOGGLE":
+                async with get_connection() as conn:
+                    await conn.execute(
+                        "UPDATE bypass_pack_products SET is_active = NOT is_active WHERE id = $1",
+                        bypass_pack_id,
+                    )
+                await message.answer("✅ Статус пакета изменён.")
+                await state.clear()
+                return
+            parts = text_input.split()
+            if len(parts) != 2:
+                await message.answer("❌ Формат: RUB 5900 или STARS 59 или TOGGLE")
+                return
+            currency_type, amt_str = parts
+            try:
+                amount = int(amt_str)
+            except ValueError:
+                await message.answer("❌ Сумма должна быть числом")
+                return
+            async with get_connection() as conn:
+                if currency_type == "RUB":
+                    await conn.execute(
+                        "UPDATE bypass_pack_products SET price_rub = $1, updated_at = NOW() WHERE id = $2",
+                        amount, bypass_pack_id,
+                    )
+                elif currency_type == "STARS":
+                    await conn.execute(
+                        "UPDATE bypass_pack_products SET price_stars = $1, updated_at = NOW() WHERE id = $2",
+                        amount, bypass_pack_id,
+                    )
+                else:
+                    await message.answer("❌ Используйте RUB, STARS или TOGGLE")
+                    return
+            await message.answer("✅ Цена bypass пакета обновлена!")
+            await state.clear()
+            return
+
+        # --- Handle tier plan edit ---
+        if tier_plan_id:
+            from ..plans import TIER_PLANS_BASE
+            parts = text_input.split()
+            if len(parts) != 2:
+                await message.answer("❌ Формат: RUB 9900 или STARS 99")
+                return
+            currency_type, amt_str = parts
+            try:
+                amount = int(amt_str)
+            except ValueError:
+                await message.answer("❌ Сумма должна быть числом")
+                return
+            base = TIER_PLANS_BASE.get(tier_plan_id, {})
+            tier = base.get("tier", "")
+            duration = base.get("duration", 1)
+            async with get_connection() as conn:
+                if currency_type == "RUB":
+                    existing = await conn.fetchrow(
+                        "SELECT price_stars FROM tier_price_settings WHERE tier = $1 AND duration_months = $2",
+                        tier, duration,
+                    )
+                    stars = existing["price_stars"] if existing else base.get("price_stars", 0)
+                    await conn.execute(
+                        """
+                        INSERT INTO tier_price_settings (tier, duration_months, price_rub, price_stars, updated_at)
+                        VALUES ($1, $2, $3, $4, NOW())
+                        ON CONFLICT (tier, duration_months) DO UPDATE SET price_rub = $3, updated_at = NOW()
+                        """,
+                        tier, duration, amount, stars,
+                    )
+                elif currency_type == "STARS":
+                    existing = await conn.fetchrow(
+                        "SELECT price_rub FROM tier_price_settings WHERE tier = $1 AND duration_months = $2",
+                        tier, duration,
+                    )
+                    rub = existing["price_rub"] if existing else base.get("price_rub", 0)
+                    await conn.execute(
+                        """
+                        INSERT INTO tier_price_settings (tier, duration_months, price_rub, price_stars, updated_at)
+                        VALUES ($1, $2, $3, $4, NOW())
+                        ON CONFLICT (tier, duration_months) DO UPDATE SET price_stars = $4, updated_at = NOW()
+                        """,
+                        tier, duration, rub, amount,
+                    )
+                else:
+                    await message.answer("❌ Используйте RUB или STARS")
+                    return
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="◀️ К тарифам", callback_data="admin_tier_prices"))
+            await message.answer(
+                f"✅ Цена тарифа обновлена: {base.get('title', tier_plan_id)}",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML",
+            )
+            await state.clear()
+            return
+
+        # --- Handle legacy plan edit ---
+        parts = text_input.split()
         if len(parts) != 2:
             await message.answer("❌ Неверный формат. Используйте: RUB 19900 или STARS 199")
             return
@@ -738,7 +841,6 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         async with get_connection() as conn:
             if currency_type == "RUB":
-                # Получаем текущую цену в stars
                 price_row = await conn.fetchrow('SELECT price_stars FROM price_settings WHERE plan_id = $1', plan_id)
                 price_stars = price_row['price_stars'] if price_row else RENEWAL_PLANS_BASE.get(plan_id, SUBSCRIPTION_PLANS_BASE.get(plan_id, {}))['price_stars']
                 price_stars = int(price_stars) if price_stars is not None else int(RENEWAL_PLANS_BASE.get(plan_id, SUBSCRIPTION_PLANS_BASE.get(plan_id, {}))['price_stars'])
@@ -750,7 +852,6 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     SET price_rub = $2, updated_at = CURRENT_TIMESTAMP
                 ''', plan_id, amount, price_stars)
             elif currency_type == "STARS":
-                # Получаем текущую цену в rub
                 price_row = await conn.fetchrow('SELECT price_rub FROM price_settings WHERE plan_id = $1', plan_id)
                 price_rub = price_row['price_rub'] if price_row else RENEWAL_PLANS_BASE.get(plan_id, SUBSCRIPTION_PLANS_BASE.get(plan_id, {}))['price_rub']
                 price_rub = int(price_rub) if price_rub is not None else int(RENEWAL_PLANS_BASE.get(plan_id, SUBSCRIPTION_PLANS_BASE.get(plan_id, {}))['price_rub'])
@@ -765,12 +866,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 await message.answer("❌ Неверный тип валюты. Используйте RUB или STARS")
                 return
         
-        # Получаем данные плана для сообщения
         all_plans = {**SUBSCRIPTION_PLANS_BASE, **RENEWAL_PLANS_BASE}
         plan_data = all_plans.get(plan_id)
         plan_title = plan_data['title'] if plan_data else plan_id
         
-        # Получаем обновленную цену для отображения
         async with get_connection() as conn:
             price_row = await conn.fetchrow('SELECT price_rub, price_stars FROM price_settings WHERE plan_id = $1', plan_id)
             if price_row:
@@ -791,6 +890,175 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             parse_mode="HTML"
         )
         await state.clear()
+
+    # ------------------------------------------------------------------
+    # Tier price management (Lite/Standard/Pro)
+    # ------------------------------------------------------------------
+    @dp.callback_query(F.data == "admin_tier_prices")
+    async def handle_admin_tier_prices(callback: CallbackQuery):
+        """Управление ценами тарифов Lite/Standard/Pro"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+
+        from ..plans import TIER_PLANS_BASE, TIERS, get_tier_plans, get_bypass_packs
+
+        plans = await get_tier_plans()
+        text = "🚀 <b>Тарифы: Lite / Standard / Pro</b>\n\n"
+
+        builder = InlineKeyboardBuilder()
+        for tier_id in ["lite", "standard", "pro"]:
+            t = TIERS[tier_id]
+            text += f"<b>{t['name']}</b> ({t['bypass_gb']} ГБ bypass, до {t['max_devices']} устр.)\n"
+            for plan_id, plan_data in plans.items():
+                if plan_data.get("tier") == tier_id:
+                    text += f"  • {plan_data['title']}: {format_price_rub(plan_data['price_rub'])} | {format_price_stars(plan_data['price_stars'])}\n"
+            text += "\n"
+
+        text += "<b>Bypass пакеты (докупка):</b>\n"
+        packs = await get_bypass_packs()
+        for p in packs:
+            text += f"  • +{p['gb_amount']} ГБ: {format_price_rub(p['price_rub'])} | {format_price_stars(p['price_stars'])}\n"
+        text += "\n💡 Докупка должна быть менее выгодной, чем апгрейд.\n"
+
+        for plan_id in plans:
+            builder.row(InlineKeyboardButton(
+                text=f"✏️ {plans[plan_id]['title']}",
+                callback_data=f"admin_tier_edit:{plan_id}",
+            ))
+
+        builder.row(InlineKeyboardButton(text="📶 Bypass пакеты", callback_data="admin_bypass_packs"))
+        builder.row(InlineKeyboardButton(text="🏷️ Пометить bypass-сервер", callback_data="admin_mark_bypass"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data.startswith("admin_tier_edit:"))
+    async def handle_admin_tier_edit(callback: CallbackQuery, state: FSMContext):
+        """Редактирование цены тарифа"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+
+        plan_id = callback.data.split(":")[1]
+        from ..plans import get_tier_plans
+        plans = await get_tier_plans()
+        plan_data = plans.get(plan_id)
+        if not plan_data:
+            await safe_callback_answer(callback, "❌ Не найден", show_alert=True)
+            return
+
+        await callback.message.edit_text(
+            f"✏️ <b>Редактирование: {plan_data['title']}</b>\n\n"
+            f"Текущая цена: {format_price_rub(plan_data['price_rub'])} | {format_price_stars(plan_data['price_stars'])}\n\n"
+            f"Введите новую цену:\n"
+            f"<code>RUB КОПЕЙКИ</code> или <code>STARS КОЛИЧЕСТВО</code>\n\n"
+            f"Пример: <code>RUB 9900</code> = 99₽",
+            parse_mode="HTML",
+        )
+        await state.set_state(AdminStates.SETTING_PRICE)
+        await state.update_data(tier_plan_id=plan_id)
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data == "admin_bypass_packs")
+    async def handle_admin_bypass_packs(callback: CallbackQuery):
+        """Управление bypass пакетами"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+
+        async with get_connection() as conn:
+            packs = await conn.fetch(
+                "SELECT id, title, gb_amount, price_rub, price_stars, is_active FROM bypass_pack_products ORDER BY gb_amount"
+            )
+
+        text = "📶 <b>Bypass пакеты (докупка ГБ)</b>\n\n"
+        builder = InlineKeyboardBuilder()
+        for p in packs:
+            status = "✅" if p["is_active"] else "❌"
+            text += f"{status} +{p['gb_amount']} ГБ — {p['title']} — {format_price_rub(p['price_rub'])}\n"
+            builder.row(InlineKeyboardButton(
+                text=f"✏️ +{p['gb_amount']} ГБ ({format_price_rub(p['price_rub'])})",
+                callback_data=f"admin_bp_edit:{p['id']}",
+            ))
+
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_tier_prices"))
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data.startswith("admin_bp_edit:"))
+    async def handle_admin_bp_edit(callback: CallbackQuery, state: FSMContext):
+        """Редактирование bypass пакета"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+
+        pack_id = int(callback.data.split(":")[1])
+        async with get_connection() as conn:
+            p = await conn.fetchrow("SELECT * FROM bypass_pack_products WHERE id = $1", pack_id)
+        if not p:
+            await safe_callback_answer(callback, "❌ Не найден", show_alert=True)
+            return
+
+        await callback.message.edit_text(
+            f"✏️ <b>Bypass пакет: +{p['gb_amount']} ГБ</b>\n\n"
+            f"Текущая цена: {format_price_rub(p['price_rub'])} | {format_price_stars(p['price_stars'])}\n"
+            f"Активен: {'да' if p['is_active'] else 'нет'}\n\n"
+            f"Введите новую цену:\n"
+            f"<code>RUB КОПЕЙКИ</code> или <code>STARS КОЛ-ВО</code>\n"
+            f"Или <code>TOGGLE</code> для вкл/выкл",
+            parse_mode="HTML",
+        )
+        await state.set_state(AdminStates.SETTING_PRICE)
+        await state.update_data(bypass_pack_id=pack_id)
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data == "admin_mark_bypass")
+    async def handle_admin_mark_bypass(callback: CallbackQuery):
+        """Пометить сервер как bypass"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+
+        async with get_connection() as conn:
+            servers = await conn.fetch(
+                "SELECT id, name, is_bypass, is_active FROM servers ORDER BY display_order, id"
+            )
+
+        text = "🏷️ <b>Bypass серверы</b>\n\nОтметьте серверы, которые используются для обхода блокировок:\n\n"
+        builder = InlineKeyboardBuilder()
+        for s in servers:
+            mark = "🔓" if s["is_bypass"] else "🌐"
+            active = "✅" if s["is_active"] else "⏸"
+            builder.row(InlineKeyboardButton(
+                text=f"{mark} {active} {s['name']}",
+                callback_data=f"admin_toggle_bypass:{s['id']}",
+            ))
+
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_tier_prices"))
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data.startswith("admin_toggle_bypass:"))
+    async def handle_admin_toggle_bypass(callback: CallbackQuery):
+        """Toggle bypass flag on server"""
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+
+        server_id = int(callback.data.split(":")[1])
+        async with get_connection() as conn:
+            await conn.execute(
+                "UPDATE servers SET is_bypass = NOT is_bypass WHERE id = $1",
+                server_id,
+            )
+            s = await conn.fetchrow("SELECT name, is_bypass FROM servers WHERE id = $1", server_id)
+
+        status = "bypass 🔓" if s["is_bypass"] else "обычный 🌐"
+        await safe_callback_answer(callback, f"{s['name']} → {status}", show_alert=True)
+        # Refresh the list
+        await handle_admin_mark_bypass(callback)
 
     @dp.callback_query(F.data == "admin_traffic")
     async def handle_admin_traffic(callback: CallbackQuery, state: FSMContext):

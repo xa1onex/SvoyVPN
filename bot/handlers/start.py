@@ -413,18 +413,21 @@ async def get_main_keyboard(user_id: int, config):
 
     if show_traffic_boost:
         builder.row(
-            InlineKeyboardButton(text="💳 Подписка", callback_data="open_premium"),
-            InlineKeyboardButton(text="📶 Лимит", callback_data="open_traffic_packs"),
+            InlineKeyboardButton(text="🚀 Тарифы", callback_data="open_tiers"),
+            InlineKeyboardButton(text="📶 Bypass", callback_data="open_bypass_packs"),
+        )
+        builder.row(
+            InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"),
             InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
         )
     else:
         builder.row(
-            InlineKeyboardButton(text="💳 Подписка", callback_data="open_premium"),
+            InlineKeyboardButton(text="🚀 Тарифы", callback_data="open_tiers"),
             InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
         )
-    builder.row(
-        InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"),
-    )
+        builder.row(
+            InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"),
+        )
     builder.row(
         InlineKeyboardButton(text="🆘 Помощь", callback_data="open_help")
     )

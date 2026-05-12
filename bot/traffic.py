@@ -464,8 +464,6 @@ async def user_traffic_snapshot(conn, user_id: int, *, sync_from_panels: bool) -
     enforced = anchor is not None
     exceeded = enforced and limit_bytes > 0 and used >= limit_bytes
 
-    # Бонусные ГБ расходуются первыми: остаток = max(bonus - used, 0).
-    # Когда бонус исчерпан, оставшийся расход ложится на основной лимит.
     bonus_bytes = bonus_gb * BYTES_PER_GB
     bonus_remaining_gb = max(bonus_gb - round(used / BYTES_PER_GB, 3), 0)
     base_used_bytes = max(used - bonus_bytes, 0)
@@ -486,4 +484,161 @@ async def user_traffic_snapshot(conn, user_id: int, *, sync_from_panels: bool) -
         "defaultMonthlyGb": default_gb,
         "trafficExceeded": exceeded,
         "trafficEnforced": enforced,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Bypass traffic system (new tier-based)
+# ---------------------------------------------------------------------------
+
+def is_bypass_server(label: object) -> bool:
+    """Identify bypass servers by name marker or DB flag."""
+    s = str(label or "")
+    if "🔓" in s:
+        return True
+    low = s.lower()
+    return "[bypass]" in low or " bypass " in f" {low} "
+
+
+async def ensure_bypass_period(conn, user_id: int) -> None:
+    """
+    Ensure bypass billing period is set. Resets monthly (tied to same anchor day).
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT traffic_anchor_day, bypass_period_start, bypass_period_end_excl,
+               bypass_traffic_used_bytes, bypass_bonus_gb
+        FROM users WHERE user_id = $1
+        """,
+        user_id,
+    )
+    if not row:
+        return
+
+    anchor = row["traffic_anchor_day"]
+    if anchor is None:
+        return
+
+    today = date.today()
+    start, end_excl = compute_billing_period(today, int(anchor))
+    stored = row["bypass_period_start"]
+    if hasattr(stored, "date"):
+        stored = stored.date()
+
+    if stored is None:
+        await conn.execute(
+            """
+            UPDATE users SET
+                bypass_period_start = $1,
+                bypass_period_end_excl = $2
+            WHERE user_id = $3
+            """,
+            start, end_excl, user_id,
+        )
+    elif stored != start:
+        # New billing period: reset bypass counters and baseline on bypass keys
+        await conn.execute(
+            """
+            UPDATE vpn_keys
+            SET traffic_period_baseline_bytes = traffic_lifetime_bytes
+            WHERE user_id = $1 AND is_active = TRUE
+              AND server_id IN (SELECT id FROM servers WHERE is_bypass = TRUE)
+            """,
+            user_id,
+        )
+        await conn.execute(
+            """
+            UPDATE users SET
+                bypass_period_start = $1,
+                bypass_period_end_excl = $2,
+                bypass_traffic_used_bytes = 0,
+                bypass_bonus_gb = 0,
+                bypass_last_sync_at = NULL
+            WHERE user_id = $3
+            """,
+            start, end_excl, user_id,
+        )
+
+
+async def user_bypass_allowance_bytes(conn, user_id: int) -> tuple[int, int]:
+    """(limit_bytes, bonus_gb) for bypass traffic."""
+    row = await conn.fetchrow(
+        """
+        SELECT subscription_tier, bypass_traffic_limit_gb, bypass_bonus_gb
+        FROM users WHERE user_id = $1
+        """,
+        user_id,
+    )
+    if not row:
+        return 0, 0
+
+    from .plans import get_tier_bypass_gb, LEGACY_FAIR_USE_GB
+
+    tier = row["subscription_tier"] or "legacy"
+    if tier == "legacy":
+        base_gb = int(row["bypass_traffic_limit_gb"] or LEGACY_FAIR_USE_GB)
+    else:
+        base_gb = int(row["bypass_traffic_limit_gb"] or get_tier_bypass_gb(tier))
+
+    bonus_gb = int(row["bypass_bonus_gb"] or 0)
+    total_gb = base_gb + bonus_gb
+    return total_gb * BYTES_PER_GB, bonus_gb
+
+
+async def user_bypass_traffic_snapshot(conn, user_id: int) -> dict[str, Any]:
+    """Snapshot of bypass traffic usage for the current period."""
+    await ensure_bypass_period(conn, user_id)
+
+    row = await conn.fetchrow(
+        """
+        SELECT subscription_tier, traffic_anchor_day,
+               bypass_period_start, bypass_period_end_excl,
+               bypass_traffic_used_bytes, bypass_traffic_limit_gb, bypass_bonus_gb
+        FROM users WHERE user_id = $1
+        """,
+        user_id,
+    )
+    if not row:
+        return {
+            "tier": "none",
+            "bypassUsedBytes": 0,
+            "bypassLimitBytes": 0,
+            "bypassUsedGb": 0.0,
+            "bypassLimitGb": 0.0,
+            "bypassBonusGb": 0,
+            "bypassExceeded": False,
+            "periodStart": None,
+            "periodEndExclusive": None,
+        }
+
+    from .plans import get_tier_bypass_gb, LEGACY_FAIR_USE_GB
+
+    tier = row["subscription_tier"] or "legacy"
+    limit_bytes, bonus_gb = await user_bypass_allowance_bytes(conn, user_id)
+    used = int(row["bypass_traffic_used_bytes"] or 0)
+    exceeded = limit_bytes > 0 and used >= limit_bytes
+
+    base_gb = int(row["bypass_traffic_limit_gb"] or 0)
+    if base_gb == 0:
+        if tier == "legacy":
+            base_gb = LEGACY_FAIR_USE_GB
+        else:
+            base_gb = get_tier_bypass_gb(tier)
+
+    remaining_gb = max(0, (limit_bytes - used)) / BYTES_PER_GB
+    percent_used = (used / limit_bytes * 100) if limit_bytes > 0 else 0
+
+    return {
+        "tier": tier,
+        "bypassUsedBytes": used,
+        "bypassLimitBytes": limit_bytes,
+        "bypassUsedGb": round(used / BYTES_PER_GB, 2),
+        "bypassLimitGb": round(limit_bytes / BYTES_PER_GB, 2),
+        "bypassRemainingGb": round(remaining_gb, 2),
+        "bypassBonusGb": bonus_gb,
+        "bypassBaseGb": base_gb,
+        "bypassExceeded": exceeded,
+        "bypassPercentUsed": round(percent_used, 1),
+        "periodStart": _d(row["bypass_period_start"]),
+        "periodEndExclusive": _d(row["bypass_period_end_excl"]),
     }

@@ -141,6 +141,58 @@ async def init_db() -> None:
                     "ALTER TABLE users ADD COLUMN esim_beta_access BOOLEAN DEFAULT FALSE"
                 )
                 logging.info("Added esim_beta_access column to users table")
+
+            # Subscription tier system
+            if 'subscription_tier' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN subscription_tier TEXT DEFAULT 'legacy'"
+                )
+                logging.info("Added subscription_tier column to users table")
+            if 'bypass_traffic_used_bytes' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN bypass_traffic_used_bytes BIGINT DEFAULT 0"
+                )
+                logging.info("Added bypass_traffic_used_bytes column to users table")
+            if 'bypass_traffic_limit_gb' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN bypass_traffic_limit_gb INTEGER"
+                )
+                logging.info("Added bypass_traffic_limit_gb column to users table")
+            if 'bypass_period_start' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN bypass_period_start DATE"
+                )
+                logging.info("Added bypass_period_start column to users table")
+            if 'bypass_period_end_excl' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN bypass_period_end_excl DATE"
+                )
+                logging.info("Added bypass_period_end_excl column to users table")
+            if 'bypass_bonus_gb' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN bypass_bonus_gb INTEGER DEFAULT 0"
+                )
+                logging.info("Added bypass_bonus_gb column to users table")
+            if 'bypass_last_sync_at' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN bypass_last_sync_at TIMESTAMP"
+                )
+                logging.info("Added bypass_last_sync_at column to users table")
+            if 'tier_purchased_at' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN tier_purchased_at TIMESTAMP"
+                )
+                logging.info("Added tier_purchased_at column to users table")
+            if 'tier_duration_months' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN tier_duration_months INTEGER"
+                )
+                logging.info("Added tier_duration_months column to users table")
+            if 'tier_price_paid' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN tier_price_paid INTEGER DEFAULT 0"
+                )
+                logging.info("Added tier_price_paid column to users table")
         except Exception as e:
             logging.warning(f"Could not add columns to users table: {e}")
         
@@ -236,6 +288,12 @@ async def init_db() -> None:
                     """
                 )
                 logging.info("Added exclude_from_subscription column to servers table")
+
+            if 'is_bypass' not in srv_existing:
+                await conn.execute(
+                    "ALTER TABLE servers ADD COLUMN is_bypass BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+                logging.info("Added is_bypass column to servers table")
         except Exception as e:
             logging.warning(f"Could not migrate servers table (display_order/is_system): {e}")
 
@@ -783,6 +841,66 @@ async def init_db() -> None:
         except Exception as e:
              logging.warning(f"Could not add payment_source to payments: {e}")
 
+        # Bypass traffic notifications (20%, 10%, 0%)
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS bypass_traffic_notifications (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    notification_type TEXT NOT NULL,
+                    bypass_period_start DATE NOT NULL,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, notification_type, bypass_period_start),
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            ''')
+        except Exception as e:
+            logging.warning(f"Could not create bypass_traffic_notifications table: {e}")
+
+        # Tier pricing (admin-managed prices for Lite/Standard/Pro tiers)
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS tier_price_settings (
+                    id SERIAL PRIMARY KEY,
+                    tier TEXT NOT NULL,
+                    duration_months INTEGER NOT NULL,
+                    price_rub INTEGER NOT NULL,
+                    price_stars INTEGER NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(tier, duration_months)
+                )
+            ''')
+        except Exception as e:
+            logging.warning(f"Could not create tier_price_settings table: {e}")
+
+        # Bypass pack products (admin-managed bypass GB packs)
+        try:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS bypass_pack_products (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    gb_amount INTEGER NOT NULL,
+                    price_rub INTEGER NOT NULL DEFAULT 0,
+                    price_stars INTEGER NOT NULL DEFAULT 0,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    display_order INTEGER DEFAULT 100,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            bp_count = await conn.fetchval('SELECT COUNT(*) FROM bypass_pack_products')
+            if bp_count == 0:
+                await conn.execute('''
+                    INSERT INTO bypass_pack_products (title, gb_amount, price_rub, price_stars, display_order)
+                    VALUES
+                        ('10 ГБ bypass', 10, 5900, 59, 10),
+                        ('30 ГБ bypass', 30, 12900, 129, 20),
+                        ('100 ГБ bypass', 100, 29900, 299, 30),
+                        ('300 ГБ bypass', 300, 69900, 699, 40)
+                ''')
+        except Exception as e:
+            logging.warning(f"Could not create bypass_pack_products table: {e}")
+
 async def log_subscription_usage(user_id: int, user_agent: str, ip_address: str):
     """Логирует обращение к subscription endpoint"""
     try:
@@ -793,6 +911,30 @@ async def log_subscription_usage(user_id: int, user_agent: str, ip_address: str)
             )
     except Exception as e:
         logging.error(f"Error logging subscription usage: {e}")
+
+
+async def count_active_devices(conn, user_id: int, hours: int = 6) -> tuple[int, int]:
+    """
+    Count unique IPs that accessed /sub in the last N hours for this user.
+    Returns (active_device_count, device_limit).
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT
+            (SELECT COUNT(DISTINCT ip_address)
+             FROM subscription_usage_logs
+             WHERE user_id = $1
+               AND timestamp >= NOW() - ($2 || ' hours')::interval
+            ) AS device_count,
+            COALESCE(u.device_limit, 5) AS device_limit
+        FROM users u
+        WHERE u.user_id = $1
+        """,
+        user_id, str(hours),
+    )
+    if not row:
+        return 0, 5
+    return int(row["device_count"]), int(row["device_limit"])
 
 async def log_miniapp_usage(user_id: int, action: str = 'open'):
     """Логирует активность в Mini App"""

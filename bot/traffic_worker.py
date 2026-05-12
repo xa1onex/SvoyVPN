@@ -166,7 +166,7 @@ async def _apply_server_usage(server_id: int, usage: dict[str, int]) -> int:
 
 
 async def _aggregate_users_traffic() -> None:
-    """Пересчитывает users.traffic_used_bytes только по серверам с пометкой 🆓."""
+    """Пересчитывает users.traffic_used_bytes по серверам с пометкой 🆓 (legacy)."""
     async with get_connection() as conn:
         await conn.execute(
             """
@@ -190,6 +190,34 @@ async def _aggregate_users_traffic() -> None:
                       OR s.name ILIKE '%[free]%'
                       OR s.name ~* '(^|[^a-z])free([^a-z]|$)'
                   )
+                GROUP BY user_id
+            ) agg
+            WHERE u.user_id = agg.user_id
+            """
+        )
+
+
+async def _aggregate_bypass_traffic() -> None:
+    """Пересчитывает users.bypass_traffic_used_bytes по bypass-серверам."""
+    async with get_connection() as conn:
+        await conn.execute(
+            """
+            UPDATE users u
+            SET bypass_traffic_used_bytes = COALESCE(agg.used, 0),
+                bypass_last_sync_at = NOW()
+            FROM (
+                SELECT user_id,
+                       SUM(
+                           GREATEST(
+                               traffic_lifetime_bytes
+                               - COALESCE(traffic_period_baseline_bytes, 0),
+                               0
+                           )
+                       ) AS used
+                FROM vpn_keys k
+                JOIN servers s ON s.id = k.server_id
+                WHERE k.is_active = TRUE
+                  AND s.is_bypass = TRUE
                 GROUP BY user_id
             ) agg
             WHERE u.user_id = agg.user_id
@@ -247,6 +275,11 @@ async def run_sync_once() -> dict[str, int]:
         await _aggregate_users_traffic()
     except Exception as e:
         logger.warning("traffic worker: aggregate users failed: %s", e)
+
+    try:
+        await _aggregate_bypass_traffic()
+    except Exception as e:
+        logger.warning("traffic worker: aggregate bypass traffic failed: %s", e)
 
     stats = {
         "servers_total": servers_total,

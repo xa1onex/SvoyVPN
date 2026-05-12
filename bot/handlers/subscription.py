@@ -316,30 +316,19 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
     
     @dp.callback_query(F.data == "open_premium")
     async def handle_open_premium(callback: CallbackQuery, state: FSMContext):
-        """Обработчик кнопки Premium"""
+        """Обработчик кнопки Premium — перенаправляем на новые тарифы"""
+        from .tiers import build_tiers_message
         user_id = callback.from_user.id
-        info = await get_subscription_info(user_id)
-        text, builder = await build_subscription_message(info, state, config)
-        
-        await callback.message.edit_text(
-            text,
-            reply_markup=builder.as_markup(),
-            parse_mode="HTML"
-        )
+        text, markup = await build_tiers_message(user_id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
         await callback.answer()
     
     @dp.message(Command("prem"))
     async def handle_prem_command(message: Message, state: FSMContext):
-        """Обработчик команды /prem"""
-        user_id = message.from_user.id
-        info = await get_subscription_info(user_id)
-        text, builder = await build_subscription_message(info, state, config)
-        
-        await message.answer(
-            text,
-            reply_markup=builder.as_markup(),
-            parse_mode="HTML"
-        )
+        """Обработчик команды /prem — перенаправляем на новые тарифы"""
+        from .tiers import build_tiers_message
+        text, markup = await build_tiers_message(message.from_user.id)
+        await message.answer(text, reply_markup=markup, parse_mode="HTML")
     
     # Подключаем обработчики планов
     await setup_subscription_plan_handlers(dp, bot, config)
@@ -455,6 +444,7 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
         else:
             text += "💡 Вы можете продлить подписку в любое время:\n\n"
 
+        builder.row(InlineKeyboardButton(text="🚀 Новые тарифы (Lite/Standard/Pro)", callback_data="open_tiers"))
         builder.row(InlineKeyboardButton(text="📶 Увеличить лимит трафика", callback_data="open_traffic_packs"))
 
         # Кнопки для продления (с использованием уже подготовленных current_tariffs)

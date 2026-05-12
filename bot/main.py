@@ -23,6 +23,8 @@ from .traffic_worker import run_traffic_sync_loop
 
 # Импортируем обработчики
 from .handlers import start, subscription, payment, admin
+from .handlers.tiers import setup_tier_handlers
+from .bypass_notifications import check_bypass_traffic_notifications
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -60,6 +62,14 @@ def setup_scheduler():
         args=[bot, config]
     )
     
+    # Проверка bypass уведомлений (каждые 5 минут)
+    scheduler.add_job(
+        check_bypass_traffic_notifications,
+        'interval',
+        minutes=5,
+        args=[bot],
+    )
+
     # Также запускаем при старте
     moscow_tz = pytz.timezone("Europe/Moscow")
     now_moscow = datetime.now(moscow_tz)
@@ -202,6 +212,7 @@ async def main():
     # Настраиваем обработчики
     await start.setup_start_handler(dp, bot, config)
     await subscription.setup_subscription_handlers(dp, bot, config)
+    await setup_tier_handlers(dp, bot, config)
     await payment.setup_payment_handlers(dp, bot, config)
     await start.setup_other_handlers(dp, bot, config)
     await admin.setup_admin_handlers(dp, bot, config)
