@@ -1478,25 +1478,25 @@ class WebhookServer:
             if not user_id:
                 return web.json_response({"error": "User ID not found"}, status=400)
             
-            # Получаем данные тарифа
-            from .plans import get_user_tariffs
-            current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
-            
-            plan_data = current_tariffs.get(tariff_id)
-            
+            # Получаем данные тарифа: сначала tier-планы, потом legacy
+            from .plans import get_user_tariffs, get_tier_plans, tier_plan_uses_yookassa_autopay_binding, PAYMENT_METHODS
+            tier_plans = await get_tier_plans()
+            is_tier_plan = tariff_id in tier_plans
+            if is_tier_plan:
+                plan_data = tier_plans[tariff_id]
+            else:
+                current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
+                plan_data = current_tariffs.get(tariff_id)
+
             if not plan_data:
                 logger.warning(f"Plan not found or not available: {tariff_id} for user {user_id}")
                 return web.json_response({"error": "Tariff not found"}, status=404)
-            
-            # Получаем данные способа оплаты
-            from .plans import PAYMENT_METHODS
+
             method_data = PAYMENT_METHODS.get(payment_method)
-            
             if not method_data:
                 return web.json_response({"error": "Payment method not found"}, status=404)
-            
+
             ts = int(datetime.now().timestamp())
-            # Вычисляем цену
             price_rub = plan_data.get('price_rub', 0)
             total_price = int(price_rub)
             
@@ -1562,20 +1562,29 @@ class WebhookServer:
                 # Стандартная оплата через ЮKassa Redirect (открывается в браузере)
                 if not self.yookassa_client:
                     return web.json_response({"error": "YooKassa client not initialized"}, status=500)
-                
+
                 amount_rub = total_amount_cents / 100.0
                 bot_username = (await self.bot.get_me()).username
+                need_save = is_tier_plan and tier_plan_uses_yookassa_autopay_binding(tariff_id)
+                product_type = "tier" if is_tier_plan else "subscription"
                 payment_data = self.yookassa_client.create_payment(
                     amount=amount_rub,
-                    description=f"VPN подписка - {plan_data['title']}",
+                    description=f"VPN {plan_data['title']}",
                     return_url=f"https://t.me/{bot_username}?start=payment_success",
                     metadata={
-                        "user_id": user_id,
+                        "user_id": str(user_id),
                         "plan_id": tariff_id,
-                        "payment_source": "miniapp"
-                    }
+                        "method_id": "yookassa",
+                        "product_type": product_type,
+                        "payment_source": "miniapp",
+                    },
+                    save_payment_method=need_save,
+                    merchant_customer_id=str(user_id),
                 )
-                
+                logger.info(
+                    "miniapp payment created: plan=%s tier=%s save=%s id=%s",
+                    tariff_id, is_tier_plan, need_save, payment_data.get("id"),
+                )
                 return web.json_response({
                     "paymentUrl": payment_data.get("confirmation_url"),
                     "paymentId": payment_data.get("id")

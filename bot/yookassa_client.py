@@ -81,13 +81,20 @@ class YooKassaClient:
             mc = merchant_customer_id or meta.get("user_id")
             if mc:
                 payment_dict["merchant_customer_id"] = str(mc)[:200]
-            logger.info(
-                "YooKassa: безусловное сохранение способа оплаты (save_payment_method=true)"
-            )
+
+        import json as _json
+        logger.info(
+            "YooKassa create_payment request body: %s",
+            _json.dumps(payment_dict, ensure_ascii=False, default=str),
+        )
 
         try:
             payment = Payment.create(payment_dict, idempotency_key=idempotency_key)
-            logger.info(f"YooKassa payment created: {payment.id}")
+            logger.info(
+                "YooKassa payment created: id=%s, status=%s, confirmation_url=%s",
+                payment.id, payment.status,
+                payment.confirmation.confirmation_url if payment.confirmation else None,
+            )
             return {
                 "id": payment.id,
                 "status": payment.status,
