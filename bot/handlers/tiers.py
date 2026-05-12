@@ -46,7 +46,8 @@ async def build_tiers_message(user_id: int):
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
-            SELECT subscription_tier, pay_subscribed, subscription_end
+            SELECT subscription_tier, pay_subscribed, subscription_end,
+                   yookassa_recurring_payment_method_id
             FROM users WHERE user_id = $1
             """,
             user_id,
@@ -59,14 +60,19 @@ async def build_tiers_message(user_id: int):
         and row["subscription_end"]
         and row["subscription_end"].date() >= datetime.now().date()
     ) if row else False
+    has_card = bool(row and row.get("yookassa_recurring_payment_method_id"))
+    # If card is unlinked (cancelled), treat as no active subscription for button logic
+    is_renewable = is_active and has_card
 
     text_parts = ["🚀 <b>Подписка VPN</b>\n"]
     if is_active and current_tier != "legacy" and current_tier != "none":
         tier_info = TIERS.get(current_tier)
         if tier_info:
-            text_parts.append(
-                f"Текущий тариф: <b>{tier_info['name']}</b>\n"
-            )
+            if has_card:
+                text_parts.append(f"Текущий тариф: <b>{tier_info['name']}</b>\n")
+            else:
+                end_str = row["subscription_end"].strftime("%d.%m.%Y")
+                text_parts.append(f"<b>{tier_info['name']}</b> до {end_str}\n")
     elif is_active and current_tier == "legacy":
         text_parts.append("Текущий тариф: <b>Legacy</b> (старая подписка)\n")
 
@@ -76,7 +82,7 @@ async def build_tiers_message(user_id: int):
 
     for tier_id in TIER_ORDER:
         t = TIERS[tier_id]
-        marker = " ← ваш" if current_tier == tier_id else ""
+        marker = " ← ваш" if (is_renewable and current_tier == tier_id) else ""
         text_parts.append(f"<b>{t['name']}</b>{marker}")
         for f in t["features"]:
             text_parts.append(f"  • {f}")
@@ -89,14 +95,14 @@ async def build_tiers_message(user_id: int):
     for tier_id in TIER_ORDER:
         t = TIERS[tier_id]
         icon = tier_icons.get(tier_id, "")
-        if is_active and current_tier == tier_id:
+        if is_renewable and current_tier == tier_id:
             builder.row(
                 InlineKeyboardButton(
                     text=f"✅ {t['name']} (текущий)",
                     callback_data=f"tier_info:{tier_id}",
                 )
             )
-        elif is_active and can_upgrade(current_tier, tier_id):
+        elif is_renewable and can_upgrade(current_tier, tier_id):
             builder.row(
                 InlineKeyboardButton(
                     text=f"⬆️ {t['name']} (апгрейд)",
