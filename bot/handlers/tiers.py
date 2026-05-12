@@ -214,9 +214,23 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             await callback.answer("❌ ЮKassa не настроена", show_alert=True)
             return
         price = plan["price_rub"]
+
+        # Check referral discount for first payment
+        referral_discount = 0
+        async with get_connection() as conn:
+            ref_row = await conn.fetchrow(
+                "SELECT referral_discount_percent, pay_subscribed FROM users WHERE user_id = $1",
+                user_id,
+            )
+            if ref_row and (ref_row.get("referral_discount_percent") or 0) > 0:
+                if not ref_row.get("pay_subscribed"):
+                    referral_discount = ref_row["referral_discount_percent"]
+
+        if referral_discount > 0:
+            price = int(price * (100 - referral_discount) / 100)
+
         if price < 100:
-            await callback.answer("❌ Минимальная сумма — 1₽", show_alert=True)
-            return
+            price = 100
         try:
             yk = YooKassaClient(config.yookassa)
             bot_info = await bot.get_me()
@@ -244,7 +258,15 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                     payment_data["id"],
                 )
 
-            text = f"💎 <b>{t.get('name', tier_id)}</b> · {format_price_rub(price)}/мес\n\n"
+            if referral_discount > 0:
+                full_price = plan["price_rub"]
+                text = (
+                    f"💎 <b>{t.get('name', tier_id)}</b> · "
+                    f"<s>{format_price_rub(full_price)}</s> {format_price_rub(price)}/мес "
+                    f"(скидка {referral_discount}%)\n\n"
+                )
+            else:
+                text = f"💎 <b>{t.get('name', tier_id)}</b> · {format_price_rub(price)}/мес\n\n"
             for feat in t.get("features", []):
                 text += f"• {feat}\n"
 
@@ -268,6 +290,116 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             return
         plan_id = parts[1]
         await _do_tier_pay(callback, plan_id)
+
+    # ------------------------------------------------------------------
+    # Promo discount handlers (from engagement notifications)
+    # ------------------------------------------------------------------
+    @dp.callback_query(F.data == "promo_lite_30")
+    async def handle_promo_lite_30(callback: CallbackQuery):
+        """30% discount on Lite from engagement notification."""
+        user_id = callback.from_user.id
+        plans = await get_tier_plans()
+        plan = plans.get("lite_1m")
+        if not plan:
+            await callback.answer("❌ План не найден", show_alert=True)
+            return
+        price = int(plan["price_rub"] * 0.7)
+        if price < 100:
+            price = 100
+        try:
+            yk = YooKassaClient(config.yookassa)
+            bot_info = await bot.get_me()
+            amount_rub = price / 100.0
+            payment_data = yk.create_payment(
+                amount=amount_rub,
+                description="VPN Lite — скидка 30%",
+                return_url=f"https://t.me/{bot_info.username}?start=payment_success",
+                metadata={
+                    "user_id": str(user_id),
+                    "plan_id": "lite_1m",
+                    "method_id": "yookassa",
+                    "product_type": "tier",
+                },
+                save_payment_method=True,
+                merchant_customer_id=str(user_id),
+            )
+            async with get_connection() as conn:
+                await conn.execute(
+                    """INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                    user_id, price, "RUB", "lite_1m", "tier", "pending",
+                    payment_data["id"],
+                )
+            b = InlineKeyboardBuilder()
+            b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
+            b.row(InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers"))
+            full_price = plan["price_rub"] / 100.0
+            await callback.message.edit_text(
+                f"🔥 <b>Lite со скидкой 30%</b>\n\n"
+                f"<s>{full_price:.0f}₽</s> → <b>{amount_rub:.0f}₽/мес</b>\n\n"
+                f"• 30 ГБ bypass\n• Безлимит VPN\n• До 3 устройств",
+                parse_mode="HTML",
+                reply_markup=b.as_markup(),
+            )
+            await callback.answer()
+        except Exception as e:
+            logger.error("promo_lite_30 error: %s", e, exc_info=True)
+            await callback.answer("❌ Ошибка", show_alert=True)
+
+    @dp.callback_query(F.data.startswith("promo_referral_10:"))
+    async def handle_promo_referral_10(callback: CallbackQuery):
+        """10% discount from referral engagement notification."""
+        tier_id = callback.data.split(":")[1]
+        user_id = callback.from_user.id
+        plan_id = f"{tier_id}_1m"
+        plans = await get_tier_plans()
+        plan = plans.get(plan_id)
+        if not plan:
+            await callback.answer("❌ План не найден", show_alert=True)
+            return
+        price = int(plan["price_rub"] * 0.9)
+        if price < 100:
+            price = 100
+        try:
+            yk = YooKassaClient(config.yookassa)
+            bot_info = await bot.get_me()
+            amount_rub = price / 100.0
+            payment_data = yk.create_payment(
+                amount=amount_rub,
+                description=f"VPN {plan['title']} — скидка 10%",
+                return_url=f"https://t.me/{bot_info.username}?start=payment_success",
+                metadata={
+                    "user_id": str(user_id),
+                    "plan_id": plan_id,
+                    "method_id": "yookassa",
+                    "product_type": "tier",
+                },
+                save_payment_method=True,
+                merchant_customer_id=str(user_id),
+            )
+            async with get_connection() as conn:
+                await conn.execute(
+                    """INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                    user_id, price, "RUB", plan_id, "tier", "pending",
+                    payment_data["id"],
+                )
+            t = TIERS.get(tier_id, {})
+            b = InlineKeyboardBuilder()
+            b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
+            b.row(InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers"))
+            full_price = plan["price_rub"] / 100.0
+            await callback.message.edit_text(
+                f"🔥 <b>{t.get('name', tier_id)} со скидкой 10%</b>\n\n"
+                f"<s>{full_price:.0f}₽</s> → <b>{amount_rub:.0f}₽/мес</b>\n\n"
+                + "\n".join(f"• {f}" for f in t.get("features", [])),
+                parse_mode="HTML",
+                reply_markup=b.as_markup(),
+            )
+            await callback.answer()
+        except Exception as e:
+            logger.error("promo_referral_10 error: %s", e, exc_info=True)
+            await callback.answer("❌ Ошибка", show_alert=True)
 
     # ------------------------------------------------------------------
     # Tier info (current tier details)

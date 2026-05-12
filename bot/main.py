@@ -15,6 +15,7 @@ from .config import load_config
 from .database import init_db
 from .subscriptions import handle_expired_subscriptions, send_upcoming_subscription_reminders
 from .tier_autopay import run_yookassa_autopay_renewals
+from .engagement_notifications import run_engagement_notifications
 from .webhook_server import WebhookServer
 from .yookassa_client import YooKassaClient
 from .flyer_client import FlyerClient
@@ -77,6 +78,22 @@ def setup_scheduler():
         hour=10,
         minute=15,
         args=[config],
+    )
+
+    # Engagement notifications (daily at 11:00 and 18:00)
+    scheduler.add_job(
+        run_engagement_notifications,
+        "cron",
+        hour=11,
+        minute=0,
+        args=[bot, config],
+    )
+    scheduler.add_job(
+        run_engagement_notifications,
+        "cron",
+        hour=18,
+        minute=0,
+        args=[bot, config],
     )
 
     # Также запускаем при старте

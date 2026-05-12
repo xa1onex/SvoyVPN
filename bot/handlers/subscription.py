@@ -1227,6 +1227,13 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 user_id,
             )
 
+        # Track device reset for upsell notifications
+        try:
+            from ..engagement_notifications import check_device_reset_upsell
+            await check_device_reset_upsell(bot, user_id)
+        except Exception as e:
+            logger.debug("device_reset_upsell error: %s", e)
+
         await callback.answer("✅ Сессии сброшены! Подключите нужные устройства заново.", show_alert=True)
 
         builder = InlineKeyboardBuilder()

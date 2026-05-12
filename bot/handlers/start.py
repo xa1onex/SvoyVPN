@@ -136,67 +136,52 @@ async def setup_start_handler(dp, bot: Bot, config):
                         logger.warning(f"Could not process UTM campaign: {e}")
                 
                 if referral_code:
-                    inviter = await conn.fetchrow('SELECT user_id FROM users WHERE referral_code = $1', referral_code)
+                    inviter = await conn.fetchrow('SELECT user_id, referral_discount_percent, referral_bonus_bypass_percent FROM users WHERE referral_code = $1', referral_code)
                     
                     if inviter:
-                        # Получаем настройки реферальной системы
-                        referral_settings = await conn.fetchrow(
-                            'SELECT inviter_bonus_days, invited_bonus_days FROM referral_settings ORDER BY id DESC LIMIT 1'
-                        )
-                        if not referral_settings:
-                            inviter_bonus_days = 5
-                            invited_bonus_days = 3
-                        else:
-                            inviter_bonus_days = referral_settings['inviter_bonus_days']
-                            invited_bonus_days = referral_settings['invited_bonus_days']
-                        
                         inviter_id = inviter['user_id']
-                        
-                        inviter_sub_row = await conn.fetchrow('''
+
+                        # New referral system: +5% discount (max 25%) and +5% bypass to both
+                        new_discount = min((inviter.get('referral_discount_percent') or 0) + 5, 25)
+                        new_bypass = (inviter.get('referral_bonus_bypass_percent') or 0) + 5
+
+                        await conn.execute('''
                             UPDATE users SET
                                 referral_count = referral_count + 1,
-                                subscription_end = CASE 
-                                    WHEN subscription_end IS NULL OR subscription_end < CURRENT_DATE 
-                                    THEN CURRENT_DATE + ($2 || ' days')::INTERVAL
-                                    ELSE subscription_end + ($2 || ' days')::INTERVAL
-                                END,
-                                pay_subscribed = TRUE
+                                referral_discount_percent = $2,
+                                referral_bonus_bypass_percent = $3
                             WHERE user_id = $1
-                            RETURNING subscription_end
-                        ''', inviter_id, str(inviter_bonus_days))
-                        
+                        ''', inviter_id, new_discount, new_bypass)
+
+                        # Give invited user +5% bypass bonus and 5% discount on first payment
                         await conn.execute('''
                             UPDATE users SET
                                 invited_by = $1,
-                                subscription_end = CURRENT_DATE + ($3 || ' days')::INTERVAL,
-                                pay_subscribed = TRUE
+                                referral_discount_percent = 5,
+                                referral_bonus_bypass_percent = 5
                             WHERE user_id = $2
-                        ''', inviter_id, user_id, str(invited_bonus_days))
-                        
-                        # Уведомление пригласившему
+                        ''', inviter_id, user_id)
+
+                        # Notify inviter
                         try:
-                            end_date = inviter_sub_row['subscription_end'] if inviter_sub_row else None
-                            end_date_str = end_date.strftime('%d.%m.%Y') if end_date else "—"
                             await bot.send_message(
                                 inviter_id,
-                                f"🎉 Вы получили +{inviter_bonus_days} дней VPN за приглашение друга!\n"
-                                f"Теперь ваш VPN активен до: {end_date_str}"
+                                f"🎉 <b>Новый друг зарегистрировался!</b>\n\n"
+                                f"Ваша скидка на следующее списание: <b>{new_discount}%</b>\n"
+                                f"Бонус bypass: <b>+{new_bypass}%</b> ГБ от тарифа",
+                                parse_mode="HTML",
                             )
                         except Exception as e:
-                            logger.error(f"Ошибка отправки уведомления: {e}")
+                            logger.error(f"Referral notification error: {e}")
 
-                        if inviter_sub_row and inviter_sub_row.get('subscription_end'):
-                            logger.info(
-                                "Referral bonus applied: inviter_id=%s invited_id=%s bonus_days=%s new_end=%s",
-                                inviter_id,
-                                user_id,
-                                inviter_bonus_days,
-                                inviter_sub_row['subscription_end']
-                            )
-                        
+                        logger.info(
+                            "Referral: inviter=%s invited=%s discount=%s%% bypass_bonus=%s%%",
+                            inviter_id, user_id, new_discount, new_bypass,
+                        )
+
                         has_referral = True
-                        # Сохраняем дату окончания для использования в приветствии
-                        invited_end_date = datetime.now() + timedelta(days=invited_bonus_days)
+                        invited_bonus_days = 0
+                        invited_end_date = None
                 
                 # Уведомление админам
                 source_info = "по реферальной ссылке" if has_referral else "без рефералки"
@@ -225,19 +210,11 @@ async def setup_start_handler(dp, bot: Bot, config):
                     "<b>VPN бот</b> — быстрый и надежный VPN сервис\n\n"
                 ]
 
-                if has_referral and invited_bonus_days is not None:
-                    # Получаем дату окончания подписки из базы данных
-                    user_data = await conn.fetchrow('SELECT subscription_end FROM users WHERE user_id = $1', user_id)
-                    if user_data and user_data['subscription_end']:
-                        expiration_date = user_data['subscription_end'].strftime("%d.%m.%Y")
-                    elif invited_end_date:
-                        expiration_date = invited_end_date.strftime("%d.%m.%Y")
-                    else:
-                        expiration_date = (datetime.now() + timedelta(days=invited_bonus_days)).strftime("%d.%m.%Y")
-                    
+                if has_referral:
                     welcome_msg_parts.append(
-                        f"🎁 Вы получили +{invited_bonus_days} {'день' if invited_bonus_days == 1 else 'дня' if invited_bonus_days < 5 else 'дней'} <b>VPN</b> за регистрацию по реферальной ссылке!\n"
-                        f"Ваш <b>VPN</b> активен до: {expiration_date}\n\n"
+                        "🎁 Вы зарегистрировались по реферальной ссылке!\n"
+                        "• <b>Скидка 5%</b> на первую оплату\n"
+                        "• <b>+5%</b> бонусных bypass ГБ от тарифа\n\n"
                     )
                 elif utm_bonus_applied and utm_bonus_days > 0:
                     user_data = await conn.fetchrow('SELECT subscription_end FROM users WHERE user_id = $1', user_id)
@@ -472,22 +449,35 @@ async def setup_other_handlers(dp, bot: Bot, config):
                         WHERE user_id = $2
                     ''', referral_code, user_id)
             
-            # Получаем настройки реферальной системы
-            referral_settings = await conn.fetchrow('SELECT inviter_bonus_days, invited_bonus_days FROM referral_settings ORDER BY id DESC LIMIT 1')
-            if not referral_settings:
-                inviter_days = 5
-                invited_days = 3
-            else:
-                inviter_days = referral_settings['inviter_bonus_days']
-                invited_days = referral_settings['invited_bonus_days']
-        
         bot_username = (await bot.get_me()).username
         ref_link = f"https://t.me/{bot_username}?start=ref_{referral_code}"
+
+        # Track referral page open for engagement notification
+        try:
+            async with get_connection() as conn2:
+                await conn2.execute(
+                    """
+                    INSERT INTO user_notifications (user_id, notification_type)
+                    SELECT $1, 'referral_opened'
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM user_notifications
+                        WHERE user_id = $1 AND notification_type = 'referral_opened'
+                          AND created_at > NOW() - INTERVAL '2 hours'
+                    )
+                    """,
+                    user_id,
+                )
+        except Exception:
+            pass
+
+        # New referral text
         text = (
-            f"🎁 <b>Пригласи друга и получи +{inviter_days} {'день' if inviter_days == 1 else 'дня' if inviter_days < 5 else 'дней'} VPN!</b>\n\n"
-            f"🔗 Ваша реферальная ссылка:\n<code>{ref_link}</code>\n\n"
-            f"👥 Приглашено друзей: <i>{referral_count or 0}</i>\n"
-            f"За каждого друга вы получаете +{inviter_days} {'день' if inviter_days == 1 else 'дня' if inviter_days < 5 else 'дней'} VPN, а друг получает +{invited_days} {'день' if invited_days == 1 else 'дня' if invited_days < 5 else 'дней'}!"
+            f"🎁 <b>Пригласи друга — получи скидку!</b>\n\n"
+            f"🔗 Ваша ссылка:\n<code>{ref_link}</code>\n\n"
+            f"👥 Приглашено: <i>{referral_count or 0}</i>\n\n"
+            f"За каждого друга:\n"
+            f"• <b>Скидка 5%</b> на следующее списание (до 25%)\n"
+            f"• <b>+5%</b> bypass ГБ от тарифа — вам и другу"
         )
         
         # Клавиатура с кнопкой поделиться
@@ -537,16 +527,6 @@ async def setup_other_handlers(dp, bot: Bot, config):
         from ..database import get_support_link
         support_link = await get_support_link()
         
-        # Получаем настройки реферальной системы
-        async with get_connection() as conn:
-            referral_settings = await conn.fetchrow('SELECT inviter_bonus_days, invited_bonus_days FROM referral_settings ORDER BY id DESC LIMIT 1')
-            if not referral_settings:
-                inviter_days = 5
-                invited_days = 3
-            else:
-                inviter_days = referral_settings['inviter_bonus_days']
-                invited_days = referral_settings['invited_bonus_days']
-        
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
         if support_link:
@@ -574,8 +554,8 @@ async def setup_other_handlers(dp, bot: Bot, config):
             "• Подключитесь!\n\n"
             "<b>Реферальная программа</b>:\n"
             "• Пригласите друга через /invite\n"
-            f"• Вы получите +{inviter_days} {'день' if inviter_days == 1 else 'дня' if inviter_days < 5 else 'дней'} VPN\n"
-            f"• Друг получит +{invited_days} {'день' if invited_days == 1 else 'дня' if invited_days < 5 else 'дней'} VPN\n\n"
+            "• За каждого друга — скидка 5% на следующее списание (до 25%)\n"
+            "• +5% bypass ГБ от тарифа — вам и другу\n\n"
             "📌 <b>Команды</b>:\n"
             "/start - Перезагрузить бота\n"
             "/prem - Покупка VPN\n"

@@ -565,7 +565,8 @@ async def user_bypass_allowance_bytes(conn, user_id: int) -> tuple[int, int]:
     """(limit_bytes, bonus_gb) for bypass traffic."""
     row = await conn.fetchrow(
         """
-        SELECT subscription_tier, bypass_traffic_limit_gb, bypass_bonus_gb
+        SELECT subscription_tier, bypass_traffic_limit_gb, bypass_bonus_gb,
+               COALESCE(referral_bonus_bypass_percent, 0) as referral_bypass_pct
         FROM users WHERE user_id = $1
         """,
         user_id,
@@ -582,6 +583,10 @@ async def user_bypass_allowance_bytes(conn, user_id: int) -> tuple[int, int]:
         base_gb = int(row["bypass_traffic_limit_gb"] or get_tier_bypass_gb(tier))
 
     bonus_gb = int(row["bypass_bonus_gb"] or 0)
+    # Referral bonus: +X% of base tier GB
+    referral_pct = int(row["referral_bypass_pct"] or 0)
+    if referral_pct > 0:
+        bonus_gb += int(base_gb * referral_pct / 100)
     total_gb = base_gb + bonus_gb
     return total_gb * BYTES_PER_GB, bonus_gb
 

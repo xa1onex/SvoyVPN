@@ -210,9 +210,43 @@ async def init_db() -> None:
                     "ALTER TABLE users ADD COLUMN pending_downgrade_tier TEXT DEFAULT NULL"
                 )
                 logging.info("Added pending_downgrade_tier column to users table")
+            if 'device_reset_count' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN device_reset_count INTEGER DEFAULT 0"
+                )
+                logging.info("Added device_reset_count column to users table")
+            if 'last_device_reset_at' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN last_device_reset_at TIMESTAMP"
+                )
+                logging.info("Added last_device_reset_at column to users table")
+            if 'referral_discount_percent' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN referral_discount_percent INTEGER DEFAULT 0"
+                )
+                logging.info("Added referral_discount_percent column to users table")
+            if 'referral_bonus_bypass_percent' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN referral_bonus_bypass_percent INTEGER DEFAULT 0"
+                )
+                logging.info("Added referral_bonus_bypass_percent column to users table")
         except Exception as e:
             logging.warning(f"Could not add columns to users table: {e}")
-        
+
+        # user_notifications table for engagement tracking
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_notifications (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                notification_type TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS user_notifications_user_type_idx
+            ON user_notifications(user_id, notification_type)
+        """)
+
         # Добавляем уникальный индекс для referral_code (после добавления колонки)
         try:
             await conn.execute(

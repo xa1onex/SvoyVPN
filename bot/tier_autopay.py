@@ -32,7 +32,8 @@ async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
             """
             SELECT u.user_id, u.subscription_tier, u.subscription_end,
                    u.yookassa_recurring_payment_method_id,
-                   u.pending_downgrade_tier
+                   u.pending_downgrade_tier,
+                   COALESCE(u.referral_discount_percent, 0) as referral_discount_percent
             FROM users u
             WHERE u.subscription_tier IN ('lite', 'standard', 'pro')
               AND u.pay_subscribed = TRUE
@@ -55,6 +56,7 @@ async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
         pm_id = row["yookassa_recurring_payment_method_id"]
         sub_end = row["subscription_end"]
         pending_downgrade = row.get("pending_downgrade_tier")
+        referral_discount = row.get("referral_discount_percent") or 0
 
         # If downgrade is scheduled, use the new (lower) tier for billing
         effective_tier = pending_downgrade if pending_downgrade else tier
@@ -65,6 +67,12 @@ async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
             continue
 
         amount_rub = plan["price_rub"] / 100.0
+        # Apply referral discount (one-time per cycle, then reset)
+        if referral_discount > 0:
+            amount_rub = round(amount_rub * (100 - referral_discount) / 100, 2)
+            if amount_rub < 1.0:
+                amount_rub = 1.0
+
         end_key = sub_end.strftime("%Y-%m-%d") if sub_end else "na"
         idem = f"autopay-{user_id}-{plan_id}-{end_key}"
 
@@ -77,6 +85,8 @@ async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
         }
         if pending_downgrade:
             metadata["downgrade_from"] = tier
+        if referral_discount > 0:
+            metadata["referral_discount"] = str(referral_discount)
         try:
             payment = yk.create_recurring_payment(
                 amount=amount_rub,

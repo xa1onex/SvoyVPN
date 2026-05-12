@@ -477,9 +477,11 @@ async def process_tier_webhook_payment(
                     "Saved payment_method_id=%s for user=%s tier=%s",
                     pm_id, user_id, plan_data.get("tier"),
                 )
-            # Clear pending downgrade after successful tier activation
+            # Clear pending downgrade and referral discount after successful activation
             await conn.execute(
-                "UPDATE users SET pending_downgrade_tier = NULL WHERE user_id = $1",
+                """UPDATE users SET pending_downgrade_tier = NULL,
+                   referral_discount_percent = 0
+                   WHERE user_id = $1""",
                 user_id,
             )
             if existing:
