@@ -1154,6 +1154,75 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
 
         await callback.answer("❌ Способ оплаты не поддерживается", show_alert=True)
 
+    @dp.callback_query(F.data == "my_devices")
+    async def handle_my_devices(callback: CallbackQuery, state: FSMContext):
+        """Показать активные устройства пользователя"""
+        user_id = callback.from_user.id
+
+        async with get_connection() as conn:
+            device_limit = await conn.fetchval(
+                "SELECT COALESCE(device_limit, 5) FROM users WHERE user_id = $1", user_id
+            ) or 5
+            devices = await conn.fetch(
+                """
+                SELECT DISTINCT ON (ip_address)
+                    ip_address, user_agent, timestamp
+                FROM subscription_usage_logs
+                WHERE user_id = $1 AND timestamp >= NOW() - INTERVAL '6 hours'
+                ORDER BY ip_address, timestamp DESC
+                """,
+                user_id,
+            )
+
+        count = len(devices)
+        text = f"📱 <b>Активные устройства</b> ({count}/{device_limit})\n\n"
+
+        if devices:
+            for i, d in enumerate(devices, 1):
+                ua = d["user_agent"] or "Unknown"
+                short_ua = ua.split("/")[0] if "/" in ua else ua[:20]
+                ip = d["ip_address"] or "?"
+                time_str = d["timestamp"].strftime("%H:%M") if d["timestamp"] else ""
+                text += f"{i}. <b>{short_ua}</b> — {ip} ({time_str})\n"
+        else:
+            text += "Нет активных устройств за последние 6 часов.\n"
+
+        if count > device_limit:
+            text += f"\n⚠️ <b>Лимит превышен!</b> Отключите лишние устройства или сбросьте сессии."
+        
+        text += "\n\n💡 Сбросить сессии = все устройства отключатся и нужно будет подключиться заново."
+
+        builder = InlineKeyboardBuilder()
+        if count > 0:
+            builder.row(InlineKeyboardButton(text="🔄 Сбросить все сессии", callback_data="reset_devices"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
+
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
+        await callback.answer()
+
+    @dp.callback_query(F.data == "reset_devices")
+    async def handle_reset_devices(callback: CallbackQuery, state: FSMContext):
+        """Сбросить все активные сессии (удалить логи за 6 часов)"""
+        user_id = callback.from_user.id
+
+        async with get_connection() as conn:
+            await conn.execute(
+                "DELETE FROM subscription_usage_logs WHERE user_id = $1 AND timestamp >= NOW() - INTERVAL '6 hours'",
+                user_id,
+            )
+
+        await callback.answer("✅ Сессии сброшены! Подключите нужные устройства заново.", show_alert=True)
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="📱 Устройства", callback_data="my_devices"))
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
+        await callback.message.edit_text(
+            "✅ <b>Все сессии сброшены</b>\n\n"
+            "Теперь подключите только нужные устройства — они будут учтены заново.",
+            parse_mode="HTML",
+            reply_markup=builder.as_markup(),
+        )
+
     @dp.callback_query(F.data == "go_back_subscription")
     async def handle_go_back_subscription(callback: CallbackQuery, state: FSMContext):
         """Возврат на главное меню"""

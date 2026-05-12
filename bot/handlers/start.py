@@ -418,6 +418,9 @@ async def get_main_keyboard(user_id: int, config):
         )
         builder.row(
             InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"),
+            InlineKeyboardButton(text="📱 Устройства", callback_data="my_devices"),
+        )
+        builder.row(
             InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
         )
     else:
