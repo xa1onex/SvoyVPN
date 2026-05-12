@@ -392,7 +392,7 @@ def traffic_remaining_vless(used_bytes: int, limit_bytes: int) -> str:
 
     used_gb = int(used_bytes) / BYTES_PER_GB
     limit_gb = int(limit_bytes) / BYTES_PER_GB
-    name = quote(f"ЛИМИТЫ {used_gb:.2f} / {limit_gb:.0f} GiB", safe="")
+    name = quote(f"📊 ЛИМИТ: {used_gb:.2f} / {limit_gb:.0f} GiB", safe="")
     fake = (
         "vless://22222222-2222-2222-2222-222222222222@0.0.0.0:1"
         "?type=tcp&security=none&flow=none#"
