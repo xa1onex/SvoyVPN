@@ -37,6 +37,7 @@ TIERS = {
             "Приоритет bypass",
             "Безлимит обычного VPN",
             "До 5 устройств",
+            "Автопродление по карте (ЮKassa)",
         ],
     },
     "pro": {
@@ -65,25 +66,7 @@ TIER_PLANS_BASE: Dict[str, Dict[str, Any]] = {
         "price_rub": 9900,      # 99₽
         "price_stars": 99,
     },
-    "lite_3m": {
-        "tier": "lite",
-        "title": "Lite · 3 месяца",
-        "duration": 3,
-        "bypass_gb": 30,
-        "max_devices": 3,
-        "price_rub": 24900,     # 249₽
-        "price_stars": 249,
-    },
-    "lite_12m": {
-        "tier": "lite",
-        "title": "Lite · 12 месяцев",
-        "duration": 12,
-        "bypass_gb": 30,
-        "max_devices": 3,
-        "price_rub": 89900,     # 899₽
-        "price_stars": 899,
-    },
-    # Standard
+    # Standard (ЮKassa: сохранение карты для автопродления — см. recurring)
     "standard_1m": {
         "tier": "standard",
         "title": "Standard · 1 месяц",
@@ -92,24 +75,6 @@ TIER_PLANS_BASE: Dict[str, Dict[str, Any]] = {
         "max_devices": 5,
         "price_rub": 19900,     # 199₽
         "price_stars": 199,
-    },
-    "standard_3m": {
-        "tier": "standard",
-        "title": "Standard · 3 месяца",
-        "duration": 3,
-        "bypass_gb": 100,
-        "max_devices": 5,
-        "price_rub": 54900,     # 549₽
-        "price_stars": 549,
-    },
-    "standard_12m": {
-        "tier": "standard",
-        "title": "Standard · 12 месяцев",
-        "duration": 12,
-        "bypass_gb": 100,
-        "max_devices": 5,
-        "price_rub": 199000,    # 1990₽
-        "price_stars": 1990,
     },
     # Pro
     "pro_1m": {
@@ -120,24 +85,6 @@ TIER_PLANS_BASE: Dict[str, Dict[str, Any]] = {
         "max_devices": 10,
         "price_rub": 39900,     # 399₽
         "price_stars": 399,
-    },
-    "pro_3m": {
-        "tier": "pro",
-        "title": "Pro · 3 месяца",
-        "duration": 3,
-        "bypass_gb": 300,
-        "max_devices": 10,
-        "price_rub": 109000,    # 1090₽
-        "price_stars": 1090,
-    },
-    "pro_12m": {
-        "tier": "pro",
-        "title": "Pro · 12 месяцев",
-        "duration": 12,
-        "bypass_gb": 300,
-        "max_devices": 10,
-        "price_rub": 399000,    # 3990₽
-        "price_stars": 3990,
     },
 }
 
@@ -154,6 +101,11 @@ LEGACY_FAIR_USE_GB = 500
 
 # Tier priority order for upgrades
 TIER_ORDER = ["lite", "standard", "pro"]
+
+
+def tier_plan_uses_yookassa_autopay_binding(plan_id: str) -> bool:
+    """Первый платёж Standard через ЮKassa с save_payment_method для автоплатежей."""
+    return plan_id == "standard_1m"
 
 # ---------------------------------------------------------------------------
 # Legacy plans (kept for backward compat with old subscriptions)

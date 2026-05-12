@@ -34,6 +34,7 @@ from ..plans import (
     get_tier_max_devices,
     get_tier_plans,
     get_tier_plans_for_tier,
+    tier_plan_uses_yookassa_autopay_binding,
 )
 from ..traffic import user_bypass_traffic_snapshot
 from ..yookassa_client import YooKassaClient
@@ -143,7 +144,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
     # ------------------------------------------------------------------
     @dp.callback_query(F.data.startswith("tier_select:"))
     async def handle_tier_select(callback: CallbackQuery):
-        """Show pricing for a specific tier."""
+        """Описание тарифа и переход к оплате (только период 1 месяц)."""
         tier_id = callback.data.split(":")[1]
         if tier_id not in TIERS:
             await callback.answer("❌ Тариф не найден", show_alert=True)
@@ -151,22 +152,33 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
 
         t = TIERS[tier_id]
         plans = await get_tier_plans_for_tier(tier_id)
+        if not plans:
+            await callback.answer("❌ Нет доступных планов", show_alert=True)
+            return
+
+        plan_id, plan_data = next(iter(plans.items()))
 
         text = f"💎 <b>Тариф {t['name']}</b>\n\n"
         for feat in t["features"]:
             text += f"• {feat}\n"
-        text += "\nВыберите срок подписки:\n"
-
-        builder = InlineKeyboardBuilder()
-        for plan_id, plan_data in plans.items():
-            price_text = format_price_both(plan_data["price_rub"], plan_data["price_stars"])
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"{plan_data['title']} — {price_text}",
-                    callback_data=f"tier_buy:{plan_id}",
-                )
+        text += (
+            f"\nПериод: <b>1 месяц</b>\n"
+            f"Стоимость: <b>{format_price_both(plan_data['price_rub'], plan_data['price_stars'])}</b>\n"
+        )
+        if tier_id == "standard":
+            text += (
+                "\n<i>При оплате банковской картой через ЮKassa карта сохраняется для "
+                "автоматического продления на следующий месяц. Отключить можно, сменив тариф "
+                "или обратившись в поддержку.</i>\n"
             )
 
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(
+                text="💳 Оформить и оплатить",
+                callback_data=f"tier_buy:{plan_id}",
+            )
+        )
         builder.row(
             InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers")
         )
@@ -197,9 +209,14 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             f"Тариф: <b>{tier_info.get('name', plan['tier'])}</b>\n"
             f"Bypass: {plan['bypass_gb']} ГБ/мес\n"
             f"Устройств: до {plan['max_devices']}\n"
-            f"Обычный VPN: безлимит\n\n"
-            f"Выберите способ оплаты:"
+            f"Обычный VPN: безлимит\n"
         )
+        if tier_plan_uses_yookassa_autopay_binding(plan_id) and config.yookassa.enabled:
+            text += (
+                "\n<i>Карта ЮKassa: после оплаты способ оплаты сохраняется для "
+                "автопродления Standard на следующий месяц.</i>\n"
+            )
+        text += "\nВыберите способ оплаты:"
 
         builder = InlineKeyboardBuilder()
         builder.row(
@@ -305,6 +322,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                         "product_type": "tier",
                         "payload": payload_str,
                     },
+                    save_payment_method=tier_plan_uses_yookassa_autopay_binding(plan_id),
                 )
                 async with get_connection() as conn:
                     await conn.execute(
@@ -493,7 +511,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             f"\n💡 Срок подписки НЕ меняется.\n"
             f"Bypass-лимит обновляется сразу.\n"
             f"Оплата = разница между тарифами.\n\n"
-            f"Выберите вариант апгрейда:"
+            f"Оформление апгрейда:"
         )
 
         builder = InlineKeyboardBuilder()

@@ -31,6 +31,15 @@ from .traffic import apply_subscription_anchor_on_payment, ensure_bypass_period
 logger = logging.getLogger(__name__)
 
 
+def _yookassa_payment_method_id_from_payment_obj(payment_obj: dict) -> Optional[str]:
+    pm = payment_obj.get("payment_method")
+    if isinstance(pm, dict):
+        return pm.get("id")
+    if isinstance(pm, str):
+        return pm
+    return None
+
+
 async def activate_tier_subscription(
     conn,
     user_id: int,
@@ -85,6 +94,14 @@ async def activate_tier_subscription(
         price_paid,
         user_id,
     )
+    if tier != "standard":
+        await conn.execute(
+            """
+            UPDATE users SET yookassa_recurring_payment_method_id = NULL
+            WHERE user_id = $1
+            """,
+            user_id,
+        )
     await apply_subscription_anchor_on_payment(conn, user_id)
     await ensure_bypass_period(conn, user_id)
 
@@ -125,6 +142,14 @@ async def apply_tier_upgrade(
         new_total_paid,
         user_id,
     )
+    if tier != "standard":
+        await conn.execute(
+            """
+            UPDATE users SET yookassa_recurring_payment_method_id = NULL
+            WHERE user_id = $1
+            """,
+            user_id,
+        )
 
 
 async def apply_bypass_pack(conn, user_id: int, gb_amount: int) -> None:
@@ -418,6 +443,16 @@ async def process_tier_webhook_payment(
             await activate_tier_subscription(
                 conn, user_id, plan_id, plan_data, amount_cents
             )
+            pm_id = _yookassa_payment_method_id_from_payment_obj(payment_obj)
+            if pm_id and plan_data.get("tier") == "standard":
+                await conn.execute(
+                    """
+                    UPDATE users SET yookassa_recurring_payment_method_id = $1
+                    WHERE user_id = $2
+                    """,
+                    pm_id,
+                    user_id,
+                )
             if existing:
                 await conn.execute(
                     "UPDATE payments SET status = 'completed', amount = $1, payment_source = $2 WHERE yookassa_payment_id = $3",

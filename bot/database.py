@@ -193,6 +193,13 @@ async def init_db() -> None:
                     "ALTER TABLE users ADD COLUMN tier_price_paid INTEGER DEFAULT 0"
                 )
                 logging.info("Added tier_price_paid column to users table")
+            if 'yookassa_recurring_payment_method_id' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN yookassa_recurring_payment_method_id TEXT"
+                )
+                logging.info(
+                    "Added yookassa_recurring_payment_method_id column to users table"
+                )
         except Exception as e:
             logging.warning(f"Could not add columns to users table: {e}")
         

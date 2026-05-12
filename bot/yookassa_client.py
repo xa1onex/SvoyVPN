@@ -27,7 +27,9 @@ class YooKassaClient:
         amount: float,
         description: str,
         return_url: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        save_payment_method: bool = False,
+        idempotency_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Создать платеж через ЮKassa
@@ -44,7 +46,7 @@ class YooKassaClient:
         if not self.config.enabled:
             raise RuntimeError("YooKassa is not enabled")
         
-        payment_dict = {
+        payment_dict: Dict[str, Any] = {
             "amount": {
                 "value": f"{amount:.2f}",
                 "currency": "RUB"
@@ -57,9 +59,11 @@ class YooKassaClient:
             "capture": True,
             "metadata": metadata or {}
         }
-        
+        if save_payment_method:
+            payment_dict["save_payment_method"] = True
+
         try:
-            payment = Payment.create(payment_dict, idempotency_key=None)
+            payment = Payment.create(payment_dict, idempotency_key=idempotency_key)
             logger.info(f"YooKassa payment created: {payment.id}")
             return {
                 "id": payment.id,
@@ -71,7 +75,46 @@ class YooKassaClient:
         except Exception as e:
             logger.error(f"Error creating YooKassa payment: {e}", exc_info=True)
             raise
-    
+
+    def create_recurring_payment(
+        self,
+        amount: float,
+        description: str,
+        payment_method_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Автоплатёж по сохранённому способу оплаты (без redirect).
+        https://yookassa.ru/developers/payments/recurring-payments
+        """
+        if not self.config.enabled:
+            raise RuntimeError("YooKassa is not enabled")
+
+        payment_dict: Dict[str, Any] = {
+            "amount": {
+                "value": f"{amount:.2f}",
+                "currency": "RUB",
+            },
+            "capture": True,
+            "description": description,
+            "metadata": metadata or {},
+            "payment_method_id": payment_method_id,
+        }
+        try:
+            payment = Payment.create(payment_dict, idempotency_key=idempotency_key)
+            logger.info(f"YooKassa recurring payment created: {payment.id}")
+            return {
+                "id": payment.id,
+                "status": payment.status,
+                "confirmation_url": payment.confirmation.confirmation_url if payment.confirmation else None,
+                "amount": payment.amount.value,
+                "currency": payment.amount.currency,
+            }
+        except Exception as e:
+            logger.error(f"Error creating YooKassa recurring payment: {e}", exc_info=True)
+            raise
+
     def get_payment_status(self, payment_id: str) -> Dict[str, Any]:
         """
         Получить статус платежа
