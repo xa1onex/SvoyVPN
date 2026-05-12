@@ -188,23 +188,15 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
     # ------------------------------------------------------------------
     @dp.callback_query(F.data.startswith("tier_buy:"))
     async def handle_tier_buy(callback: CallbackQuery):
-        """Redirect old tier_buy callbacks to tier_pay:yookassa."""
+        """Redirect old tier_buy callbacks to tier_pay."""
         plan_id = callback.data.split(":")[1]
-        callback.data = f"tier_pay:{plan_id}:yookassa"
-        await handle_tier_pay(callback)
+        await _do_tier_pay(callback, plan_id)
 
     # ------------------------------------------------------------------
     # Process tier payment
     # ------------------------------------------------------------------
-    @dp.callback_query(F.data.startswith("tier_pay:"))
-    async def handle_tier_pay(callback: CallbackQuery):
+    async def _do_tier_pay(callback: CallbackQuery, plan_id: str):
         """Создать платёж ЮKassa с автосписанием (save_payment_method)."""
-        parts = callback.data.split(":")
-        if len(parts) < 3:
-            await callback.answer("❌ Ошибка данных", show_alert=True)
-            return
-
-        plan_id = parts[1]
         user_id = callback.from_user.id
 
         plans = await get_tier_plans()
@@ -262,6 +254,16 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         except Exception as e:
             logger.error("tier yookassa error: %s", e, exc_info=True)
             await callback.answer("❌ Ошибка создания платежа", show_alert=True)
+
+    @dp.callback_query(F.data.startswith("tier_pay:"))
+    async def handle_tier_pay(callback: CallbackQuery):
+        """Router for tier_pay: callbacks."""
+        parts = callback.data.split(":")
+        if len(parts) < 2:
+            await callback.answer("❌ Ошибка данных", show_alert=True)
+            return
+        plan_id = parts[1]
+        await _do_tier_pay(callback, plan_id)
 
     # ------------------------------------------------------------------
     # Tier info (current tier details)
@@ -403,20 +405,12 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
 
     @dp.callback_query(F.data.startswith("tier_upgrade_pay:"))
     async def handle_tier_upgrade_pay(callback: CallbackQuery):
-        """Redirect upgrade payment directly to tier_upgrade_do:yookassa."""
+        """Redirect upgrade payment directly to tier_upgrade_do."""
         plan_id = callback.data.split(":")[1]
-        callback.data = f"tier_upgrade_do:{plan_id}:yookassa"
-        await handle_tier_upgrade_do(callback)
+        await _do_tier_upgrade(callback, plan_id)
 
-    @dp.callback_query(F.data.startswith("tier_upgrade_do:"))
-    async def handle_tier_upgrade_do(callback: CallbackQuery):
-        """Execute upgrade payment via YooKassa with save_payment_method."""
-        parts = callback.data.split(":")
-        if len(parts) < 3:
-            await callback.answer("❌ Ошибка", show_alert=True)
-            return
-
-        plan_id = parts[1]
+    async def _do_tier_upgrade(callback: CallbackQuery, plan_id: str):
+        """Create YooKassa payment for tier upgrade with save_payment_method."""
         user_id = callback.from_user.id
 
         plans = await get_tier_plans()
@@ -477,6 +471,16 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         except Exception as e:
             logger.error("upgrade yookassa: %s", e, exc_info=True)
             await callback.answer("❌ Ошибка", show_alert=True)
+
+    @dp.callback_query(F.data.startswith("tier_upgrade_do:"))
+    async def handle_tier_upgrade_do(callback: CallbackQuery):
+        """Router for tier_upgrade_do: callbacks."""
+        parts = callback.data.split(":")
+        if len(parts) < 2:
+            await callback.answer("❌ Ошибка", show_alert=True)
+            return
+        plan_id = parts[1]
+        await _do_tier_upgrade(callback, plan_id)
 
     # ------------------------------------------------------------------
     # Bypass GB pack purchase
