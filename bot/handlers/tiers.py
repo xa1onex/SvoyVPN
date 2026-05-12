@@ -60,7 +60,7 @@ async def build_tiers_message(user_id: int):
         and row["subscription_end"].date() >= datetime.now().date()
     ) if row else False
 
-    text_parts = ["🚀 <b>Тарифы VPN</b>\n"]
+    text_parts = ["🚀 <b>Подписка VPN</b>\n"]
     if is_active and current_tier != "legacy" and current_tier != "none":
         tier_info = TIERS.get(current_tier)
         if tier_info:
@@ -143,7 +143,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
     # ------------------------------------------------------------------
     @dp.callback_query(F.data.startswith("tier_select:"))
     async def handle_tier_select(callback: CallbackQuery):
-        """Описание тарифа и переход к оплате (только период 1 месяц, только ЮKassa)."""
+        """Описание тарифа + сразу создание платежа и кнопка оплаты."""
         tier_id = callback.data.split(":")[1]
         if tier_id not in TIERS:
             await callback.answer("❌ Тариф не найден", show_alert=True)
@@ -156,30 +156,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             return
 
         plan_id, plan_data = next(iter(plans.items()))
-
-        text = f"💎 <b>Тариф {t['name']}</b>\n\n"
-        for feat in t["features"]:
-            text += f"• {feat}\n"
-        text += (
-            f"\nПериод: <b>1 месяц</b>\n"
-            f"Стоимость: <b>{format_price_rub(plan_data['price_rub'])}</b>\n"
-        )
-
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(
-                text=f"💳 Подписаться ({format_price_rub(plan_data['price_rub'])})",
-                callback_data=f"tier_pay:{plan_id}:yookassa",
-            )
-        )
-        builder.row(
-            InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers")
-        )
-
-        await callback.message.edit_text(
-            text, parse_mode="HTML", reply_markup=builder.as_markup()
-        )
-        await callback.answer()
+        await _do_tier_pay(callback, plan_id)
 
     # ------------------------------------------------------------------
     # Buy tier (legacy callback kept for backward compat, redirects to pay)
@@ -194,7 +171,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
     # Process tier payment
     # ------------------------------------------------------------------
     async def _do_tier_pay(callback: CallbackQuery, plan_id: str):
-        """Создать платёж ЮKassa с автосписанием (save_payment_method)."""
+        """Показать описание тарифа + сразу создать платёж и кнопку оплаты."""
         user_id = callback.from_user.id
 
         plans = await get_tier_plans()
@@ -203,6 +180,8 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             return
 
         plan = plans[plan_id]
+        tier_id = plan["tier"]
+        t = TIERS.get(tier_id, {})
 
         if not config.yookassa.enabled:
             await callback.answer("❌ ЮKassa не настроена", show_alert=True)
@@ -237,16 +216,20 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                     user_id, price, "RUB", plan_id, "tier", "pending",
                     payment_data["id"],
                 )
+
+            text = f"💎 <b>{t.get('name', tier_id)}</b> · {format_price_rub(price)}/мес\n\n"
+            for feat in t.get("features", []):
+                text += f"• {feat}\n"
+            text += (
+                f"\n<i>После оплаты подписка продлевается автоматически. "
+                f"Отменить можно в любой момент.</i>"
+            )
+
             b = InlineKeyboardBuilder()
             b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
-            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_select:{plan['tier']}"))
+            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"))
             await callback.message.edit_text(
-                f"💳 <b>Подписка: {plan['title']}</b>\n\n"
-                f"Сумма: <b>{format_price_rub(price)}</b>/мес\n\n"
-                f"<i>После оплаты картой подписка продлевается автоматически каждый месяц. "
-                f"Отменить автопродление можно в любой момент.</i>",
-                parse_mode="HTML",
-                reply_markup=b.as_markup(),
+                text, parse_mode="HTML", reply_markup=b.as_markup()
             )
             await callback.answer()
         except Exception as e:
@@ -507,7 +490,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             text = (
                 "📶 <b>Докупка bypass трафика</b>\n\n"
                 "Доступно только при <b>активной подписке</b>.\n"
-                "Оформите тариф в разделе «Тарифы»."
+                "Оформите подписку в разделе «Подписка»."
             )
             b = InlineKeyboardBuilder()
             b.row(InlineKeyboardButton(text="💎 Выбрать тариф", callback_data="open_tiers"))
