@@ -894,7 +894,7 @@ async def get_subscription_status_display(user_id: int) -> str:
         if tier != "legacy":
             tier_info = TIERS.get(tier, {})
             tier_name = tier_info.get("name", tier.capitalize())
-            header = f"VPN {tier_name} активен"
+            header = f"<b>VPN {tier_name}</b> активен"
 
             async with get_connection() as conn:
                 snap = await user_bypass_traffic_snapshot(conn, user_id)
@@ -902,7 +902,7 @@ async def get_subscription_status_display(user_id: int) -> str:
             limit = float(snap.get("bypassLimitGb") or 0)
             bonus = int(snap.get("bypassBonusGb") or 0)
             if limit > 0:
-                line = f"\nBypass(Лимит): {used:.1f} / {limit:.0f} ГБ"
+                line = f"\n<b>Bypass(Лимит)</b>: {used:.1f} / {limit:.0f} ГБ"
                 if used > limit:
                     line += " ⚠️"
                 if bonus > 0:

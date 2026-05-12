@@ -463,7 +463,7 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
     if is_renew:
         from ..subscriptions import get_subscription_status_display
         status_line = await get_subscription_status_display(user_id)
-        text = f"✅ <b>{status_line}</b>\n\n"
+        text = f"✅ {status_line}\n\n"
 
         if show_discount:
             text += "🎁 <b>Специальное предложение!</b>\n\n"

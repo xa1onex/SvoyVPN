@@ -31,12 +31,14 @@ from .traffic import apply_subscription_anchor_on_payment, ensure_bypass_period
 logger = logging.getLogger(__name__)
 
 
-def _yookassa_payment_method_id_from_payment_obj(payment_obj: dict) -> Optional[str]:
+def _yookassa_saved_payment_method_id(payment_obj: dict) -> Optional[str]:
+    """
+    Извлекает payment_method.id только если saved == true.
+    https://yookassa.ru/developers/payment-acceptance/scenario-extensions/recurring-payments/save-payment-method/save-during-payment#save-mandatory
+    """
     pm = payment_obj.get("payment_method")
-    if isinstance(pm, dict):
+    if isinstance(pm, dict) and pm.get("saved") is True:
         return pm.get("id")
-    if isinstance(pm, str):
-        return pm
     return None
 
 
@@ -443,7 +445,7 @@ async def process_tier_webhook_payment(
             await activate_tier_subscription(
                 conn, user_id, plan_id, plan_data, amount_cents
             )
-            pm_id = _yookassa_payment_method_id_from_payment_obj(payment_obj)
+            pm_id = _yookassa_saved_payment_method_id(payment_obj)
             if pm_id and plan_data.get("tier") == "standard":
                 await conn.execute(
                     """
@@ -452,6 +454,10 @@ async def process_tier_webhook_payment(
                     """,
                     pm_id,
                     user_id,
+                )
+                logger.info(
+                    "Saved payment_method_id=%s for user=%s (autopay Standard)",
+                    pm_id, user_id,
                 )
             if existing:
                 await conn.execute(

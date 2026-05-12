@@ -297,41 +297,20 @@ async def get_main_text(first_name: str, subscription_status: str, user_id: int 
     
     ann = await get_announcement_text()
     
-    # Особое приветствие для новых пользователей
     if is_new_user:
-        if has_referral:
-            # Приветствие для пользователя, зарегистрировавшегося по реферальной ссылке
-            msg = (
-                f"👋 Добро пожаловать, <b>{first_name}</b>!\n\n"
-                f"<i>{subscription_status}</i>\n\n"
-                f"📌 <b>Команды:</b>\n"
-                "<i>/start</i> - Перезагрузить бота\n"
-                "<i>/prem</i> - Покупка VPN\n"
-                "<i>/invite</i> - Пригласи друга\n\n"
-                f"{ann}"
-            )
-        else:
-            # Приветствие для пользователя, зарегистрировавшегося без реферальной ссылки
-            msg = (
-                f"👋 Добро пожаловать, <b>{first_name}</b>!\n\n"
-                f"<i>{subscription_status}</i>\n\n"
-                f"📌 <b>Команды:</b>\n"
-                "<i>/start</i> - Перезагрузить бота\n"
-                "<i>/prem</i> - Покупка VPN\n"
-                "<i>/invite</i> - Пригласи друга\n\n"
-                f"{ann}"
-            )
+        greeting = f"👋 Добро пожаловать, <b>{first_name}</b>!"
     else:
-        # Стандартное приветствие для существующих пользователей
-        msg = (
-            f"👋 Рады видеть тебя снова, <b>{first_name}</b>!\n\n"
-            f"<i>{subscription_status}</i>\n\n"
-            f"📌 <b>Команды:</b>\n"
-            "<i>/start</i> - Перезагрузить бота\n"
-            "<i>/prem</i> - Покупка VPN\n"
-            "<i>/invite</i> - Пригласи друга\n\n"
-            f"{ann}"
-        )
+        greeting = f"👋 Рады видеть тебя снова, <b>{first_name}</b>!"
+
+    msg = (
+        f"{greeting}\n\n"
+        f"{subscription_status}\n\n"
+        f"📌 <b>Команды:</b>\n"
+        "<i>/start</i> - Перезагрузить бота\n"
+        "<i>/prem</i> - Покупка VPN\n"
+        "<i>/invite</i> - Пригласи друга\n\n"
+        f"{ann}"
+    )
     return msg
 
 

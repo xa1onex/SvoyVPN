@@ -78,12 +78,11 @@ class YooKassaClient:
         }
         if save_payment_method:
             payment_dict["save_payment_method"] = True
-            payment_dict["payment_method_data"] = {"type": "bank_card"}
             mc = merchant_customer_id or meta.get("user_id")
             if mc:
                 payment_dict["merchant_customer_id"] = str(mc)[:200]
             logger.info(
-                "YooKassa payment with save_payment_method (привязка для автоплатежей, только bank_card)"
+                "YooKassa: безусловное сохранение способа оплаты (save_payment_method=true)"
             )
 
         try:
