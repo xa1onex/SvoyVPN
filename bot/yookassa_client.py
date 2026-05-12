@@ -11,6 +11,21 @@ from .config import YooKassaConfig
 logger = logging.getLogger(__name__)
 
 
+def _metadata_string_values(metadata: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    """ЮKassa: значения metadata — строки UTF-8 (до 512 символов)."""
+    if not metadata:
+        return {}
+    out: Dict[str, str] = {}
+    for k, v in metadata.items():
+        key = str(k)[:32]
+        if v is None:
+            out[key] = ""
+        else:
+            s = str(v)
+            out[key] = s if len(s) <= 512 else s[:512]
+    return out
+
+
 class YooKassaClient:
     """Клиент для работы с API ЮKassa"""
     
@@ -30,6 +45,7 @@ class YooKassaClient:
         metadata: Optional[Dict[str, Any]] = None,
         save_payment_method: bool = False,
         idempotency_key: Optional[str] = None,
+        merchant_customer_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Создать платеж через ЮKassa
@@ -45,7 +61,8 @@ class YooKassaClient:
         """
         if not self.config.enabled:
             raise RuntimeError("YooKassa is not enabled")
-        
+
+        meta = _metadata_string_values(metadata)
         payment_dict: Dict[str, Any] = {
             "amount": {
                 "value": f"{amount:.2f}",
@@ -57,10 +74,16 @@ class YooKassaClient:
             },
             "description": description,
             "capture": True,
-            "metadata": metadata or {}
+            "metadata": meta,
         }
         if save_payment_method:
             payment_dict["save_payment_method"] = True
+            mc = merchant_customer_id or meta.get("user_id")
+            if mc:
+                payment_dict["merchant_customer_id"] = str(mc)[:200]
+            logger.info(
+                "YooKassa payment with save_payment_method (привязка для автоплатежей)"
+            )
 
         try:
             payment = Payment.create(payment_dict, idempotency_key=idempotency_key)
@@ -98,7 +121,7 @@ class YooKassaClient:
             },
             "capture": True,
             "description": description,
-            "metadata": metadata or {},
+            "metadata": _metadata_string_values(metadata),
             "payment_method_id": payment_method_id,
         }
         try:

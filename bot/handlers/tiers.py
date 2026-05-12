@@ -316,13 +316,14 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                     description=f"VPN {plan['title']}",
                     return_url=f"https://t.me/{bot_info.username}?start=payment_success",
                     metadata={
-                        "user_id": user_id,
+                        "user_id": str(user_id),
                         "plan_id": plan_id,
                         "method_id": "yookassa",
                         "product_type": "tier",
                         "payload": payload_str,
                     },
                     save_payment_method=tier_plan_uses_yookassa_autopay_binding(plan_id),
+                    merchant_customer_id=str(user_id),
                 )
                 async with get_connection() as conn:
                     await conn.execute(
@@ -336,11 +337,19 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                 b = InlineKeyboardBuilder()
                 b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
                 b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_buy:{plan_id}"))
+                yk_note = ""
+                if tier_plan_uses_yookassa_autopay_binding(plan_id):
+                    yk_note = (
+                        "\n\n<i>Сейчас откроется обычная страница оплаты ЮKassa — так и должно быть. "
+                        "После успешной оплаты <b>банковской картой</b> способ оплаты сохраняется; "
+                        "следующее продление Standard — без перехода по ссылке (автосписание за день до окончания). "
+                        "Если в кабинете ЮKassa автоплатежи ещё не подключены для магазина, сохранение может не сработать.</i>"
+                    )
                 await callback.message.edit_text(
                     f"💳 <b>Оплата через ЮKassa</b>\n\n"
                     f"План: <i>{plan['title']}</i>\n"
                     f"Сумма: <i>{format_price_rub(price)}</i>\n\n"
-                    f"Нажмите кнопку для перехода к оплате.",
+                    f"Нажмите кнопку для перехода к оплате.{yk_note}",
                     parse_mode="HTML",
                     reply_markup=b.as_markup(),
                 )

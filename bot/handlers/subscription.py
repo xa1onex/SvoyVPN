@@ -505,10 +505,13 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
         else:
             text += "💡 Вы можете продлить подписку в любое время:\n\n"
 
+        text += (
+            "\n<i>Автопродление по карте (Standard) — через «Новые тарифы». "
+            "Классические планы ниже не сохраняют карту для автосписания.</i>\n"
+        )
+
         builder.row(InlineKeyboardButton(text="🚀 Новые тарифы (Lite/Standard/Pro)", callback_data="open_tiers"))
         builder.row(InlineKeyboardButton(text="📶 Увеличить лимит трафика", callback_data="open_traffic_packs"))
-
-        # Кнопки для продления (с использованием уже подготовленных current_tariffs)
         for plan_id, plan_data in current_tariffs.items():
             builder.button(
                 text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
@@ -540,7 +543,12 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
             text += "\n"
         else:
             text += "Выберите план подписки:\n"
-            
+
+        text += (
+            "\n<i>Автопродление по карте (Standard) — через «Новые тарифы». "
+            "Планы ниже не сохраняют карту для автосписания.</i>\n"
+        )
+
         # Кнопки со всеми доступными тарифами
         for plan_id, plan_data in current_tariffs.items():
             builder.button(
