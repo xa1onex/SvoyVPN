@@ -220,10 +220,6 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             text = f"💎 <b>{t.get('name', tier_id)}</b> · {format_price_rub(price)}/мес\n\n"
             for feat in t.get("features", []):
                 text += f"• {feat}\n"
-            text += (
-                f"\n<i>После оплаты подписка продлевается автоматически. "
-                f"Отменить можно в любой момент.</i>"
-            )
 
             b = InlineKeyboardBuilder()
             b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
@@ -443,8 +439,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_upgrade:{plan['tier']}"))
             await callback.message.edit_text(
                 f"💳 <b>Апгрейд → {plan['title']}</b>\n\n"
-                f"Доплата: <b>{format_price_rub(price_rub)}</b>\n\n"
-                f"<i>Карта сохраняется для автопродления.</i>",
+                f"Доплата: <b>{format_price_rub(price_rub)}</b>",
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
             )
