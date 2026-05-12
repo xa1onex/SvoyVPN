@@ -892,7 +892,9 @@ async def get_subscription_status_display(user_id: int) -> str:
                 bonus = int(snap.get("bypassBonusGb") or 0)
                 result = f"{base}\n💎 Тариф: {tier_name}"
                 if limit > 0:
-                    result += f"\n🔓 Bypass: {remaining:.1f} ГБ из {limit:.0f} ГБ"
+                    result += f"\n🔓 Bypass: {used:.1f} / {limit:.0f} ГБ"
+                    if used > limit:
+                        result += " ⚠️"
                     if bonus > 0:
                         result += f" (+{bonus} ГБ пакет)"
                 return result
