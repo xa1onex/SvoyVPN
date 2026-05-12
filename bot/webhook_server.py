@@ -529,7 +529,6 @@ class WebhookServer:
 
                     # Add bypass exhausted notice if applicable
                     if bypass_blocked and bypass_limit_bytes > 0:
-                        from urllib.parse import quote
                         bp_name = quote(
                             f"Bypass лимит исчерпан ({bypass_used_bytes / (1024**3):.1f}/{bypass_limit_bytes / (1024**3):.0f} ГБ)",
                             safe="",
