@@ -25,21 +25,21 @@ TIERS = {
         "bypass_gb": 30,
         "max_devices": 3,
         "priority": "normal",
-        "features": ["30 ГБ bypass", "Безлимит обычного VPN", "До 3 устройств", "Автопродление по карте"],
+        "features": ["30 ГБ bypass", "Безлимит обычного VPN", "До 3 устройств"],
     },
     "standard": {
         "name": "Standard",
         "bypass_gb": 100,
         "max_devices": 5,
         "priority": "high",
-        "features": ["100 ГБ bypass", "Приоритет bypass", "Безлимит обычного VPN", "До 5 устройств", "Автопродление по карте"],
+        "features": ["100 ГБ bypass", "Приоритет bypass", "Безлимит обычного VPN", "До 5 устройств"],
     },
     "pro": {
         "name": "Pro",
         "bypass_gb": 300,
         "max_devices": 10,
         "priority": "highest",
-        "features": ["300 ГБ bypass", "Высокий приоритет bypass", "Безлимит обычного VPN", "До 10 устройств", "Автопродление по карте"],
+        "features": ["300 ГБ bypass", "Высокий приоритет bypass", "Безлимит обычного VPN", "До 10 устройств"],
     },
 }
 
