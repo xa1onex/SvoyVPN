@@ -814,6 +814,33 @@ async def init_db() -> None:
             ''')
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_sub_usage_user_id ON subscription_usage_logs(user_id)')
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_sub_usage_timestamp ON subscription_usage_logs(timestamp)')
+            # Отпечаток клиента /sub (User-Agent + Client Hints), без сырого IP
+            try:
+                col = await conn.fetchval(
+                    """
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'subscription_usage_logs'
+                      AND column_name = 'device_fingerprint'
+                    """
+                )
+                if not col:
+                    await conn.execute(
+                        "ALTER TABLE subscription_usage_logs ADD COLUMN device_fingerprint VARCHAR(64)"
+                    )
+                await conn.execute(
+                    """
+                    UPDATE subscription_usage_logs
+                    SET device_fingerprint = md5(
+                        'ua:' || regexp_replace(lower(trim(coalesce(user_agent, ''))), '\\s+', ' ', 'g')
+                    )
+                    WHERE device_fingerprint IS NULL
+                    """
+                )
+                await conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sub_usage_user_fp ON subscription_usage_logs(user_id, device_fingerprint)"
+                )
+            except Exception as e:
+                logging.warning(f"Could not migrate subscription_usage_logs.device_fingerprint: {e}")
         except Exception as e:
             logging.warning(f"Could not create subscription_usage_logs table: {e}")
 
@@ -901,27 +928,22 @@ async def init_db() -> None:
         except Exception as e:
             logging.warning(f"Could not create bypass_pack_products table: {e}")
 
-async def log_subscription_usage(user_id: int, user_agent: str, ip_address: str):
-    """Логирует обращение к subscription endpoint"""
-    try:
-        async with get_connection() as conn:
-            await conn.execute(
-                'INSERT INTO subscription_usage_logs (user_id, user_agent, ip_address) VALUES ($1, $2, $3)',
-                user_id, user_agent, ip_address
-            )
-    except Exception as e:
-        logging.error(f"Error logging subscription usage: {e}")
-
-
 async def count_active_devices(conn, user_id: int, hours: int = 6) -> tuple[int, int]:
     """
-    Count unique IPs that accessed /sub in the last N hours for this user.
+    Count distinct client fingerprints for /sub in the last N hours (not raw IP).
     Returns (active_device_count, device_limit).
     """
     row = await conn.fetchrow(
         """
         SELECT
-            (SELECT COUNT(DISTINCT ip_address)
+            (SELECT COUNT(DISTINCT COALESCE(
+                device_fingerprint,
+                md5(
+                    'ua:' || regexp_replace(
+                        lower(trim(coalesce(user_agent, ''))), '\\s+', ' ', 'g'
+                    )
+                )
+            ))
              FROM subscription_usage_logs
              WHERE user_id = $1
                AND timestamp >= NOW() - ($2 || ' hours')::interval
@@ -1059,14 +1081,26 @@ async def delete_device_instruction_photo(photo_id: int) -> None:
         await conn.execute('DELETE FROM device_instruction_photos WHERE id = $1', photo_id)
 
 
-async def log_subscription_usage(user_id: int, user_agent: str, ip_address: str) -> None:
-    """Логирует запрос подписки пользователя"""
+async def log_subscription_usage(
+    user_id: int,
+    user_agent: str,
+    ip_address: str,
+    device_fingerprint: str,
+) -> None:
+    """Логирует запрос подписки пользователя (с отпечатком клиента, без привязки к IP в лимите)."""
     try:
         async with get_connection() as conn:
-            await conn.execute('''
-                INSERT INTO subscription_usage_logs (user_id, user_agent, ip_address, timestamp)
-                VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-            ''', user_id, user_agent, ip_address)
+            await conn.execute(
+                """
+                INSERT INTO subscription_usage_logs
+                (user_id, user_agent, ip_address, device_fingerprint, timestamp)
+                VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                """,
+                user_id,
+                user_agent,
+                ip_address,
+                device_fingerprint,
+            )
     except Exception as e:
         logging.error(f"Error logging subscription usage: {e}")
 

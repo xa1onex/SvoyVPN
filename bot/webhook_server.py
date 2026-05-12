@@ -46,6 +46,7 @@ from .traffic import (
 )
 from . import esim_service
 from .esim_invoice_payload import encode_esim_blob
+from .device_fingerprint import compute_subscription_device_fingerprint
 
 logger = logging.getLogger(__name__)
 
@@ -329,8 +330,25 @@ class WebhookServer:
                 # Логируем запрос (User-Agent и IP)
                 user_agent = request.headers.get("User-Agent", "Unknown")
                 ip_address = request.headers.get("X-Forwarded-For", request.remote or "Unknown")
-                if "," in ip_address: ip_address = ip_address.split(",")[0].strip()
-                await log_subscription_usage(user_id, user_agent, ip_address)
+                if "," in ip_address:
+                    ip_address = ip_address.split(",")[0].strip()
+                hint_keys = (
+                    "Sec-CH-UA-Mobile",
+                    "Sec-CH-UA-Platform",
+                    "Sec-CH-UA-Platform-Version",
+                    "Sec-CH-UA-Model",
+                    "Sec-CH-UA-Full-Version-List",
+                )
+                client_hints = {
+                    k: v.strip()
+                    for k in hint_keys
+                    if (v := request.headers.get(k))
+                }
+                device_fp = compute_subscription_device_fingerprint(
+                    user_agent,
+                    client_hint_headers=client_hints or None,
+                )
+                await log_subscription_usage(user_id, user_agent, ip_address, device_fp)
 
                 # Проверяем активность подписки
                 is_active = await conn.fetchval('''

@@ -3,6 +3,7 @@
 """
 import html
 import logging
+import re
 import time
 from datetime import datetime
 from aiogram import Bot, F
@@ -19,6 +20,68 @@ from ..config import AppConfig
 from ..yookassa_client import YooKassaClient
 
 logger = logging.getLogger(__name__)
+
+# Выражение «устройство» в SQL (совпадает с count_active_devices в database.py)
+_SUB_DEVICE_FP_SQL = (
+    "COALESCE(device_fingerprint, md5('ua:' || regexp_replace(lower(trim(coalesce(user_agent, ''))), "
+    "'\\s+', ' ', 'g')))"
+)
+
+
+async def _build_my_devices_view(conn, user_id: int) -> tuple[str, InlineKeyboardBuilder]:
+    device_limit = await conn.fetchval(
+        "SELECT COALESCE(device_limit, 5) FROM users WHERE user_id = $1", user_id
+    ) or 5
+    q = f"""
+        SELECT fp,
+               MAX(timestamp) AS last_ts,
+               (array_agg(user_agent ORDER BY timestamp DESC))[1] AS user_agent,
+               (array_agg(ip_address ORDER BY timestamp DESC))[1] AS ip_address
+        FROM (
+            SELECT {_SUB_DEVICE_FP_SQL} AS fp,
+                   timestamp, user_agent, ip_address
+            FROM subscription_usage_logs
+            WHERE user_id = $1 AND timestamp >= NOW() - INTERVAL '6 hours'
+        ) t
+        GROUP BY fp
+        ORDER BY MAX(timestamp) DESC
+    """
+    devices = await conn.fetch(q, user_id)
+    count = len(devices)
+    text = (
+        f"📱 <b>Активные устройства</b> ({count}/{device_limit})\n\n"
+        "Учитывается <b>отпечаток клиента</b> (User-Agent и Client Hints), "
+        "а не IP — смена VPN или Wi‑Fi не создаёт «лишнее» устройство.\n\n"
+    )
+    builder = InlineKeyboardBuilder()
+    if devices:
+        for i, d in enumerate(devices, 1):
+            ua = d["user_agent"] or "Unknown"
+            short = ua.replace("\n", " ")[:36] + ("…" if len(ua) > 36 else "")
+            ip = d["ip_address"] or "—"
+            time_str = d["last_ts"].strftime("%d.%m %H:%M") if d["last_ts"] else ""
+            text += f"{i}. <code>{html.escape(short)}</code>\n   IP: {html.escape(str(ip))} · {time_str}\n"
+            fp = d["fp"]
+            if fp:
+                label = f"🗑 {i}"
+                builder.row(
+                    InlineKeyboardButton(
+                        text=label,
+                        callback_data=f"rm_dev:{fp}",
+                    )
+                )
+    else:
+        text += "Нет обращений к подписке за последние 6 часов.\n"
+
+    if count > device_limit:
+        text += f"\n⚠️ <b>Лимит превышен.</b> Удалите лишние строки или сбросьте все сессии."
+
+    text += "\n\n💡 «Сбросить все» отключит все клиенты до следующего обновления подписки."
+
+    if count > 0:
+        builder.row(InlineKeyboardButton(text="🔄 Сбросить все сессии", callback_data="reset_devices"))
+    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
+    return text, builder
 
 
 ONBOARDING_APPS = {
@@ -1156,49 +1219,33 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
 
     @dp.callback_query(F.data == "my_devices")
     async def handle_my_devices(callback: CallbackQuery, state: FSMContext):
-        """Показать активные устройства пользователя"""
+        """Показать активные устройства пользователя (по отпечатку клиента, не по IP)."""
         user_id = callback.from_user.id
-
         async with get_connection() as conn:
-            device_limit = await conn.fetchval(
-                "SELECT COALESCE(device_limit, 5) FROM users WHERE user_id = $1", user_id
-            ) or 5
-            devices = await conn.fetch(
-                """
-                SELECT DISTINCT ON (ip_address)
-                    ip_address, user_agent, timestamp
-                FROM subscription_usage_logs
-                WHERE user_id = $1 AND timestamp >= NOW() - INTERVAL '6 hours'
-                ORDER BY ip_address, timestamp DESC
-                """,
-                user_id,
-            )
-
-        count = len(devices)
-        text = f"📱 <b>Активные устройства</b> ({count}/{device_limit})\n\n"
-
-        if devices:
-            for i, d in enumerate(devices, 1):
-                ua = d["user_agent"] or "Unknown"
-                short_ua = ua.split("/")[0] if "/" in ua else ua[:20]
-                ip = d["ip_address"] or "?"
-                time_str = d["timestamp"].strftime("%H:%M") if d["timestamp"] else ""
-                text += f"{i}. <b>{short_ua}</b> — {ip} ({time_str})\n"
-        else:
-            text += "Нет активных устройств за последние 6 часов.\n"
-
-        if count > device_limit:
-            text += f"\n⚠️ <b>Лимит превышен!</b> Отключите лишние устройства или сбросьте сессии."
-        
-        text += "\n\n💡 Сбросить сессии = все устройства отключатся и нужно будет подключиться заново."
-
-        builder = InlineKeyboardBuilder()
-        if count > 0:
-            builder.row(InlineKeyboardButton(text="🔄 Сбросить все сессии", callback_data="reset_devices"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
-
+            text, builder = await _build_my_devices_view(conn, user_id)
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
         await callback.answer()
+
+    @dp.callback_query(F.data.startswith("rm_dev:"))
+    async def handle_rm_one_device(callback: CallbackQuery, state: FSMContext):
+        """Удалить одно устройство (все логи с этим отпечатком за 6 ч)."""
+        user_id = callback.from_user.id
+        fp = (callback.data or "").split(":", 1)[1] if ":" in (callback.data or "") else ""
+        fp = fp.strip().lower()
+        if len(fp) != 32 or not re.fullmatch(r"[0-9a-f]{32}", fp):
+            await callback.answer("Некорректные данные", show_alert=True)
+            return
+        async with get_connection() as conn:
+            del_sql = f"""
+                DELETE FROM subscription_usage_logs
+                WHERE user_id = $1
+                  AND {_SUB_DEVICE_FP_SQL} = $2
+                  AND timestamp >= NOW() - INTERVAL '6 hours'
+            """
+            await conn.execute(del_sql, user_id, fp)
+            text, builder = await _build_my_devices_view(conn, user_id)
+        await callback.answer("✅ Устройство удалено из списка.", show_alert=True)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
     @dp.callback_query(F.data == "reset_devices")
     async def handle_reset_devices(callback: CallbackQuery, state: FSMContext):
