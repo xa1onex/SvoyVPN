@@ -14,7 +14,7 @@ import pytz
 from .config import load_config
 from .database import init_db
 from .subscriptions import handle_expired_subscriptions, send_upcoming_subscription_reminders
-from .tier_autopay import run_standard_yookassa_autopay_renewals
+from .tier_autopay import run_yookassa_autopay_renewals
 from .webhook_server import WebhookServer
 from .yookassa_client import YooKassaClient
 from .flyer_client import FlyerClient
@@ -72,7 +72,7 @@ def setup_scheduler():
     )
 
     scheduler.add_job(
-        run_standard_yookassa_autopay_renewals,
+        run_yookassa_autopay_renewals,
         "cron",
         hour=10,
         minute=15,

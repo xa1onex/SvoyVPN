@@ -96,14 +96,6 @@ async def activate_tier_subscription(
         price_paid,
         user_id,
     )
-    if tier != "standard":
-        await conn.execute(
-            """
-            UPDATE users SET yookassa_recurring_payment_method_id = NULL
-            WHERE user_id = $1
-            """,
-            user_id,
-        )
     await apply_subscription_anchor_on_payment(conn, user_id)
     await ensure_bypass_period(conn, user_id)
 
@@ -144,14 +136,6 @@ async def apply_tier_upgrade(
         new_total_paid,
         user_id,
     )
-    if tier != "standard":
-        await conn.execute(
-            """
-            UPDATE users SET yookassa_recurring_payment_method_id = NULL
-            WHERE user_id = $1
-            """,
-            user_id,
-        )
 
 
 async def apply_bypass_pack(conn, user_id: int, gb_amount: int) -> None:
@@ -446,7 +430,7 @@ async def process_tier_webhook_payment(
                 conn, user_id, plan_id, plan_data, amount_cents
             )
             pm_id = _yookassa_saved_payment_method_id(payment_obj)
-            if pm_id and plan_data.get("tier") == "standard":
+            if pm_id:
                 await conn.execute(
                     """
                     UPDATE users SET yookassa_recurring_payment_method_id = $1
@@ -456,8 +440,8 @@ async def process_tier_webhook_payment(
                     user_id,
                 )
                 logger.info(
-                    "Saved payment_method_id=%s for user=%s (autopay Standard)",
-                    pm_id, user_id,
+                    "Saved payment_method_id=%s for user=%s tier=%s",
+                    pm_id, user_id, plan_data.get("tier"),
                 )
             if existing:
                 await conn.execute(

@@ -25,32 +25,21 @@ TIERS = {
         "bypass_gb": 30,
         "max_devices": 3,
         "priority": "normal",
-        "features": ["30 ГБ bypass", "Безлимит обычного VPN", "До 3 устройств"],
+        "features": ["30 ГБ bypass", "Безлимит обычного VPN", "До 3 устройств", "Автопродление по карте"],
     },
     "standard": {
         "name": "Standard",
         "bypass_gb": 100,
         "max_devices": 5,
         "priority": "high",
-        "features": [
-            "100 ГБ bypass",
-            "Приоритет bypass",
-            "Безлимит обычного VPN",
-            "До 5 устройств",
-            "Автопродление по карте (ЮKassa)",
-        ],
+        "features": ["100 ГБ bypass", "Приоритет bypass", "Безлимит обычного VPN", "До 5 устройств", "Автопродление по карте"],
     },
     "pro": {
         "name": "Pro",
         "bypass_gb": 300,
         "max_devices": 10,
         "priority": "highest",
-        "features": [
-            "300 ГБ bypass",
-            "Высокий приоритет bypass",
-            "Безлимит обычного VPN",
-            "До 10 устройств",
-        ],
+        "features": ["300 ГБ bypass", "Высокий приоритет bypass", "Безлимит обычного VPN", "До 10 устройств", "Автопродление по карте"],
     },
 }
 
@@ -104,8 +93,8 @@ TIER_ORDER = ["lite", "standard", "pro"]
 
 
 def tier_plan_uses_yookassa_autopay_binding(plan_id: str) -> bool:
-    """Первый платёж Standard через ЮKassa с save_payment_method для автоплатежей."""
-    return plan_id == "standard_1m"
+    """Любой tier-план (lite/standard/pro) оплачивается с save_payment_method для автосписания."""
+    return plan_id in TIER_PLANS_BASE
 
 # ---------------------------------------------------------------------------
 # Legacy plans (kept for backward compat with old subscriptions)

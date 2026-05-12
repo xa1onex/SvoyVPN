@@ -34,7 +34,6 @@ from ..plans import (
     get_tier_max_devices,
     get_tier_plans,
     get_tier_plans_for_tier,
-    tier_plan_uses_yookassa_autopay_binding,
 )
 from ..traffic import user_bypass_traffic_snapshot
 from ..yookassa_client import YooKassaClient
@@ -144,7 +143,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
     # ------------------------------------------------------------------
     @dp.callback_query(F.data.startswith("tier_select:"))
     async def handle_tier_select(callback: CallbackQuery):
-        """Описание тарифа и переход к оплате (только период 1 месяц)."""
+        """Описание тарифа и переход к оплате (только период 1 месяц, только ЮKassa)."""
         tier_id = callback.data.split(":")[1]
         if tier_id not in TIERS:
             await callback.answer("❌ Тариф не найден", show_alert=True)
@@ -163,20 +162,16 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             text += f"• {feat}\n"
         text += (
             f"\nПериод: <b>1 месяц</b>\n"
-            f"Стоимость: <b>{format_price_both(plan_data['price_rub'], plan_data['price_stars'])}</b>\n"
+            f"Стоимость: <b>{format_price_rub(plan_data['price_rub'])}</b>\n"
+            f"\n<i>После оплаты картой подписка продлевается автоматически. "
+            f"Отменить можно в любой момент через бот.</i>\n"
         )
-        if tier_id == "standard":
-            text += (
-                "\n<i>При оплате банковской картой через ЮKassa карта сохраняется для "
-                "автоматического продления на следующий месяц. Отключить можно, сменив тариф "
-                "или обратившись в поддержку.</i>\n"
-            )
 
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(
-                text="💳 Оформить и оплатить",
-                callback_data=f"tier_buy:{plan_id}",
+                text=f"💳 Подписаться ({format_price_rub(plan_data['price_rub'])})",
+                callback_data=f"tier_pay:{plan_id}:yookassa",
             )
         )
         builder.row(
@@ -189,80 +184,27 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         await callback.answer()
 
     # ------------------------------------------------------------------
-    # Buy tier (payment method selection)
+    # Buy tier (legacy callback kept for backward compat, redirects to pay)
     # ------------------------------------------------------------------
     @dp.callback_query(F.data.startswith("tier_buy:"))
     async def handle_tier_buy(callback: CallbackQuery):
-        """Select payment method for tier purchase."""
+        """Redirect old tier_buy callbacks to tier_pay:yookassa."""
         plan_id = callback.data.split(":")[1]
-        plans = await get_tier_plans()
-
-        if plan_id not in plans:
-            await callback.answer("❌ План не найден", show_alert=True)
-            return
-
-        plan = plans[plan_id]
-        tier_info = TIERS.get(plan["tier"], {})
-
-        text = (
-            f"💳 <b>Оплата: {plan['title']}</b>\n\n"
-            f"Тариф: <b>{tier_info.get('name', plan['tier'])}</b>\n"
-            f"Bypass: {plan['bypass_gb']} ГБ/мес\n"
-            f"Устройств: до {plan['max_devices']}\n"
-            f"Обычный VPN: безлимит\n"
-        )
-        if tier_plan_uses_yookassa_autopay_binding(plan_id) and config.yookassa.enabled:
-            text += (
-                "\n<i>Карта ЮKassa: после оплаты способ оплаты сохраняется для "
-                "автопродления Standard на следующий месяц.</i>\n"
-            )
-        text += "\nВыберите способ оплаты:"
-
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(
-                text=f"⭐ Telegram Stars ({format_price_stars(plan['price_stars'])})",
-                callback_data=f"tier_pay:{plan_id}:stars",
-            )
-        )
-        if config.yookassa.enabled:
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"💳 Банковская карта ({format_price_rub(plan['price_rub'])})",
-                    callback_data=f"tier_pay:{plan_id}:yookassa",
-                )
-            )
-        if hasattr(config, "cryptopay") and config.cryptopay.enabled:
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"💎 Crypto Pay ({format_price_rub(plan['price_rub'])})",
-                    callback_data=f"tier_pay:{plan_id}:cryptopay",
-                )
-            )
-        builder.row(
-            InlineKeyboardButton(
-                text="◀️ Назад", callback_data=f"tier_select:{plan['tier']}"
-            )
-        )
-
-        await callback.message.edit_text(
-            text, parse_mode="HTML", reply_markup=builder.as_markup()
-        )
-        await callback.answer()
+        callback.data = f"tier_pay:{plan_id}:yookassa"
+        await handle_tier_pay(callback)
 
     # ------------------------------------------------------------------
     # Process tier payment
     # ------------------------------------------------------------------
     @dp.callback_query(F.data.startswith("tier_pay:"))
     async def handle_tier_pay(callback: CallbackQuery):
-        """Process payment for tier subscription."""
+        """Создать платёж ЮKassa с автосписанием (save_payment_method)."""
         parts = callback.data.split(":")
         if len(parts) < 3:
             await callback.answer("❌ Ошибка данных", show_alert=True)
             return
 
         plan_id = parts[1]
-        method_id = parts[2]
         user_id = callback.from_user.id
 
         plans = await get_tier_plans()
@@ -271,149 +213,55 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             return
 
         plan = plans[plan_id]
-        method_data = PAYMENT_METHODS.get(method_id)
-        if not method_data:
-            await callback.answer("❌ Неизвестный способ оплаты", show_alert=True)
+
+        if not config.yookassa.enabled:
+            await callback.answer("❌ ЮKassa не настроена", show_alert=True)
             return
-
-        if method_id == "stars":
-            price = plan["price_stars"]
-            if price < 1:
-                await callback.answer("❌ Неверная цена", show_alert=True)
-                return
-            payload = f"tier|{plan_id}|{method_id}"
-            try:
-                await bot.send_invoice(
-                    chat_id=callback.message.chat.id,
-                    title=f"VPN {plan['title']}",
-                    description=f"Bypass: {plan['bypass_gb']} ГБ/мес · До {plan['max_devices']} устройств · Безлимит обычного VPN",
-                    provider_token="",
-                    currency="XTR",
-                    prices=[LabeledPrice(label="VPN подписка", amount=price)],
-                    payload=payload,
-                    start_parameter="tier",
-                )
-                await callback.answer()
-            except Exception as e:
-                logger.error("tier stars invoice error: %s", e, exc_info=True)
-                await callback.answer("❌ Ошибка создания счёта", show_alert=True)
-
-        elif method_id == "yookassa":
-            if not config.yookassa.enabled:
-                await callback.answer("❌ ЮKassa не настроена", show_alert=True)
-                return
-            price = plan["price_rub"]
-            if price < 100:
-                await callback.answer("❌ Минимальная сумма — 1₽", show_alert=True)
-                return
-            try:
-                yk = YooKassaClient(config.yookassa)
-                bot_info = await bot.get_me()
-                amount_rub = price / 100.0
-                payload_str = f"{user_id}:{plan_id}:yookassa"
-                payment_data = yk.create_payment(
-                    amount=amount_rub,
-                    description=f"VPN {plan['title']}",
-                    return_url=f"https://t.me/{bot_info.username}?start=payment_success",
-                    metadata={
-                        "user_id": str(user_id),
-                        "plan_id": plan_id,
-                        "method_id": "yookassa",
-                        "product_type": "tier",
-                        "payload": payload_str,
-                    },
-                    save_payment_method=tier_plan_uses_yookassa_autopay_binding(plan_id),
-                    merchant_customer_id=str(user_id),
-                )
-                async with get_connection() as conn:
-                    await conn.execute(
-                        """
-                        INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
-                        """,
-                        user_id, price, "RUB", plan_id, "tier", "pending",
-                        payment_data["id"],
-                    )
-                b = InlineKeyboardBuilder()
-                b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
-                b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_buy:{plan_id}"))
-                yk_note = ""
-                if tier_plan_uses_yookassa_autopay_binding(plan_id):
-                    yk_note = (
-                        "\n\n<i>Сейчас откроется обычная страница оплаты ЮKassa — так и должно быть. "
-                        "После успешной оплаты <b>банковской картой</b> способ оплаты сохраняется; "
-                        "следующее продление Standard — без перехода по ссылке (автосписание за день до окончания). "
-                        "Если в кабинете ЮKassa автоплатежи ещё не подключены для магазина, сохранение может не сработать.</i>"
-                    )
-                await callback.message.edit_text(
-                    f"💳 <b>Оплата через ЮKassa</b>\n\n"
-                    f"План: <i>{plan['title']}</i>\n"
-                    f"Сумма: <i>{format_price_rub(price)}</i>\n\n"
-                    f"Нажмите кнопку для перехода к оплате.{yk_note}",
-                    parse_mode="HTML",
-                    reply_markup=b.as_markup(),
-                )
-                await callback.answer()
-            except Exception as e:
-                logger.error("tier yookassa error: %s", e, exc_info=True)
-                await callback.answer("❌ Ошибка создания платежа", show_alert=True)
-
-        elif method_id == "cryptopay":
-            if not hasattr(config, "cryptopay") or not config.cryptopay.enabled:
-                await callback.answer("❌ Crypto Pay не настроен", show_alert=True)
-                return
-            price = plan["price_rub"]
+        price = plan["price_rub"]
+        if price < 100:
+            await callback.answer("❌ Минимальная сумма — 1₽", show_alert=True)
+            return
+        try:
+            yk = YooKassaClient(config.yookassa)
+            bot_info = await bot.get_me()
             amount_rub = price / 100.0
-            api_url = (
-                "https://testnet-pay.crypt.bot/api/createInvoice"
-                if config.cryptopay.testnet
-                else "https://pay.crypt.bot/api/createInvoice"
+            payment_data = yk.create_payment(
+                amount=amount_rub,
+                description=f"VPN {plan['title']}",
+                return_url=f"https://t.me/{bot_info.username}?start=payment_success",
+                metadata={
+                    "user_id": str(user_id),
+                    "plan_id": plan_id,
+                    "method_id": "yookassa",
+                    "product_type": "tier",
+                },
+                save_payment_method=True,
+                merchant_customer_id=str(user_id),
             )
-            payload_str = f"{user_id}:{plan_id}:cryptopay:tier"
-            try:
-                import aiohttp
-                async with aiohttp.ClientSession() as session:
-                    headers = {"Crypto-Pay-API-Token": config.cryptopay.api_token}
-                    data_pay = {
-                        "currency_type": "fiat",
-                        "fiat": "RUB",
-                        "amount": f"{amount_rub:.2f}",
-                        "description": f"VPN {plan['title']}",
-                        "payload": payload_str,
-                    }
-                    async with session.post(api_url, headers=headers, json=data_pay) as resp:
-                        res = await resp.json()
-                        if res.get("ok"):
-                            invoice_url = res["result"].get(
-                                "mini_app_invoice_url", res["result"]["bot_invoice_url"]
-                            )
-                            invoice_id = res["result"]["invoice_id"]
-                            async with get_connection() as conn:
-                                await conn.execute(
-                                    """
-                                    INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
-                                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                                    """,
-                                    user_id, price, "RUB", plan_id, "tier", "pending",
-                                    str(invoice_id),
-                                )
-                            b = InlineKeyboardBuilder()
-                            b.row(InlineKeyboardButton(text="💎 Перейти к оплате", url=invoice_url))
-                            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_buy:{plan_id}"))
-                            await callback.message.edit_text(
-                                f"💎 <b>Оплата через Crypto Pay</b>\n\n"
-                                f"План: <i>{plan['title']}</i>\n"
-                                f"Сумма: <i>{format_price_rub(price)}</i>\n\n"
-                                f"Нажмите кнопку для перехода к оплате.",
-                                parse_mode="HTML",
-                                reply_markup=b.as_markup(),
-                            )
-                            await callback.answer()
-                        else:
-                            await callback.answer("❌ Ошибка создания платежа", show_alert=True)
-            except Exception as e:
-                logger.error("tier cryptopay error: %s", e, exc_info=True)
-                await callback.answer("❌ Ошибка", show_alert=True)
+            async with get_connection() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    user_id, price, "RUB", plan_id, "tier", "pending",
+                    payment_data["id"],
+                )
+            b = InlineKeyboardBuilder()
+            b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
+            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_select:{plan['tier']}"))
+            await callback.message.edit_text(
+                f"💳 <b>Подписка: {plan['title']}</b>\n\n"
+                f"Сумма: <b>{format_price_rub(price)}</b>/мес\n\n"
+                f"<i>После оплаты картой подписка продлевается автоматически каждый месяц. "
+                f"Отменить автопродление можно в любой момент.</i>",
+                parse_mode="HTML",
+                reply_markup=b.as_markup(),
+            )
+            await callback.answer()
+        except Exception as e:
+            logger.error("tier yookassa error: %s", e, exc_info=True)
+            await callback.answer("❌ Ошибка создания платежа", show_alert=True)
 
     # ------------------------------------------------------------------
     # Tier info (current tier details)
@@ -555,67 +403,20 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
 
     @dp.callback_query(F.data.startswith("tier_upgrade_pay:"))
     async def handle_tier_upgrade_pay(callback: CallbackQuery):
-        """Process upgrade payment method selection."""
+        """Redirect upgrade payment directly to tier_upgrade_do:yookassa."""
         plan_id = callback.data.split(":")[1]
-        user_id = callback.from_user.id
-
-        plans = await get_tier_plans()
-        if plan_id not in plans:
-            await callback.answer("❌ План не найден", show_alert=True)
-            return
-
-        plan = plans[plan_id]
-        result = await calculate_upgrade_price(
-            user_id, plan["tier"], plan["duration"]
-        )
-        if not result["valid"]:
-            await callback.answer(f"❌ {result['reason']}", show_alert=True)
-            return
-
-        price_rub = result["price_rub"]
-        price_stars = result["price_stars"]
-
-        text = (
-            f"💳 <b>Оплата апгрейда</b>\n\n"
-            f"Новый тариф: <b>{plan['title']}</b>\n"
-            f"Доплата: <b>{format_price_both(price_rub, price_stars)}</b>\n\n"
-            f"Выберите способ оплаты:"
-        )
-
-        builder = InlineKeyboardBuilder()
-        if price_stars >= 1:
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"⭐ Stars ({format_price_stars(price_stars)})",
-                    callback_data=f"tier_upgrade_do:{plan_id}:stars",
-                )
-            )
-        if config.yookassa.enabled and price_rub >= 100:
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"💳 Карта ({format_price_rub(price_rub)})",
-                    callback_data=f"tier_upgrade_do:{plan_id}:yookassa",
-                )
-            )
-        builder.row(
-            InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_upgrade:{plan['tier']}")
-        )
-
-        await callback.message.edit_text(
-            text, parse_mode="HTML", reply_markup=builder.as_markup()
-        )
-        await callback.answer()
+        callback.data = f"tier_upgrade_do:{plan_id}:yookassa"
+        await handle_tier_upgrade_do(callback)
 
     @dp.callback_query(F.data.startswith("tier_upgrade_do:"))
     async def handle_tier_upgrade_do(callback: CallbackQuery):
-        """Execute upgrade payment via Stars invoice."""
+        """Execute upgrade payment via YooKassa with save_payment_method."""
         parts = callback.data.split(":")
         if len(parts) < 3:
             await callback.answer("❌ Ошибка", show_alert=True)
             return
 
         plan_id = parts[1]
-        method_id = parts[2]
         user_id = callback.from_user.id
 
         plans = await get_tier_plans()
@@ -629,70 +430,53 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             await callback.answer(f"❌ {result['reason']}", show_alert=True)
             return
 
-        if method_id == "stars":
-            price = result["price_stars"]
-            if price < 1:
-                price = 1
-            payload = f"tier_upgrade|{plan_id}|stars"
-            try:
-                await bot.send_invoice(
-                    chat_id=callback.message.chat.id,
-                    title=f"Апгрейд → {plan['title']}",
-                    description=f"Доплата за повышение тарифа",
-                    provider_token="",
-                    currency="XTR",
-                    prices=[LabeledPrice(label="Апгрейд", amount=price)],
-                    payload=payload,
-                    start_parameter="upgrade",
-                )
-                await callback.answer()
-            except Exception as e:
-                logger.error("upgrade stars invoice: %s", e, exc_info=True)
-                await callback.answer("❌ Ошибка", show_alert=True)
+        if not config.yookassa.enabled:
+            await callback.answer("❌ ЮKassa не настроена", show_alert=True)
+            return
 
-        elif method_id == "yookassa":
-            price_rub = result["price_rub"]
-            if price_rub < 100:
-                await callback.answer("❌ Минимальная сумма 1₽", show_alert=True)
-                return
-            try:
-                yk = YooKassaClient(config.yookassa)
-                bot_info = await bot.get_me()
-                payment_data = yk.create_payment(
-                    amount=price_rub / 100.0,
-                    description=f"Апгрейд VPN → {plan['title']}",
-                    return_url=f"https://t.me/{bot_info.username}?start=payment_success",
-                    metadata={
-                        "user_id": user_id,
-                        "plan_id": plan_id,
-                        "method_id": "yookassa",
-                        "product_type": "tier_upgrade",
-                        "payload": f"{user_id}:{plan_id}:yookassa:upgrade",
-                    },
+        price_rub = result["price_rub"]
+        if price_rub < 100:
+            await callback.answer("❌ Минимальная сумма 1₽", show_alert=True)
+            return
+        try:
+            yk = YooKassaClient(config.yookassa)
+            bot_info = await bot.get_me()
+            payment_data = yk.create_payment(
+                amount=price_rub / 100.0,
+                description=f"Апгрейд VPN → {plan['title']}",
+                return_url=f"https://t.me/{bot_info.username}?start=payment_success",
+                metadata={
+                    "user_id": str(user_id),
+                    "plan_id": plan_id,
+                    "method_id": "yookassa",
+                    "product_type": "tier_upgrade",
+                },
+                save_payment_method=True,
+                merchant_customer_id=str(user_id),
+            )
+            async with get_connection() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    user_id, price_rub, "RUB", plan_id, "tier_upgrade", "pending",
+                    payment_data["id"],
                 )
-                async with get_connection() as conn:
-                    await conn.execute(
-                        """
-                        INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
-                        """,
-                        user_id, price_rub, "RUB", plan_id, "tier_upgrade", "pending",
-                        payment_data["id"],
-                    )
-                b = InlineKeyboardBuilder()
-                b.row(InlineKeyboardButton(text="💳 Оплатить", url=payment_data["confirmation_url"]))
-                b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_upgrade:{plan['tier']}"))
-                await callback.message.edit_text(
-                    f"💳 <b>Оплата апгрейда</b>\n\n"
-                    f"Сумма: {format_price_rub(price_rub)}\n"
-                    f"Нажмите кнопку для перехода к оплате.",
-                    parse_mode="HTML",
-                    reply_markup=b.as_markup(),
-                )
-                await callback.answer()
-            except Exception as e:
-                logger.error("upgrade yookassa: %s", e, exc_info=True)
-                await callback.answer("❌ Ошибка", show_alert=True)
+            b = InlineKeyboardBuilder()
+            b.row(InlineKeyboardButton(text="💳 Оплатить", url=payment_data["confirmation_url"]))
+            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_upgrade:{plan['tier']}"))
+            await callback.message.edit_text(
+                f"💳 <b>Апгрейд → {plan['title']}</b>\n\n"
+                f"Доплата: <b>{format_price_rub(price_rub)}</b>\n\n"
+                f"<i>Карта сохраняется для автопродления.</i>",
+                parse_mode="HTML",
+                reply_markup=b.as_markup(),
+            )
+            await callback.answer()
+        except Exception as e:
+            logger.error("upgrade yookassa: %s", e, exc_info=True)
+            await callback.answer("❌ Ошибка", show_alert=True)
 
     # ------------------------------------------------------------------
     # Bypass GB pack purchase

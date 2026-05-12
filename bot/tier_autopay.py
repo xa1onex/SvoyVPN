@@ -1,6 +1,6 @@
 """
-Автопродление Standard через ЮKassa по сохранённой карте.
-https://yookassa.ru/developers/payments/recurring-payments
+Автопродление тарифов (Lite/Standard/Pro) через ЮKassa по сохранённой карте.
+https://yookassa.ru/developers/payment-acceptance/scenario-extensions/recurring-payments/basics
 """
 from __future__ import annotations
 
@@ -10,33 +10,30 @@ from asyncpg.exceptions import UniqueViolationError
 
 from .config import AppConfig
 from .database import get_connection
-from .plans import get_tier_plans
+from .plans import TIER_PLANS_BASE, get_tier_plans
 from .yookassa_client import YooKassaClient
 
 logger = logging.getLogger(__name__)
 
-STANDARD_PLAN_ID = "standard_1m"
 
+async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
+    """За день до окончания подписки создаём платёж по сохранённому payment_method_id.
 
-async def run_standard_yookassa_autopay_renewals(config: AppConfig) -> None:
-    """За день до окончания подписки создаём платёж по сохранённому payment_method_id."""
+    Работает для всех tier-планов (lite_1m, standard_1m, pro_1m).
+    """
     if not config.yookassa.enabled:
         return
 
     yk = YooKassaClient(config.yookassa)
     plans = await get_tier_plans()
-    if STANDARD_PLAN_ID not in plans:
-        logger.error("autopay: plan %s not in tier plans", STANDARD_PLAN_ID)
-        return
-    plan = plans[STANDARD_PLAN_ID]
-    amount_rub = plan["price_rub"] / 100.0
 
     async with get_connection() as conn:
         rows = await conn.fetch(
             """
-            SELECT u.user_id, u.subscription_end, u.yookassa_recurring_payment_method_id
+            SELECT u.user_id, u.subscription_tier, u.subscription_end,
+                   u.yookassa_recurring_payment_method_id
             FROM users u
-            WHERE u.subscription_tier = 'standard'
+            WHERE u.subscription_tier IN ('lite', 'standard', 'pro')
               AND u.pay_subscribed = TRUE
               AND u.subscription_end IS NOT NULL
               AND DATE(u.subscription_end) = CURRENT_DATE + 1
@@ -44,25 +41,32 @@ async def run_standard_yookassa_autopay_renewals(config: AppConfig) -> None:
               AND NOT EXISTS (
                   SELECT 1 FROM payments p
                   WHERE p.user_id = u.user_id
-                    AND p.plan_id = $1
                     AND p.plan_type = 'tier'
                     AND p.status = 'pending'
                     AND p.created_at > NOW() - INTERVAL '3 days'
               )
-            """,
-            STANDARD_PLAN_ID,
+            """
         )
 
     for row in rows:
         user_id = row["user_id"]
+        tier = row["subscription_tier"]
         pm_id = row["yookassa_recurring_payment_method_id"]
         sub_end = row["subscription_end"]
+
+        plan_id = f"{tier}_1m"
+        plan = plans.get(plan_id)
+        if not plan:
+            logger.warning("autopay: plan %s not found for user=%s", plan_id, user_id)
+            continue
+
+        amount_rub = plan["price_rub"] / 100.0
         end_key = sub_end.strftime("%Y-%m-%d") if sub_end else "na"
-        idem = f"autopay-{user_id}-{end_key}"
+        idem = f"autopay-{user_id}-{plan_id}-{end_key}"
 
         metadata = {
             "user_id": str(user_id),
-            "plan_id": STANDARD_PLAN_ID,
+            "plan_id": plan_id,
             "method_id": "yookassa",
             "product_type": "tier",
             "payment_source": "yookassa_autopay",
@@ -70,7 +74,7 @@ async def run_standard_yookassa_autopay_renewals(config: AppConfig) -> None:
         try:
             payment = yk.create_recurring_payment(
                 amount=amount_rub,
-                description="VPN Standard — продление (автоплатёж)",
+                description=f"VPN {plan['title']} — продление (автоплатёж)",
                 payment_method_id=pm_id,
                 metadata=metadata,
                 idempotency_key=idem,
@@ -91,19 +95,17 @@ async def run_standard_yookassa_autopay_renewals(config: AppConfig) -> None:
                     user_id,
                     plan["price_rub"],
                     "RUB",
-                    STANDARD_PLAN_ID,
+                    plan_id,
                     "tier",
                     "pending",
                     payment["id"],
                     "yookassa_autopay",
                 )
         except UniqueViolationError:
-            logger.info(
-                "autopay: duplicate payment row for user=%s (idem ok)", user_id
-            )
+            logger.info("autopay: duplicate payment row for user=%s (idem ok)", user_id)
             continue
         except Exception as e:
             logger.error("autopay: DB insert failed user=%s: %s", user_id, e, exc_info=True)
             continue
 
-        logger.info("autopay: created payment %s user=%s", payment.get("id"), user_id)
+        logger.info("autopay: created payment %s user=%s plan=%s", payment.get("id"), user_id, plan_id)
