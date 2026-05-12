@@ -348,16 +348,19 @@ class WebhookServer:
                     device_count, device_limit = await count_active_devices(conn, user_id, hours=6)
                     if device_count > device_limit and device_limit > 0:
                         bot_username = self.bot_public_username or "SvoyVPN_bot"
-                        body = (
+                        parts = [
                             f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
                             f"?security=tls&type=tcp"
-                            f"#{quote(f'⚠️ Лимит устройств ({device_count}/{device_limit})')}\n"
+                            f"#{quote(f'⚠️ Лимит устройств ({device_count}/{device_limit})')}",
                             f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
                             f"?security=tls&type=tcp"
-                            f"#{quote(f'Отключите лишние — @{bot_username}')}"
-                        )
+                            f"#{quote(f'Отключите лишние — @{bot_username}')}",
+                        ]
+                        tg_line = await get_user_tg_relay_vless_line(conn, user_id)
+                        if tg_line:
+                            parts.append(tg_line)
                         return web.Response(
-                            text=body,
+                            text="\n".join(parts),
                             content_type="text/plain",
                             charset="utf-8",
                             headers={
