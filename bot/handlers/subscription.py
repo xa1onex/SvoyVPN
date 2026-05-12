@@ -50,8 +50,6 @@ async def _build_my_devices_view(conn, user_id: int) -> tuple[str, InlineKeyboar
     count = len(devices)
     text = (
         f"📱 <b>Активные устройства</b> ({count}/{device_limit})\n\n"
-        "Учитывается <b>отпечаток клиента</b> (User-Agent и Client Hints), "
-        "а не IP — смена VPN или Wi‑Fi не создаёт «лишнее» устройство.\n\n"
     )
     builder = InlineKeyboardBuilder()
     if devices:
