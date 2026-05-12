@@ -912,6 +912,30 @@ async def log_subscription_usage(user_id: int, user_agent: str, ip_address: str)
     except Exception as e:
         logging.error(f"Error logging subscription usage: {e}")
 
+
+async def count_active_devices(conn, user_id: int, hours: int = 6) -> tuple[int, int]:
+    """
+    Count unique IPs that accessed /sub in the last N hours for this user.
+    Returns (active_device_count, device_limit).
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT
+            (SELECT COUNT(DISTINCT ip_address)
+             FROM subscription_usage_logs
+             WHERE user_id = $1
+               AND timestamp >= NOW() - ($2 || ' hours')::interval
+            ) AS device_count,
+            COALESCE(u.device_limit, 5) AS device_limit
+        FROM users u
+        WHERE u.user_id = $1
+        """,
+        user_id, str(hours),
+    )
+    if not row:
+        return 0, 5
+    return int(row["device_count"]), int(row["device_limit"])
+
 async def log_miniapp_usage(user_id: int, action: str = 'open'):
     """Логирует активность в Mini App"""
     try:

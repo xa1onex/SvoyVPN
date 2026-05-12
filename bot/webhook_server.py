@@ -341,7 +341,30 @@ class WebhookServer:
                         THEN TRUE ELSE FALSE END
                     FROM users WHERE user_id = $1
                 ''', user_id)
-                
+
+                # Проверка лимита устройств
+                if is_active:
+                    from .database import count_active_devices
+                    device_count, device_limit = await count_active_devices(conn, user_id, hours=6)
+                    if device_count > device_limit and device_limit > 0:
+                        bot_username = self.bot_public_username or "SvoyVPN_bot"
+                        body = (
+                            f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
+                            f"?security=tls&type=tcp"
+                            f"#{quote(f'⚠️ Лимит устройств ({device_count}/{device_limit})')}\n"
+                            f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
+                            f"?security=tls&type=tcp"
+                            f"#{quote(f'Отключите лишние — @{bot_username}')}"
+                        )
+                        return web.Response(
+                            text=body,
+                            content_type="text/plain; charset=utf-8",
+                            headers={
+                                "Subscription-Userinfo": f"upload=0; download=0; total=0; expire=0",
+                                "Profile-Update-Interval": "6",
+                            },
+                        )
+
                 # Получаем ключи и информацию о сервере для сортировки
                 keys_data = await conn.fetch('''
                     SELECT DISTINCT ON (k.server_id) 
