@@ -47,7 +47,7 @@ async def build_tiers_message(user_id: int):
         row = await conn.fetchrow(
             """
             SELECT subscription_tier, pay_subscribed, subscription_end,
-                   yookassa_recurring_payment_method_id
+                   yookassa_recurring_payment_method_id, pending_downgrade_tier
             FROM users WHERE user_id = $1
             """,
             user_id,
@@ -61,6 +61,7 @@ async def build_tiers_message(user_id: int):
         and row["subscription_end"].date() >= datetime.now().date()
     ) if row else False
     has_card = bool(row and row.get("yookassa_recurring_payment_method_id"))
+    pending_downgrade = row.get("pending_downgrade_tier") if row else None
     # If card is unlinked (cancelled), treat as no active subscription for button logic
     is_renewable = is_active and has_card
 
@@ -73,6 +74,9 @@ async def build_tiers_message(user_id: int):
             else:
                 end_str = row["subscription_end"].strftime("%d.%m.%Y")
                 text_parts.append(f"<b>{tier_info['name']}</b> до {end_str}\n")
+        if pending_downgrade and TIERS.get(pending_downgrade):
+            dg_name = TIERS[pending_downgrade]["name"]
+            text_parts.append(f"⬇️ Запланирован переход на <b>{dg_name}</b> со следующего списания\n")
     elif is_active and current_tier == "legacy":
         text_parts.append("Текущий тариф: <b>Legacy</b> (старая подписка)\n")
 
@@ -109,6 +113,21 @@ async def build_tiers_message(user_id: int):
                     callback_data=f"tier_upgrade:{tier_id}",
                 )
             )
+        elif is_renewable and current_tier in TIER_ORDER and tier_id in TIER_ORDER and TIER_ORDER.index(tier_id) < TIER_ORDER.index(current_tier):
+            if pending_downgrade == tier_id:
+                builder.row(
+                    InlineKeyboardButton(
+                        text=f"⬇️ {t['name']} (запланирован)",
+                        callback_data=f"tier_downgrade_cancel:{tier_id}",
+                    )
+                )
+            else:
+                builder.row(
+                    InlineKeyboardButton(
+                        text=f"⬇️ {t['name']}",
+                        callback_data=f"tier_downgrade:{tier_id}",
+                    )
+                )
         else:
             builder.row(
                 InlineKeyboardButton(
@@ -612,6 +631,97 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             ).as_markup(),
         )
         await callback.answer()
+
+    # ------------------------------------------------------------------
+    # Tier downgrade (no immediate payment, applies on next billing)
+    # ------------------------------------------------------------------
+    @dp.callback_query(F.data.startswith("tier_downgrade:"))
+    async def handle_tier_downgrade(callback: CallbackQuery):
+        """Ask user to confirm downgrade."""
+        target_tier = callback.data.split(":")[1]
+        user_id = callback.from_user.id
+
+        if target_tier not in TIERS:
+            await callback.answer("❌ Тариф не найден", show_alert=True)
+            return
+
+        async with get_connection() as conn:
+            row = await conn.fetchrow(
+                "SELECT subscription_tier, subscription_end FROM users WHERE user_id = $1",
+                user_id,
+            )
+        current_tier = (row["subscription_tier"] if row else None) or "none"
+        current_name = TIERS.get(current_tier, {}).get("name", current_tier)
+        target_name = TIERS[target_tier]["name"]
+
+        plans = await get_tier_plans_for_tier(target_tier)
+        if not plans:
+            await callback.answer("❌ Нет доступных планов", show_alert=True)
+            return
+        plan_id, plan_data = next(iter(plans.items()))
+        new_price = format_price_rub(plan_data["price_rub"])
+
+        end_str = row["subscription_end"].strftime("%d.%m.%Y") if row and row["subscription_end"] else "—"
+
+        text = (
+            f"⬇️ <b>Смена тарифа: {current_name} → {target_name}</b>\n\n"
+            f"Текущий тариф <b>{current_name}</b> останется до <b>{end_str}</b>.\n"
+            f"После этого автоматически перейдёте на <b>{target_name}</b> "
+            f"за <b>{new_price}/мес</b>.\n\n"
+            f"Подтвердить смену тарифа?"
+        )
+
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(
+            text=f"✅ Перейти на {target_name}",
+            callback_data=f"tier_downgrade_confirm:{target_tier}",
+        ))
+        b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"))
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
+        await callback.answer()
+
+    @dp.callback_query(F.data.startswith("tier_downgrade_confirm:"))
+    async def handle_tier_downgrade_confirm(callback: CallbackQuery):
+        """Save pending downgrade — will apply on next autopay renewal."""
+        target_tier = callback.data.split(":")[1]
+        user_id = callback.from_user.id
+
+        if target_tier not in TIERS:
+            await callback.answer("❌ Тариф не найден", show_alert=True)
+            return
+
+        target_name = TIERS[target_tier]["name"]
+
+        async with get_connection() as conn:
+            await conn.execute(
+                "UPDATE users SET pending_downgrade_tier = $1 WHERE user_id = $2",
+                target_tier,
+                user_id,
+            )
+
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(text="🏠 На главную", callback_data="go_back"))
+        await callback.message.edit_text(
+            f"✅ <b>Смена тарифа запланирована</b>\n\n"
+            f"Со следующего списания ваш тариф изменится на <b>{target_name}</b>.\n"
+            f"До конца текущего периода всё остаётся без изменений.",
+            parse_mode="HTML",
+            reply_markup=b.as_markup(),
+        )
+        await callback.answer()
+
+    @dp.callback_query(F.data.startswith("tier_downgrade_cancel:"))
+    async def handle_tier_downgrade_cancel(callback: CallbackQuery):
+        """Cancel a previously scheduled downgrade."""
+        user_id = callback.from_user.id
+        async with get_connection() as conn:
+            await conn.execute(
+                "UPDATE users SET pending_downgrade_tier = NULL WHERE user_id = $1",
+                user_id,
+            )
+        await callback.answer("✅ Смена тарифа отменена", show_alert=True)
+        text, markup = await build_tiers_message(user_id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
 
     # ------------------------------------------------------------------
     # Tier upgrade

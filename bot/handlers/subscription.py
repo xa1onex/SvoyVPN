@@ -1265,37 +1265,72 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
 
     @dp.callback_query(F.data == "activate_trial")
     async def handle_activate_trial(callback: CallbackQuery, state: FSMContext):
-        """Активация пробного периода пользователем"""
+        """Пробный период: Standard за 1₽ с привязкой карты для автосписания."""
         user_id = callback.from_user.id
-        
+
         async with get_connection() as conn:
             user_trial_used = await conn.fetchval("SELECT trial_used FROM users WHERE user_id = $1", user_id)
             if user_trial_used:
                 await callback.answer("❌ Вы уже использовали пробный период!", show_alert=True)
                 return
-            
+
             trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
             trial_days = trial_settings['days'] if trial_settings else 0
-            
+
             if trial_days <= 0:
                 await callback.answer("❌ Пробный период сейчас недоступен.", show_alert=True)
                 return
-            
-            # Обновляем пользователя
-            await conn.execute('''
-                UPDATE users SET 
-                    trial_used = TRUE,
-                    pay_subscribed = TRUE,
-                    subscription_end = CASE 
-                        WHEN subscription_end IS NULL OR subscription_end < CURRENT_DATE 
-                        THEN CURRENT_DATE + ($1 || ' days')::INTERVAL
-                        ELSE subscription_end + ($1 || ' days')::INTERVAL
-                    END
-                WHERE user_id = $2
-            ''', str(trial_days), user_id)
-            from ..traffic import apply_subscription_anchor_on_payment
-            await apply_subscription_anchor_on_payment(conn, user_id)
-            
-        await callback.answer(f"✅ Пробный период на {trial_days} дней успешно активирован!", show_alert=True)
-        # Перерисовываем главное меню
-        await handle_go_back_subscription(callback, state)
+
+        if not config.yookassa.enabled:
+            await callback.answer("❌ Оплата недоступна", show_alert=True)
+            return
+
+        try:
+            from ..yookassa_client import YooKassaClient
+            yk = YooKassaClient(config.yookassa)
+            bot_info = await bot.get_me()
+            payment_data = yk.create_payment(
+                amount=1.00,
+                description=f"VPN Standard — пробный период ({trial_days} дн.)",
+                return_url=f"https://t.me/{bot_info.username}?start=payment_success",
+                metadata={
+                    "user_id": str(user_id),
+                    "plan_id": "standard_1m",
+                    "method_id": "yookassa",
+                    "product_type": "tier",
+                    "is_trial": "true",
+                    "trial_days": str(trial_days),
+                },
+                save_payment_method=True,
+                merchant_customer_id=str(user_id),
+            )
+            async with get_connection() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    user_id, 100, "RUB", "standard_1m", "tier", "pending",
+                    payment_data["id"],
+                )
+                await conn.execute(
+                    "UPDATE users SET trial_used = TRUE WHERE user_id = $1",
+                    user_id,
+                )
+
+            from aiogram.utils.keyboard import InlineKeyboardBuilder as _IKB
+            b = _IKB()
+            b.row(InlineKeyboardButton(text="💳 Перейти к оплате (1₽)", url=payment_data["confirmation_url"]))
+            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
+            await callback.message.edit_text(
+                f"🆓 <b>Пробный период — Standard</b>\n\n"
+                f"Период: <b>{trial_days} дней</b>\n"
+                f"Стоимость: <b>1₽</b>\n\n"
+                f"100 ГБ bypass · До 5 устройств · Безлимит VPN",
+                parse_mode="HTML",
+                reply_markup=b.as_markup(),
+            )
+            await callback.answer()
+        except Exception as e:
+            logger.error("activate_trial error: %s", e, exc_info=True)
+            await callback.answer("❌ Ошибка создания платежа", show_alert=True)

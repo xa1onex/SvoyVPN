@@ -401,6 +401,15 @@ async def process_tier_webhook_payment(
     plan_data = plans[plan_id]
     tier_info = TIERS.get(plan_data["tier"], {})
 
+    # Handle trial: override duration with trial_days
+    is_trial = metadata.get("is_trial") == "true"
+    trial_days = 0
+    if is_trial:
+        try:
+            trial_days = int(metadata.get("trial_days", 0))
+        except (TypeError, ValueError):
+            trial_days = 0
+
     amount_cents = 0
     amt = payment_obj.get("amount")
     if isinstance(amt, dict):
@@ -426,9 +435,34 @@ async def process_tier_webhook_payment(
             return False
 
         async with conn.transaction():
-            await activate_tier_subscription(
-                conn, user_id, plan_id, plan_data, amount_cents
-            )
+            if is_trial and trial_days > 0:
+                # Trial: activate for specific days instead of months
+                from .subscriptions import set_new_subscription_days
+                await set_new_subscription_days(user_id, trial_days, conn)
+                await conn.execute(
+                    """
+                    UPDATE users SET
+                        subscription_tier = $1,
+                        bypass_traffic_limit_gb = $2,
+                        device_limit = $3,
+                        tier_duration_months = 1,
+                        tier_price_paid = $4,
+                        tier_purchased_at = NOW(),
+                        bypass_traffic_used_bytes = 0
+                    WHERE user_id = $5
+                    """,
+                    plan_data["tier"],
+                    plan_data["bypass_gb"],
+                    plan_data["max_devices"],
+                    amount_cents,
+                    user_id,
+                )
+                await apply_subscription_anchor_on_payment(conn, user_id)
+                await ensure_bypass_period(conn, user_id)
+            else:
+                await activate_tier_subscription(
+                    conn, user_id, plan_id, plan_data, amount_cents
+                )
             pm_id = _yookassa_saved_payment_method_id(payment_obj)
             if pm_id:
                 await conn.execute(
@@ -443,6 +477,11 @@ async def process_tier_webhook_payment(
                     "Saved payment_method_id=%s for user=%s tier=%s",
                     pm_id, user_id, plan_data.get("tier"),
                 )
+            # Clear pending downgrade after successful tier activation
+            await conn.execute(
+                "UPDATE users SET pending_downgrade_tier = NULL WHERE user_id = $1",
+                user_id,
+            )
             if existing:
                 await conn.execute(
                     "UPDATE payments SET status = 'completed', amount = $1, payment_source = $2 WHERE yookassa_payment_id = $3",
@@ -530,6 +569,10 @@ async def process_tier_upgrade_webhook_payment(
 
         async with conn.transaction():
             await apply_tier_upgrade(conn, user_id, plan_id, plan_data, amount_cents)
+            await conn.execute(
+                "UPDATE users SET pending_downgrade_tier = NULL WHERE user_id = $1",
+                user_id,
+            )
             if existing:
                 await conn.execute(
                     "UPDATE payments SET status = 'completed' WHERE yookassa_payment_id = $1",

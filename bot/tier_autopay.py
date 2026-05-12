@@ -31,7 +31,8 @@ async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
         rows = await conn.fetch(
             """
             SELECT u.user_id, u.subscription_tier, u.subscription_end,
-                   u.yookassa_recurring_payment_method_id
+                   u.yookassa_recurring_payment_method_id,
+                   u.pending_downgrade_tier
             FROM users u
             WHERE u.subscription_tier IN ('lite', 'standard', 'pro')
               AND u.pay_subscribed = TRUE
@@ -53,8 +54,11 @@ async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
         tier = row["subscription_tier"]
         pm_id = row["yookassa_recurring_payment_method_id"]
         sub_end = row["subscription_end"]
+        pending_downgrade = row.get("pending_downgrade_tier")
 
-        plan_id = f"{tier}_1m"
+        # If downgrade is scheduled, use the new (lower) tier for billing
+        effective_tier = pending_downgrade if pending_downgrade else tier
+        plan_id = f"{effective_tier}_1m"
         plan = plans.get(plan_id)
         if not plan:
             logger.warning("autopay: plan %s not found for user=%s", plan_id, user_id)
@@ -71,6 +75,8 @@ async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
             "product_type": "tier",
             "payment_source": "yookassa_autopay",
         }
+        if pending_downgrade:
+            metadata["downgrade_from"] = tier
         try:
             payment = yk.create_recurring_payment(
                 amount=amount_rub,

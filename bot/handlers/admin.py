@@ -2000,7 +2000,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         builder.row(InlineKeyboardButton(text="🎁 Подарок", callback_data="broadcast_add_menu_button:referral"))
         builder.row(InlineKeyboardButton(text="💎 Подписка", callback_data="broadcast_add_menu_button:premium"))
         builder.row(InlineKeyboardButton(text="🆘 Помощь", callback_data="broadcast_add_menu_button:help"))
-        builder.row(InlineKeyboardButton(text="🆓 Пробный период", callback_data="broadcast_add_menu_button:trial"))
+        builder.row(InlineKeyboardButton(text="🎁 Standard за 1₽", callback_data="broadcast_add_menu_button:trial"))
         builder.row(InlineKeyboardButton(text="➕ Добавить свою кнопку", callback_data="broadcast_add_custom_button"))
         if existing_buttons:
             builder.row(InlineKeyboardButton(text="✅ Готово", callback_data="broadcast_buttons_done"))
@@ -2035,7 +2035,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             "referral": "🎁 Подарок",
             "premium": "💎 Подписка",
             "help": "🆘 Помощь",
-            "trial": "🆓 Пробный период"
+            "trial": "🎁 Standard за 1₽ — попробовать"
         }
         
         button_text = menu_buttons_map.get(button_type)

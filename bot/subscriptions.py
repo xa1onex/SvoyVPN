@@ -69,6 +69,39 @@ async def set_new_subscription(user_id: int, months: int, conn=None) -> None:
         await apply_subscription_anchor_on_payment(conn, user_id)
 
 
+async def set_new_subscription_days(user_id: int, days: int, conn=None) -> None:
+    """Новая подписка на конкретное количество дней (для trial)."""
+    if conn is None:
+        async with get_connection() as _conn:
+            await _conn.execute(
+                """
+                UPDATE users
+                SET
+                    pay_subscribed = TRUE,
+                    subscription_end = CURRENT_DATE + ($2 || ' days')::INTERVAL
+                WHERE user_id = $1
+                """,
+                user_id,
+                str(days),
+            )
+            await _conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
+            await apply_subscription_anchor_on_payment(_conn, user_id)
+    else:
+        await conn.execute(
+            """
+            UPDATE users
+            SET
+                pay_subscribed = TRUE,
+                subscription_end = CURRENT_DATE + ($2 || ' days')::INTERVAL
+            WHERE user_id = $1
+            """,
+            user_id,
+            str(days),
+        )
+        await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
+        await apply_subscription_anchor_on_payment(conn, user_id)
+
+
 async def extend_subscription(user_id: int, months: int, conn=None) -> None:
     """Продлить существующую подписку от текущей даты окончания."""
     if conn is None:

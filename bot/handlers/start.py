@@ -370,7 +370,7 @@ async def get_main_keyboard(user_id: int, config):
         logger.error(f"Error checking trial logic: {e}")
         
     if show_trial:
-        builder.row(InlineKeyboardButton(text="🆓 Пробный период", callback_data="activate_trial"))
+        builder.row(InlineKeyboardButton(text="🎁 Standard за 1₽ — попробовать", callback_data="activate_trial"))
 
     show_traffic_boost = False
     try:

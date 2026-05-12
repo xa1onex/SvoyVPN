@@ -205,6 +205,11 @@ async def init_db() -> None:
                     "ALTER TABLE users ADD COLUMN cancel_retention_used BOOLEAN DEFAULT FALSE"
                 )
                 logging.info("Added cancel_retention_used column to users table")
+            if 'pending_downgrade_tier' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN pending_downgrade_tier TEXT DEFAULT NULL"
+                )
+                logging.info("Added pending_downgrade_tier column to users table")
         except Exception as e:
             logging.warning(f"Could not add columns to users table: {e}")
         
