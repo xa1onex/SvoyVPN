@@ -41,6 +41,89 @@ from ..yookassa_client import YooKassaClient
 logger = logging.getLogger(__name__)
 
 
+async def build_tiers_message(user_id: int):
+    """Build the tier selection text and markup (standalone, importable)."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT subscription_tier, pay_subscribed, subscription_end
+            FROM users WHERE user_id = $1
+            """,
+            user_id,
+        )
+
+    current_tier = (row["subscription_tier"] if row else None) or "none"
+    is_active = (
+        row
+        and row["pay_subscribed"]
+        and row["subscription_end"]
+        and row["subscription_end"].date() >= datetime.now().date()
+    ) if row else False
+
+    text_parts = ["🚀 <b>Тарифы VPN</b>\n"]
+    if is_active and current_tier != "legacy" and current_tier != "none":
+        tier_info = TIERS.get(current_tier)
+        if tier_info:
+            text_parts.append(
+                f"Текущий тариф: <b>{tier_info['name']}</b>\n"
+            )
+    elif is_active and current_tier == "legacy":
+        text_parts.append("Текущий тариф: <b>Legacy</b> (старая подписка)\n")
+
+    text_parts.append("")
+    text_parts.append("Обычный VPN — <b>безлимитный</b> на всех тарифах.")
+    text_parts.append("Bypass-сервера — для обхода блокировок (лимит ГБ/мес).\n")
+
+    for tier_id in TIER_ORDER:
+        t = TIERS[tier_id]
+        marker = " ← ваш" if current_tier == tier_id else ""
+        text_parts.append(f"<b>{t['name']}</b>{marker}")
+        for f in t["features"]:
+            text_parts.append(f"  • {f}")
+        text_parts.append("")
+
+    text = "\n".join(text_parts)
+
+    builder = InlineKeyboardBuilder()
+    for tier_id in TIER_ORDER:
+        t = TIERS[tier_id]
+        if is_active and current_tier == tier_id:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"✅ {t['name']} (текущий)",
+                    callback_data=f"tier_info:{tier_id}",
+                )
+            )
+        elif is_active and can_upgrade(current_tier, tier_id):
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"⬆️ {t['name']} (апгрейд)",
+                    callback_data=f"tier_upgrade:{tier_id}",
+                )
+            )
+        else:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"💎 {t['name']}",
+                    callback_data=f"tier_select:{tier_id}",
+                )
+            )
+
+    if is_active:
+        builder.row(
+            InlineKeyboardButton(
+                text="📶 Докупить bypass ГБ",
+                callback_data="open_bypass_packs",
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription")
+    )
+
+    return text, builder.as_markup()
+
+
 async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
     """Register all tier-related handlers."""
 
@@ -51,89 +134,8 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_open_tiers(callback: CallbackQuery):
         """Main tier selection screen."""
         user_id = callback.from_user.id
-
-        async with get_connection() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT subscription_tier, pay_subscribed, subscription_end
-                FROM users WHERE user_id = $1
-                """,
-                user_id,
-            )
-
-        current_tier = (row["subscription_tier"] if row else None) or "none"
-        is_active = (
-            row
-            and row["pay_subscribed"]
-            and row["subscription_end"]
-            and row["subscription_end"].date() >= datetime.now().date()
-        ) if row else False
-
-        # Build tier info
-        text_parts = ["🚀 <b>Тарифы VPN</b>\n"]
-        if is_active and current_tier != "legacy":
-            tier_info = TIERS.get(current_tier)
-            if tier_info:
-                text_parts.append(
-                    f"Текущий тариф: <b>{tier_info['name']}</b>\n"
-                )
-        elif is_active and current_tier == "legacy":
-            text_parts.append("Текущий тариф: <b>Legacy</b> (старая подписка)\n")
-
-        text_parts.append("")
-        text_parts.append("Обычный VPN — <b>безлимитный</b> на всех тарифах.")
-        text_parts.append("Bypass-сервера — для обхода блокировок (лимит ГБ/мес).\n")
-
-        for tier_id in TIER_ORDER:
-            t = TIERS[tier_id]
-            marker = " ← ваш" if current_tier == tier_id else ""
-            text_parts.append(f"<b>{t['name']}</b>{marker}")
-            for f in t["features"]:
-                text_parts.append(f"  • {f}")
-            text_parts.append("")
-
-        text = "\n".join(text_parts)
-
-        builder = InlineKeyboardBuilder()
-        for tier_id in TIER_ORDER:
-            t = TIERS[tier_id]
-            if is_active and current_tier == tier_id:
-                builder.row(
-                    InlineKeyboardButton(
-                        text=f"✅ {t['name']} (текущий)",
-                        callback_data=f"tier_info:{tier_id}",
-                    )
-                )
-            elif is_active and can_upgrade(current_tier, tier_id):
-                builder.row(
-                    InlineKeyboardButton(
-                        text=f"⬆️ {t['name']} (апгрейд)",
-                        callback_data=f"tier_upgrade:{tier_id}",
-                    )
-                )
-            else:
-                builder.row(
-                    InlineKeyboardButton(
-                        text=f"💎 {t['name']}",
-                        callback_data=f"tier_select:{tier_id}",
-                    )
-                )
-
-        if is_active:
-            builder.row(
-                InlineKeyboardButton(
-                    text="📶 Докупить bypass ГБ",
-                    callback_data="open_bypass_packs",
-                )
-            )
-
-        builder.row(
-            InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription")
-        )
-
-        await callback.message.edit_text(
-            text, parse_mode="HTML", reply_markup=builder.as_markup()
-        )
+        text, markup = await build_tiers_message(user_id)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
         await callback.answer()
 
     # ------------------------------------------------------------------
