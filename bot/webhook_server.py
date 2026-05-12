@@ -358,9 +358,10 @@ class WebhookServer:
                         )
                         return web.Response(
                             text=body,
-                            content_type="text/plain; charset=utf-8",
+                            content_type="text/plain",
+                            charset="utf-8",
                             headers={
-                                "Subscription-Userinfo": f"upload=0; download=0; total=0; expire=0",
+                                "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
                                 "Profile-Update-Interval": "6",
                             },
                         )
