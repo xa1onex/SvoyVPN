@@ -85,24 +85,16 @@ async def _build_my_devices_view(conn, user_id: int) -> tuple[str, InlineKeyboar
 ONBOARDING_APPS = {
     "apple": [
         {"id": "happ", "name": "Happ", "url": "https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215"},
-        {"id": "hiddify", "name": "Hiddify", "url": "https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532"},
-        {"id": "v2raytun", "name": "V2RayTun", "url": "https://apps.apple.com/app/v2raytun/id6476628951"}
     ],
     "android": [
         {"id": "happ", "name": "Happ", "url": "https://play.google.com/store/apps/details?id=com.happproxy"},
-        {"id": "hiddify", "name": "Hiddify", "url": "https://play.google.com/store/apps/details?id=app.hiddify.com"},
-        {"id": "v2raytun", "name": "V2RayTun", "url": "https://play.google.com/store/apps/details?id=com.v2raytun.android"}
     ],
     "windows": [
         {"id": "happ", "name": "Happ", "url": "https://github.com/Happ-proxy/happ-desktop/releases/download/2.4.0/setup-Happ.x64.exe"},
-        {"id": "hiddify", "name": "Hiddify", "url": "https://github.com/hiddify/hiddify-app/releases"},
-        {"id": "v2rayn", "name": "V2RayN", "url": "https://github.com/2dust/v2rayN/releases"}
     ],
     "mac": [
         {"id": "happ", "name": "Happ", "url": "https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215"},
-        {"id": "hiddify", "name": "Hiddify", "url": "https://github.com/hiddify/hiddify-app/releases"},
-        {"id": "v2raytun", "name": "V2RayTun", "url": "https://apps.apple.com/app/v2raytun/id6476628951"}
-    ]
+    ],
 }
 
 
@@ -237,7 +229,6 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
         builder.row(InlineKeyboardButton(text="🤖 Android", callback_data="ob_dev_android"))
         builder.row(InlineKeyboardButton(text="💻 Windows", callback_data="ob_dev_windows"))
         builder.row(InlineKeyboardButton(text="🖥 macOS", callback_data="ob_dev_mac"))
-        builder.row(InlineKeyboardButton(text="⚙️ Настроить вручную", callback_data="ob_dev_manual"))
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
         
         text = (
@@ -261,31 +252,8 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
 
     @dp.callback_query(F.data.startswith("ob_dev_"))
     async def handle_ob_device(callback: CallbackQuery):
-        """Выбор приложения для конкретного устройства или ручная настройка"""
+        """Выбор приложения для конкретного устройства"""
         device = callback.data.replace("ob_dev_", "")
-        
-        if device == "manual":
-            user_id = callback.from_user.id
-            link = await get_user_subscription_url(user_id, config)
-            
-            builder = InlineKeyboardBuilder()
-            # Нативная кнопка copy_text (Telegram Bot API, aiogram 2.x)
-            builder.row(InlineKeyboardButton(
-                text="📋 Скопировать конфигурацию",
-                copy_text={"text": link}
-            ))
-            builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="get_vpn_link"))
-            
-            await callback.message.edit_text(
-                "⚙️ <b>Ручная настройка</b>\n\n"
-                "Ваша универсальная ссылка на подписку:\n"
-                f"<code>{link}</code>\n\n"
-                "Она подходит для любого приложения, работающего через протоколы VLESS/V2Ray (например, v2rayNG, V2RayN, Hiddify, sing-box и т.д.).",
-                parse_mode="HTML",
-                reply_markup=builder.as_markup()
-            )
-            await callback.answer()
-            return
 
         apps = ONBOARDING_APPS.get(device, [])
         

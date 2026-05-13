@@ -18,7 +18,12 @@ import jwt as pyjwt
 from aiohttp import web, web_request
 from asyncpg.exceptions import UniqueViolationError
 from email.utils import formatdate, make_msgid
-from aiohttp.web_exceptions import HTTPBadRequest, HTTPNotFound, HTTPMethodNotAllowed
+from aiohttp.web_exceptions import (
+    HTTPBadRequest,
+    HTTPException,
+    HTTPMethodNotAllowed,
+    HTTPNotFound,
+)
 from aiohttp.http_exceptions import BadStatusLine, BadHttpMessage
 from aiogram.types import LabeledPrice, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -47,6 +52,11 @@ from .traffic import (
 from . import esim_service
 from .esim_invoice_payload import encode_esim_blob
 from .device_fingerprint import compute_subscription_device_fingerprint
+from .profile_generator import build_happ_bundle_json_for_keys
+from .config_encryption import (
+    encrypt_profile,
+    sanitize_profile_for_display,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +149,24 @@ def mask_email_for_display(email: str) -> str:
     return f"{local[0]}***@{domain}"
 
 
+def happ_install_landing_response(primary_happ_url: str) -> web.Response:
+    """
+    Пустая HTML-страница + JS → happ://. Во многих WebView 302 Location на
+    custom scheme не доходит до ОС; document 200 с replace срабатывает чаще.
+    """
+    primary = (primary_happ_url or "").strip()
+    if not primary:
+        return web.Response(status=204)
+    prim_js = json.dumps(primary)
+    page = f"""<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title></title><style>html,body{{margin:0;height:100%;background:#fff}}</style>
+</head><body><script>
+try{{location.replace({prim_js});}}catch(e){{}}
+</script></body></html>"""
+    return web.Response(text=page, content_type="text/html", charset="utf-8")
+
+
 class WebhookServer:
     """HTTP сервер для вебхуков и subscription endpoint"""
 
@@ -198,7 +226,11 @@ class WebhookServer:
         self.app.router.add_get('/android/{app}/{token}', self.handle_app_connect)
         self.app.router.add_get('/windows/{app}/{token}', self.handle_app_connect)
         self.app.router.add_get('/mac/{app}/{token}', self.handle_app_connect)
-        
+
+        # JSON profile endpoint (Happ/Xray native format)
+        self.app.router.add_get('/profile/{token}', self.handle_profile)
+        self.app.router.add_get('/profile/{token}/crypt5', self.handle_profile_crypt5)
+
         # Miniapp routes
         self.app.router.add_get('/miniapp', self.serve_miniapp)
         self.app.router.add_get('/miniapp/', self.serve_miniapp)
@@ -297,15 +329,47 @@ class WebhookServer:
         """Проверка здоровья сервера"""
         return web.json_response({"status": "ok", "service": "flyer_webhook"})
 
+    def _happ_provider_headers(self) -> dict[str, str]:
+        """
+        Advanced provider mode for Happ.
+        Документация Happ: ``hide-settings`` вместе с ``providerid``; по умолчанию
+        не скрываем настройки (0), чтобы не усугублять игнор meta/подписей в UI.
+        """
+        provider_id = os.getenv("SVOYVPN_HAPP_PROVIDER_ID", "").strip()
+        if not provider_id:
+            return {}
+
+        headers: dict[str, str] = {"providerid": provider_id}
+        hide_settings = os.getenv("SVOYVPN_HAPP_HIDE_SETTINGS", "0").strip().lower()
+        if hide_settings in ("1", "true", "yes", "on"):
+            headers["hide-settings"] = "1"
+        return headers
+
     async def handle_subscription(self, request: web_request.Request) -> web.Response:
         """
-        Subscription endpoint: возвращает список VLESS-ссылок по subscription_token
-        
-        Формат: text/plain, строки vless://... разделённые \n
+        Subscription endpoint: возвращает список VLESS-ссылок по subscription_token.
+
+        Поддерживаемые форматы через ?format=:
+          - (пусто / text) — text/plain vless:// (не Happ)
+          - json / xray — см. GET /profile/{token}?format=json (нужен X-Svoy-Export-Key)
+          - crypt5 — GET /profile/{token}/crypt5 (зашифрованный bundle)
+        Для User-Agent Happ/ по умолчанию /sub/{token} отдаёт JSON-массив профилей; ?format=crypt5 — crypt5 (эксперимент).
         """
         token = (request.match_info.get("token") or "").strip()
         logger.info(f"Subscription request received: token={token[:10] if token else 'None'}..., path={request.path_qs}, remote={request.remote}, method={request.method}")
-        
+
+        fmt = request.query.get("format", "").lower()
+        if fmt in ("json", "xray"):
+            return await self.handle_profile(request)
+        if fmt == "crypt5":
+            return await self.handle_profile_crypt5(request)
+
+        user_agent = request.headers.get("User-Agent", "")
+        is_happ = user_agent.startswith("Happ/")
+
+        if is_happ:
+            return await self._handle_happ_subscription(token, request)
+
         if not token or len(token) < 8:
             logger.warning(f"Invalid token: token={token}, length={len(token) if token else 0}")
             raise HTTPNotFound()
@@ -365,14 +429,14 @@ class WebhookServer:
                     from .database import count_active_devices
                     device_count, device_limit = await count_active_devices(conn, user_id, hours=6)
                     if device_count > device_limit and device_limit > 0:
-                        bot_username = self.bot_public_username or "SvoyVPN_bot"
+                        bot_h = (self.bot_public_username or "SvoyVPN_bot").lstrip("@")
                         parts = [
                             f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
                             f"?security=tls&type=tcp"
                             f"#{quote(f'⚠️ Лимит устройств ({device_count}/{device_limit})')}",
                             f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
                             f"?security=tls&type=tcp"
-                            f"#{quote(f'Отключите лишние — @{bot_username}')}",
+                            f"#{quote(f'📴 Сбросить в TG: @{bot_h}')}",
                         ]
                         tg_line = await get_user_tg_relay_vless_line(conn, user_id)
                         if tg_line:
@@ -553,12 +617,18 @@ class WebhookServer:
 
                     # Add bypass exhausted notice if applicable
                     if bypass_blocked and bypass_limit_bytes > 0:
+                        used_gb = bypass_used_bytes / (1024**3)
+                        lim_gb = bypass_limit_bytes / (1024**3)
+                        lim_s = f"{lim_gb:.0f}" if abs(lim_gb - round(lim_gb)) < 1e-6 else f"{lim_gb:.1f}"
+                        bp_fake = "vless://33333333-3333-3333-3333-333333333333@0.0.0.0:1?type=tcp&security=none&flow=none#"
                         bp_name = quote(
-                            f"Bypass лимит исчерпан ({bypass_used_bytes / (1024**3):.1f}/{bypass_limit_bytes / (1024**3):.0f} ГБ)",
+                            f"⚠️ Лимит исчерпан({used_gb:.1f}/{lim_s} ГБ)",
                             safe="",
                         )
-                        bp_fake = "vless://33333333-3333-3333-3333-333333333333@0.0.0.0:1?type=tcp&security=none&flow=none#"
                         body_parts.append(f"{bp_fake}{bp_name}")
+                        bot_h = (cta_name or "SvoyVPN_robot").lstrip("@")
+                        bp_cta = quote(f"📈 Увеличить @{bot_h}", safe="")
+                        body_parts.append(f"{bp_fake}{bp_cta}")
 
                     tg_line = await get_user_tg_relay_vless_line(conn, user_id)
                     if tg_line:
@@ -585,7 +655,6 @@ class WebhookServer:
                         link_lines = [k["vless_link"] for k in keys if k.get("vless_link")]
                         body = "\n".join(link_lines) + ("\n" if link_lines else "") + hint
                     else:
-                        # Активная подписка, лимит не превышен — вставляем remaining после заголовка 🆓
                         body_parts = []
                         for k in keys:
                             link = k.get("vless_link")
@@ -596,6 +665,7 @@ class WebhookServer:
                                 body_parts.append(remaining_line)
                         body = "\n".join(body_parts)
 
+
                 logger.info(
                     f"Returning subscription for user {user_id}: {len(keys)} keys, active={is_active}, "
                     f"traffic_blocked={traffic_blocked}"
@@ -603,8 +673,8 @@ class WebhookServer:
                 
                 # Формируем объявление (одной строкой для заголовка HTTP)
                 announce_text = (
-                    "При проблемах с интернетом используйте страны со значком 🆓. "
-                    "Если что-то не работает или тормозит — обновите подписку кнопкой 🔄"
+                    "При проблемах с интернетом используйте Автовыбор. "
+                    "Если что-то не работает — обновите профиль."
                 )
 
                 # Use bypass stats for subscription-userinfo if bypass is tracked
@@ -619,6 +689,8 @@ class WebhookServer:
                     "support-url": "https://t.me/majorka_wy",
                     "profile-web-page-url": "https://t.me/SvoyVPN_robot",
                     "announce": announce_text,
+                    "subscription-autoconnect": "1",
+                    "subscription-autoconnect-type": "lowestdelay",
                     "subscription-userinfo": (
                         f"upload=0; download={sub_download}; total={sub_total}; expire={expire_ts}"
                         if is_active
@@ -639,126 +711,449 @@ class WebhookServer:
             logger.error(f"Internal error in handle_subscription for token {token[:8]}... : {e}", exc_info=True)
             return web.json_response({"error": "Internal Server Error", "details": str(e)}, status=500)
     
+    async def _handle_happ_subscription(self, token: str, request: web_request.Request) -> web.Response:
+        """
+        Подписка для User-Agent Happ/: JSON-массив Xray-профилей (как ожидает Happ при обновлении по URL).
+
+        Happ не принимает crypt5 как тело ответа /sub (ошибка 39). Зашифрованный импорт —
+        через GET /profile/{token} (crypt5) или ?format=crypt5 здесь.
+        """
+        if not token or len(token) < 8:
+            raise HTTPNotFound()
+
+        try:
+            data = await self._fetch_user_profile_data(token, request)
+            if isinstance(data, web.Response):
+                return data
+
+            device_count = data.get("device_count", 0)
+            device_limit = data.get("device_limit", 5)
+            device_exceeded = device_limit > 0 and device_count > device_limit
+
+            if device_exceeded:
+                bot_h = (self.bot_public_username or "SvoyVPN_bot").lstrip("@")
+                parts = [
+                    f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
+                    f"?security=tls&type=tcp"
+                    f"#{quote(f'⚠️ Лимит устройств ({device_count}/{device_limit})')}",
+                    f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
+                    f"?security=tls&type=tcp"
+                    f"#{quote(f'📴 Сбросить в TG: @{bot_h}')}",
+                ]
+                return web.Response(
+                    text="\n".join(parts),
+                    content_type="text/plain",
+                    charset="utf-8",
+                    headers={
+                        **self._happ_provider_headers(),
+                        "profile-title": "Svoy VPN",
+                        "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
+                        "Profile-Update-Interval": "1",
+                    },
+                )
+
+            bot_h = (self.bot_public_username or "SvoyVPN_robot").lstrip("@")
+            bundle_json = build_happ_bundle_json_for_keys(
+                data["keys"],
+                bypass_exceeded=data.get("bypass_exceeded", False),
+                used_bytes=data.get("used_bytes", 0),
+                limit_bytes=data.get("total_bytes", 0),
+                bot_username=bot_h,
+            )
+
+            announce_text = (
+                "При проблемах с интернетом используйте Автовыбор. "
+                "Если что-то не работает — обновите профиль."
+            )
+
+            headers = {
+                "Cache-Control": "no-store, no-transform",
+                "Content-Disposition": 'attachment; filename="SvoyVPN"',
+                "profile-title": "Svoy VPN",
+                "profile-update-interval": "4",
+                "support-url": "https://t.me/majorka_wy",
+                "profile-web-page-url": "https://t.me/SvoyVPN_robot",
+                "announce": announce_text,
+                "subscription-userinfo": (
+                    f"upload=0; download={data['used_bytes']}; "
+                    f"total={data['total_bytes']}; expire={data['expire_ts']}"
+                    if data["is_active"]
+                    else "Inactive"
+                ),
+                **self._happ_provider_headers(),
+            }
+
+            if request.query.get("format", "").lower() == "crypt5":
+                body = encrypt_profile(bundle_json, token)
+                headers = {
+                    **headers,
+                    "Content-Disposition": 'attachment; filename="SvoyVPN.crypt5"',
+                    "X-Protected-Profile": "1",
+                    "X-Crypt-Version": "5",
+                }
+                logger.info(f"Happ subscription: crypt5 bundle (opt-in) for token {token[:8]}...")
+                return web.Response(
+                    status=200,
+                    text=body,
+                    content_type="application/octet-stream",
+                    charset="utf-8",
+                    headers=headers,
+                )
+
+            logger.info(f"Happ subscription: JSON bundle for token {token[:8]}...")
+            return web.Response(
+                status=200,
+                text=bundle_json,
+                content_type="application/json",
+                charset="utf-8",
+                headers=headers,
+            )
+        except (HTTPNotFound, HTTPBadRequest):
+            raise
+        except Exception as e:
+            logger.error(f"Happ subscription error for token {token[:8]}...: {e}", exc_info=True)
+            return web.json_response({"error": "Internal Server Error"}, status=500)
+
     async def handle_app_connect(self, request: web_request.Request) -> web.Response:
         """
-        Обработчик диплинков для автоматического подключения приложения.
-        Принимает /{device}/{app}/{token} и редиректит в приложение.
+        Диплинк подключения: /{device}/{app}/{token}.
+
+        Happ: всегда happ://add/… + HTTPS /sub/{token} — совместимо с Happ на всех
+        устройствах; crypt5 deeplink здесь не используется (часто «невалидная ссылка»).
+
+        Остальные клиенты: HTML + редирект на {app}://import/{sub_url}.
         """
         app_id = request.match_info.get("app", "").lower()
         token = request.match_info.get("token", "").strip()
-        
+        device = request.match_info.get("device", request.path.split("/")[1] if "/" in request.path else "").lower()
+
         if not token or len(token) < 8:
             logger.warning(f"App connect: Invalid token '{token}'")
             raise HTTPNotFound()
-            
-        # Определяем базовый URL для подписки
-        # Используем значение из конфига или текущий хост
-        base_url = "https://xdoublegroup.online" # Дефолт
-        if hasattr(self.flyer_config, 'subscription_base_url') and self.flyer_config.subscription_base_url:
-            base_url = self.flyer_config.subscription_base_url.rstrip('/')
-        elif request.host:
-            protocol = "https" if request.secure else "http"
-            base_url = f"{protocol}://{request.host}"
-            
+
+        base_url = self.subscription_public_base_url or "https://xdoublegroup.online"
         sub_url = f"{base_url}/sub/{token}"
-        
-        # Маппинг схем приложений
-        schemes = {
-            "happ": f"happ://import/{sub_url}",
-            "hiddify": f"hiddify://import/{sub_url}",
-            "v2raytun": f"v2raytun://import/{sub_url}",
-            "v2rayng": f"v2rayng://install-config?url={sub_url}",
-            "v2rayn": f"v2rayn://install-config?url={sub_url}",
-            "streisand": f"streisand://import/{sub_url}",
-            "shadowrocket": f"shadowrocket://add/{sub_url}",
-            "singbox": f"sing-box://import-remote?url={sub_url}",
-        }
-        
-        deep_link = schemes.get(app_id, f"{app_id}://import/{sub_url}")
-        
-        logger.info(f"Deep link redirect: app={app_id}, token={token[:8]}... -> {deep_link}")
-        
-        # Используем HTML-страницу для редиректа, так как прямые 302 на кастомные схемы
-        # часто блокируются мобильными браузерами.
-        html = f"""
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SvoyVPN — Подключение...</title>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #18222d;
-            color: white;
-            text-align: center;
-            padding: 20px;
-        }}
-        .logo-box {{
-            margin-bottom: 30px;
-        }}
-        .loader {{
-            border: 3px solid rgba(255, 255, 255, 0.1);
-            border-left: 3px solid #3aa8fc;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }}
-        @keyframes spin {{
-            0% {{ transform: rotate(0deg); }}
-            100% {{ transform: rotate(360deg); }}
-        }}
-        h2 {{ font-weight: 600; margin-bottom: 10px; }}
-        p {{ color: #8e8e93; font-size: 15px; max-width: 280px; line-height: 1.4; }}
-        .btn {{
-            display: inline-block;
-            background-color: #3aa8fc;
-            color: white;
-            border: none;
-            padding: 16px 32px;
-            border-radius: 14px;
-            font-size: 16px;
-            font-weight: 600;
-            margin-top: 30px;
-            text-decoration: none;
-            transition: transform 0.1s;
-            -webkit-tap-highlight-color: transparent;
-        }}
-        .btn:active {{ transform: scale(0.96); }}
-    </style>
-</head>
-<body>
-    <div class="logo-box">
-        <div class="loader"></div>
-    </div>
-    <h2>Открываем приложение...</h2>
-    <p>Если приложение не открылось автоматически, нажмите кнопку ниже:</p>
-    
-    <a href="{deep_link}" class="btn">ПОДКЛЮЧИТЬ VPN</a>
-    
-    <script>
-        // Пытаемся выполнить автоматический переход через небольшую паузу
-        setTimeout(function() {{
-            window.location.href = "{deep_link}";
-        }}, 500);
-        
-        // Для некоторых браузеров может потребоваться клик, поэтому кнопка обязательна
-    </script>
-</body>
-</html>
-        """
-        
+
+        if app_id == "happ":
+            data = await self._fetch_user_profile_data(token, request)
+            if isinstance(data, web.Response):
+                return data
+
+            device_count = data.get("device_count", 0)
+            device_limit = data.get("device_limit", 5)
+            if device_limit > 0 and device_count > device_limit:
+                bot_h = (self.bot_public_username or "SvoyVPN_bot").lstrip("@")
+                fallback_add = f"happ://add/{quote(sub_url, safe='')}"
+                html = (
+                    f"<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head><body>"
+                    f"<p>Превышен лимит устройств. Сброс в TG: @{bot_h}</p>"
+                    f"<script>window.location.href='{fallback_add}';</script>"
+                    f"<p><a href=\"{fallback_add}\">Открыть подписку</a></p></body></html>"
+                )
+                return web.Response(text=html, content_type="text/html", charset="utf-8")
+
+            happ_add = f"happ://add/{quote(sub_url, safe='')}"
+            logger.info(
+                f"Happ app_connect: happ://add/ subscription URL token={token[:8]}..."
+            )
+            return happ_install_landing_response(happ_add)
+
+        deep_link = f"{app_id}://import/{quote(sub_url, safe='')}"
+        logger.info(f"Deep link redirect: device={device}, app={app_id}, token={token[:8]}... -> {deep_link[:96]}")
+
+        html = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>SvoyVPN</title></head><body>
+<script>window.location.href='{deep_link}';</script>
+</body></html>"""
+
         return web.Response(text=html, content_type='text/html', charset='utf-8')
-    
+
+    # ------------------------------------------------------------------
+    # JSON profile endpoints (Happ / Xray native)
+    # ------------------------------------------------------------------
+
+    async def _fetch_user_profile_data(
+        self, token: str, request: web_request.Request
+    ) -> dict | web.Response:
+        """
+        Общая логика получения данных пользователя и его ключей для профиля.
+        Возвращает dict с данными или web.Response при ошибке.
+        """
+        if not token or len(token) < 8:
+            raise HTTPNotFound()
+
+        async with get_connection() as conn:
+            user_row = await conn.fetchrow(
+                "SELECT user_id, blacklisted, pay_subscribed, subscription_end "
+                "FROM users WHERE subscription_token = $1",
+                token,
+            )
+            if not user_row or user_row.get("blacklisted"):
+                raise HTTPNotFound()
+
+            user_id = user_row["user_id"]
+
+            user_agent = request.headers.get("User-Agent", "Unknown")
+            ip_address = request.headers.get("X-Forwarded-For", request.remote or "Unknown")
+            if "," in ip_address:
+                ip_address = ip_address.split(",")[0].strip()
+            hint_keys = (
+                "Sec-CH-UA-Mobile",
+                "Sec-CH-UA-Platform",
+                "Sec-CH-UA-Platform-Version",
+                "Sec-CH-UA-Model",
+                "Sec-CH-UA-Full-Version-List",
+            )
+            client_hints = {
+                k: v.strip()
+                for k in hint_keys
+                if (v := request.headers.get(k))
+            }
+            device_fp = compute_subscription_device_fingerprint(
+                user_agent, client_hint_headers=client_hints or None
+            )
+            await log_subscription_usage(user_id, user_agent, ip_address, device_fp)
+
+            is_active = await conn.fetchval(
+                "SELECT CASE WHEN pay_subscribed = TRUE "
+                "AND subscription_end IS NOT NULL "
+                "AND DATE(subscription_end) >= CURRENT_DATE "
+                "THEN TRUE ELSE FALSE END "
+                "FROM users WHERE user_id = $1",
+                user_id,
+            )
+
+            device_count, device_limit = 0, 5
+            if is_active:
+                from .database import count_active_devices
+                device_count, device_limit = await count_active_devices(conn, user_id, hours=6)
+
+            keys_data = await conn.fetch(
+                "SELECT DISTINCT ON (k.server_id) "
+                "k.vless_link, k.server_id, s.display_order, s.id as sid, "
+                "s.name as server_name, s.is_bypass "
+                "FROM vpn_keys k "
+                "INNER JOIN servers s ON k.server_id = s.id "
+                "WHERE k.user_id = $1 AND k.is_active = TRUE "
+                "AND s.is_active = TRUE "
+                "AND COALESCE(s.exclude_from_subscription, FALSE) = FALSE "
+                "AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE) "
+                "ORDER BY k.server_id, k.id ASC",
+                user_id,
+            )
+            keys = sorted(keys_data, key=lambda x: (x.get("display_order", 100), x.get("sid", 0)))
+
+            subscription_end = user_row.get("subscription_end")
+            expire_ts = 0
+            if subscription_end and is_active:
+                try:
+                    if isinstance(subscription_end, str):
+                        from datetime import datetime
+                        dt = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
+                    else:
+                        dt = subscription_end
+                    expire_ts = int(dt.replace(hour=23, minute=59, second=59).timestamp())
+                except Exception:
+                    pass
+
+            used_bytes = 0
+            total_bytes = 0
+            bypass_exceeded = False
+            if is_active:
+                snap = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
+                used_bytes = int(snap["usedBytes"])
+                total_bytes = int(snap["limitBytes"])
+                from .traffic import user_bypass_traffic_snapshot
+                bypass_snap = await user_bypass_traffic_snapshot(conn, user_id)
+                bp_used = int(bypass_snap.get("bypassUsedBytes") or 0)
+                bp_limit = int(bypass_snap.get("bypassLimitBytes") or 0)
+                if bp_limit > 0:
+                    used_bytes = bp_used
+                    total_bytes = bp_limit
+                    if bypass_snap.get("bypassExceeded"):
+                        bypass_exceeded = True
+
+            if is_active:
+                servers_without_keys = await conn.fetch(
+                    "SELECT s.id FROM servers s "
+                    "WHERE s.is_active = TRUE "
+                    "AND NOT EXISTS ("
+                    "  SELECT 1 FROM vpn_keys k "
+                    "  WHERE k.server_id = s.id AND k.user_id = $1 "
+                    "  AND k.is_active = TRUE "
+                    "  AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)"
+                    ")",
+                    user_id,
+                )
+                if servers_without_keys:
+                    missing_ids = [int(r["id"]) for r in servers_without_keys]
+
+                    async def _bg():
+                        try:
+                            await ensure_user_keys_for_server_ids(user_id, missing_ids)
+                        except Exception as e:
+                            logger.error(f"Background key sync for user {user_id}: {e}", exc_info=True)
+
+                    asyncio.create_task(_bg())
+
+        base_url = self.subscription_public_base_url or "https://xdoublegroup.online"
+        sub_url = f"{base_url}/sub/{token}"
+
+        return {
+            "user_id": user_id,
+            "is_active": is_active,
+            "keys": keys,
+            "expire_ts": expire_ts,
+            "used_bytes": used_bytes,
+            "total_bytes": total_bytes,
+            "subscription_url": sub_url,
+            "token": token,
+            "device_count": device_count,
+            "device_limit": device_limit,
+            "bypass_exceeded": bypass_exceeded,
+        }
+
+    async def handle_profile(self, request: web_request.Request) -> web.Response:
+        """
+        GET /profile/{token}
+        По умолчанию — зашифрованный Happ-bundle (crypt5), без открытого JSON.
+
+        Query:
+          - format=crypt5 (по умолчанию) — то же, что без query
+          - format=sanitized — массив профилей с вырезанными секретами (превью)
+          - format=json — только с заголовком X-Svoy-Export-Key == SVOYVPN_PROFILE_EXPORT_SECRET
+        """
+        token = (request.match_info.get("token") or "").strip()
+        fmt = request.query.get("format", "crypt5").lower()
+
+        try:
+            data = await self._fetch_user_profile_data(token, request)
+            if isinstance(data, web.Response):
+                return data
+
+            bot_h = (self.bot_public_username or "SvoyVPN_robot").lstrip("@")
+            bundle_json = build_happ_bundle_json_for_keys(
+                data["keys"],
+                bypass_exceeded=data.get("bypass_exceeded", False),
+                used_bytes=data.get("used_bytes", 0),
+                limit_bytes=data.get("total_bytes", 0),
+                bot_username=bot_h,
+            )
+
+            announce_text = (
+                "При проблемах с интернетом используйте Автовыбор. "
+                "Если что-то не работает — обновите профиль."
+            )
+
+            common_headers = {
+                "Cache-Control": "no-store, no-transform",
+                "profile-title": "Svoy VPN",
+                "profile-update-interval": "4",
+                "support-url": "https://t.me/majorka_wy",
+                "profile-web-page-url": "https://t.me/SvoyVPN_robot",
+                "announce": announce_text,
+                "subscription-userinfo": (
+                    f"upload=0; download={data['used_bytes']}; "
+                    f"total={data['total_bytes']}; expire={data['expire_ts']}"
+                    if data["is_active"]
+                    else "Inactive"
+                ),
+                **self._happ_provider_headers(),
+            }
+
+            if fmt == "sanitized":
+                configs = json.loads(bundle_json)
+                safe = [sanitize_profile_for_display(c) for c in configs]
+                return web.json_response(
+                    safe,
+                    dumps=lambda o: json.dumps(o, ensure_ascii=False, indent=2),
+                    headers={**common_headers, "X-Preview-Mode": "sanitized"},
+                )
+
+            if fmt == "json":
+                export_secret = os.getenv("SVOYVPN_PROFILE_EXPORT_SECRET", "").strip()
+                if not export_secret or request.headers.get("X-Svoy-Export-Key") != export_secret:
+                    return web.json_response(
+                        {
+                            "error": "raw_json_disabled",
+                            "detail": "Установите SVOYVPN_PROFILE_EXPORT_SECRET и передайте X-Svoy-Export-Key",
+                        },
+                        status=403,
+                    )
+                return web.Response(
+                    text=bundle_json,
+                    content_type="application/json",
+                    charset="utf-8",
+                    headers={
+                        **common_headers,
+                        "Content-Disposition": 'attachment; filename="SvoyVPN-bundle.json"',
+                        "X-Export-Warning": "contains-secrets",
+                    },
+                )
+
+            encrypted = encrypt_profile(bundle_json, data["token"])
+            return web.Response(
+                text=encrypted,
+                content_type="application/octet-stream",
+                headers={
+                    **common_headers,
+                    "Content-Disposition": 'attachment; filename="SvoyVPN.crypt5"',
+                    "X-Crypt-Version": "5",
+                    "X-Protected-Profile": "1",
+                },
+            )
+        except (HTTPNotFound, HTTPBadRequest):
+            raise
+        except Exception as e:
+            logger.error(f"handle_profile error for token {token[:8]}...: {e}", exc_info=True)
+            return web.json_response({"error": "Internal Server Error"}, status=500)
+
+    async def handle_profile_crypt5(self, request: web_request.Request) -> web.Response:
+        """
+        GET /profile/{token}/crypt5
+        Алиас: тот же зашифрованный bundle, что и GET /profile/{token}.
+        """
+        token = (request.match_info.get("token") or "").strip()
+
+        try:
+            data = await self._fetch_user_profile_data(token, request)
+            if isinstance(data, web.Response):
+                return data
+
+            bot_h = (self.bot_public_username or "SvoyVPN_robot").lstrip("@")
+            bundle_json = build_happ_bundle_json_for_keys(
+                data["keys"],
+                bypass_exceeded=data.get("bypass_exceeded", False),
+                used_bytes=data.get("used_bytes", 0),
+                limit_bytes=data.get("total_bytes", 0),
+                bot_username=bot_h,
+            )
+            encrypted = encrypt_profile(bundle_json, data["token"])
+
+            return web.Response(
+                text=encrypted,
+                content_type="application/octet-stream",
+                headers={
+                    "Cache-Control": "no-store, no-transform",
+                    "Content-Disposition": 'attachment; filename="SvoyVPN.crypt5"',
+                    "X-Crypt-Version": "5",
+                    "X-Protected-Profile": "1",
+                    "profile-title": "Svoy VPN",
+                    "profile-update-interval": "4",
+                    "subscription-userinfo": (
+                        f"upload=0; download={data['used_bytes']}; "
+                        f"total={data['total_bytes']}; expire={data['expire_ts']}"
+                    ),
+                    **self._happ_provider_headers(),
+                },
+            )
+        except (HTTPNotFound, HTTPBadRequest):
+            raise
+        except Exception as e:
+            logger.error(f"handle_profile_crypt5 error for token {token[:8]}...: {e}", exc_info=True)
+            return web.json_response({"error": "Internal Server Error"}, status=500)
+
     @web.middleware
     async def handle_bad_requests_middleware(self, request: web_request.Request, handler):
         """Middleware для обработки некорректных HTTP-запросов"""
@@ -776,6 +1171,9 @@ class WebhookServer:
                 return web.json_response({"status": "error", "message": "Not Found"}, status=404)
             else:
                 return web.json_response({"status": "error", "message": "Method Not Allowed"}, status=405)
+        except HTTPException:
+            # Редиректы (HTTPFound и т.д.) — штатный aiohttp flow, не ошибка
+            raise
         except Exception as e:
             logger.error(f"Error handling request {request.path_qs}: {e}", exc_info=True)
             raise

@@ -4167,7 +4167,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         await callback.message.edit_text(
             f"📱 <b>Добавление приложения для {device_name}</b>\n\n"
-            "Введите название приложения (например: Shadowrocket, v2rayNG, Clash):",
+            "Введите название приложения (например: Happ):",
             parse_mode="HTML"
         )
         await safe_callback_answer(callback)
@@ -4190,7 +4190,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         await message.answer(
             "📎 Теперь отправьте URL ссылку на приложение\n"
-            "(например: https://apps.apple.com/app/shadowrocket/id932747118):"
+            "(например: https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215):"
         )
     
     @dp.message(AdminStates.DEVICE_APP_URL)
