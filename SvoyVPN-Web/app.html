@@ -66,7 +66,7 @@
   <link rel="stylesheet" href="need/assets/index_v111.css" />
   <link rel="stylesheet" href="need/app_v124.css?v=139" />
   <link rel="stylesheet" href="need/desktop-pc.css?v=24" />
-  <link rel="stylesheet" href="need/web-dash.css?v=4" />
+  <link rel="stylesheet" href="need/web-dash.css?v=5" />
 
   <script defer src="need/app_v124.js?v=151"></script>
 
@@ -349,25 +349,18 @@
 <div id="screenVpn" class="screen">
       <div class="screen-content vpn-screen-layout">
 
-        <!-- Animated logo -->
+        <!-- Page header -->
         <div class="vpn-screen__top">
-          <div class="logo-anim">
-            <div class="ring" style="--ring-opacity:.15;"></div>
-            <div class="ring" style="--ring-opacity:.25;"></div>
-            <div class="ring" style="--ring-opacity:.35;"></div>
-            <div class="logo-core">
-              <svg viewBox="0 0 1024 1024" fill="currentColor" style="width:75px;height:75px;">
-                <use href="#svoy-logo-path" />
-              </svg>
+          <div class="dash-page-header">
+            <div class="dash-page-header__logo">
+              <svg viewBox="0 0 1024 1024" fill="currentColor"><use href="#svoy-logo-path"/></svg>
+            </div>
+            <div class="dash-page-header__text">
+              <h1 class="dash-page-header__title">Svoy<span>VPN</span></h1>
+              <p class="dash-page-header__sub">Быстрый и надёжный, потому что Свой</p>
             </div>
           </div>
-
-          <div class="gap-8"></div>
-          <p class="title text-center">SvoyVPN</p>
-          <p class="body text-muted text-center" style="margin-top:4px;">Быстрый и надёжный, потому что Свой</p>
-          <p id="vpnStatus" style="display:none;"></p>
-
-          <div class="gap-10"></div>
+          <p id="vpnStatus" class="dash-vpn-status" style="display:none;"></p>
           <div class="product-switch" role="tablist" aria-label="Продукт">
             <button type="button" class="product-switch__btn product-switch__btn--active" data-product="vpn" id="btnProductVpn" aria-selected="true">VPN</button>
             <button type="button" class="product-switch__btn" data-product="esim" id="btnProductEsim" aria-selected="false">eSIM</button>
@@ -408,28 +401,18 @@
       <div class="screen-content vpn-screen-layout">
 
         <div class="vpn-screen__top">
-          <div class="logo-anim">
-            <div class="ring" style="--ring-opacity:.15;"></div>
-            <div class="ring" style="--ring-opacity:.25;"></div>
-            <div class="ring" style="--ring-opacity:.35;"></div>
-            <div class="logo-core">
-              <svg viewBox="0 0 1024 1024" fill="currentColor" style="width:75px;height:75px;">
-                <use href="#svoy-logo-path" />
+          <div class="dash-page-header">
+            <div class="dash-page-header__icon dash-page-header__icon--sim">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px;">
+                <rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 6h6M9 10h6M9 14h4"/>
               </svg>
             </div>
+            <div class="dash-page-header__text">
+              <h1 class="dash-page-header__title">Svoy <span>eSIM</span> <span class="dash-beta-tag">beta</span></h1>
+              <p class="dash-page-header__sub">Тариф по стране — Stars, карта, Crypto Pay</p>
+            </div>
           </div>
-
-          <div class="gap-8"></div>
-          <div class="text-center" style="margin-top:6px;">
-            <span class="esim-title-with-beta title">
-              <span class="esim-title-with-beta__text">Svoy eSIM</span>
-              <span class="esim-beta-corner" aria-hidden="true">beta</span>
-            </span>
-          </div>
-          <p class="body text-muted text-center" style="margin-top:6px;">Тариф по стране — оплата как у подписки (Stars, карта, Crypto Pay)</p>
-          <p id="esimModeHint" class="caption text-muted text-center" style="margin-top:8px;opacity:0.85;"></p>
-
-          <div class="gap-10"></div>
+          <p id="esimModeHint" class="dash-vpn-status" style="opacity:0.7;"></p>
           <div class="product-switch" role="tablist" aria-label="Продукт">
             <button type="button" class="product-switch__btn" data-product="vpn" aria-selected="false">VPN</button>
             <button type="button" class="product-switch__btn product-switch__btn--active" data-product="esim" aria-selected="true">eSIM</button>
@@ -501,8 +484,17 @@
       <div class="screen-content esim-mine-screen esim-mine-screen--stack"
         style="display:flex;flex-direction:column;align-items:center;width:100%;max-width:420px;margin:0 auto;box-sizing:border-box;position:relative;">
         <div class="esim-mine-screen__inner" style="width:100%;">
-          <p class="title text-center" style="margin:0;">Мои eSIM</p>
-          <p class="body text-muted text-center" style="margin-top:8px;">Купленные тарифы, QR и коды активации</p>
+          <div class="dash-page-header dash-page-header--inline">
+            <div class="dash-page-header__icon dash-page-header__icon--sim">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px;">
+                <rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 6h6M9 10h6M9 14h4"/>
+              </svg>
+            </div>
+            <div class="dash-page-header__text">
+              <h1 class="dash-page-header__title">Мои <span>eSIM</span></h1>
+              <p class="dash-page-header__sub">Купленные тарифы, QR и коды активации</p>
+            </div>
+          </div>
           <div class="gap-12"></div>
           <div id="esimMineList" class="esim-mine-list" style="width:100%;"></div>
         </div>
@@ -538,22 +530,17 @@
     <div id="screenSetup" class="screen">
       <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
 
-        <!-- Animated logo (Setup / Gear) -->
-        <div class="logo-anim">
-          <div class="ring" style="--ring-opacity:.15;"></div>
-          <div class="ring" style="--ring-opacity:.25;"></div>
-          <div class="ring" style="--ring-opacity:.35;"></div>
-          <div class="logo-core" style="color: #fff;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" style="width:44px; height:44px; fill:none!important;">
-              <circle cx="12" cy="12" r="3" style="fill:none!important;" />
-              <path class="gear-teeth"
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
-                style="fill:none!important;" />
+        <div class="dash-page-header">
+          <div class="dash-page-header__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px;">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
           </div>
+          <div class="dash-page-header__text">
+            <h1 class="dash-page-header__title"><span>Подключение</span></h1>
+            <p class="dash-page-header__sub">Пошаговая настройка VPN на вашем устройстве</p>
+          </div>
         </div>
-        <div class="gap-8"></div>
 
         <!-- ── Onboarding Carousel ── -->
         <div class="ob-carousel" id="obCarousel" style="width:100%;">
@@ -744,18 +731,13 @@
     <div id="screenProfile" class="screen">
       <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
 
-        <!-- Animated logo with Avatar acting as the core -->
-        <div class="logo-anim">
-          <div class="ring" style="--ring-opacity:.15;"></div>
-          <div class="ring" style="--ring-opacity:.25;"></div>
-          <div class="ring" style="--ring-opacity:.35;"></div>
-          <div id="avatar" class="logo-core avatar"
-            style="width:88px;height:88px;margin:0;font-size:44px;padding:0;overflow:hidden;">?</div>
-        </div>
-
-        <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top: 8px;">
-          <p id="profileName" class="title text-center">Пользователь</p>
-          <div id="profileBadge" class="status-seal" style="display:none;">
+        <!-- Profile hero card -->
+        <div class="dash-profile-hero">
+          <div id="avatar" class="dash-profile-avatar">?</div>
+          <div class="dash-profile-info">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <p id="profileName" class="dash-profile-name">Пользователь</p>
+              <div id="profileBadge" class="status-seal" style="display:none;">
             <svg viewBox="0 0 24 24" class="seal-svg">
               <!-- Rounded, soft 10-point scalloped seal -->
               <path class="seal-bg"
@@ -766,8 +748,10 @@
             </svg>
             <span id="profileBadgeText" class="seal-text"></span>
           </div>
+            </div>
+            <p id="profileStatus" class="dash-profile-status">—</p>
+          </div>
         </div>
-        <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px; display:none;">—</p>
 
         <div id="profileAuthLinkBox" class="profile-auth-slot" style="display:none" aria-live="polite"></div>
 
@@ -843,24 +827,20 @@
     <div id="screenReferral" class="screen">
       <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
 
-        <div class="logo-anim">
-          <div class="ring" style="--ring-opacity:.15;"></div>
-          <div class="ring" style="--ring-opacity:.25;"></div>
-          <div class="ring" style="--ring-opacity:.35;"></div>
-          <div class="logo-core" style="color: #fff;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" style="width:44px;height:44px;fill:none!important;" aria-hidden="true">
-              <use href="#referral"></use>
+        <div class="dash-page-header">
+          <div class="dash-page-header__icon dash-page-header__icon--gift">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px;">
+              <polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/>
+              <line x1="12" y1="22" x2="12" y2="7"/>
+              <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+              <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
             </svg>
           </div>
+          <div class="dash-page-header__text">
+            <h1 class="dash-page-header__title">Приглашайте <span>друзей</span></h1>
+            <p id="refDesc" class="dash-page-header__sub">Загрузка…</p>
+          </div>
         </div>
-
-        <div class="gap-8"></div>
-        <p class="title-s text-center">Приглашайте друзей —<br>получайте бонусные дни</p>
-        <div class="gap-8"></div>
-        <p id="refDesc" class="body text-muted text-center" style="padding:0 8px;">Загрузка…</p>
-
-        <div class="gap-12"></div>
 
         <div class="card referral-card">
           <p class="caption text-muted referral-card__label">Ваша реферальная ссылка</p>
