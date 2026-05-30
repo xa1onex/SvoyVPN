@@ -1,0 +1,1186 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SvoyVPN</title>
+  <meta property="og:title" content="SvoyVPN" />
+  <meta property="og:type" content="website" />
+  <meta name="og:description" content="Быстрый и приватный VPN от SvoyVPN" />
+
+  <!-- .ico переименован в favicon-svoy.ico: браузеры часто кэшируют /favicon.ico навсегда; на сервере должен быть тот же файл (git pull). -->
+  <link rel="icon" type="image/png" href="need/favicon-96x96.png?v=5" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="need/favicon.svg?v=5" />
+  <link rel="icon" type="image/x-icon" href="need/favicon-svoy.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="need/apple-touch-icon.png?v=5" />
+
+  <meta name="theme-color" content="#050505" />
+
+  <script src="need/libs/telegram-web-app.js"></script>
+  <script>
+    /* Early theme sync — force Telegram header color */
+    (function () {
+      var urlParams = new URLSearchParams(window.location.search);
+      var tg = window.Telegram && window.Telegram.WebApp;
+      var urlTheme = urlParams.get('theme');
+      var inTg = tg && tg.initData && String(tg.initData).length > 0;
+      var scheme;
+      if (urlTheme) {
+        scheme = urlTheme;
+      } else if (inTg) {
+        scheme = (tg.colorScheme === 'dark' || tg.colorScheme === 'light') ? tg.colorScheme : 'dark';
+      } else {
+        /* Веб-дашборд: всегда тёмная тема как в дизайн-системе test.html */
+        scheme = 'dark';
+      }
+      var bg = scheme === 'dark' ? '#050505' : '#ffffff';
+
+      /* Meta tag for WebView */
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', bg);
+
+      /* Bot API 6.1+; на WebApp 6.0 вызов даёт лишь warning в консоли */
+      if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')) {
+        try { tg.setHeaderColor(bg); } catch (_) { }
+        try { tg.setBackgroundColor(bg); } catch (_) { }
+      }
+      
+      /* Apply theme to html/body early */
+      document.documentElement.setAttribute('data-theme', scheme);
+
+      /* Clear login fields on load to prevent browser autofill */
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          ['loginUsr', 'loginKey', 'regUsr', 'regKey1', 'regKey2'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+          });
+        }, 150);
+      });
+    })();
+  </script>
+
+  <link rel="preload" as="font" href="need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
+  <link rel="preload" as="font" href="need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="need/assets/index_v111.css" />
+  <link rel="stylesheet" href="need/app_v124.css?v=139" />
+  <link rel="stylesheet" href="need/desktop-pc.css?v=24" />
+  <link rel="stylesheet" href="need/web-dash.css?v=4" />
+
+  <script defer src="need/app_v124.js?v=151"></script>
+
+  <style>
+  /* Auth Screen — Exact Mobile Style */
+  #screenAuth {
+      background: var(--bg_color, #050505);
+      overflow-y: auto;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 20px 40px;
+  }
+  #screenAuth.active { display: flex; }
+
+  #screenAuth .logo-anim {
+    position: relative; width: 176px; height: 176px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 24px; flex-shrink: 0;
+  }
+  #screenAuth .logo-anim .ring {
+    position: absolute; border-radius: 50%;
+    border: 4px solid var(--accent, #00ff85);
+    animation: pulse 2.4s ease-out infinite;
+  }
+  #screenAuth .logo-anim .ring:nth-child(1) { width:100%;height:100%;opacity:.15;animation-delay:0s; }
+  #screenAuth .logo-anim .ring:nth-child(2) { width:75%;height:75%;opacity:.25;animation-delay:.4s; }
+  #screenAuth .logo-anim .ring:nth-child(3) { width:50%;height:50%;opacity:.35;animation-delay:.8s; }
+  
+  #screenAuth .logo-anim .logo-core {
+    width: 88px; height: 88px; border-radius: 50%;
+    background: var(--accent, #00ff85);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1; box-shadow: 0 8px 44px rgba(0, 255, 133, .35);
+  }
+  #screenAuth .logo-anim .logo-core svg { width:75px;height:75px;fill:currentColor;color:#fff; }
+  
+  #screenAuth .app-name { font-size:22px;font-weight:700;line-height:1.2;text-align:center;margin-bottom:4px; color: var(--text_color, #fff); }
+  #screenAuth .app-tagline { font-size:14px;font-weight:400;line-height:1.4;color:var(--hint_color, #8e9db0);text-align:center;margin-bottom:24px; }
+  
+  #screenAuth .auth-card { width:100%;max-width:360px;background:var(--section_bg_color, #21303f);border:1px solid var(--section_separator_color, rgba(255,255,255,.08));border-radius:14px;padding:20px 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); }
+  
+  #screenAuth .tabs { display:flex;background:var(--secondary_bg_color, rgba(255,255,255,0.07));border-radius:12px;padding:4px;margin-bottom:24px; }
+  #screenAuth .tab-btn { flex:1;text-align:center;padding:10px;border-radius:9px;font-size:13px;font-weight:600;color:var(--hint_color, #8e9db0);cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent; border:none; background:none; }
+  #screenAuth .tab-btn.active { background:var(--accent, #00ff85);color:#000; }
+  
+  #screenAuth .panel { display:none; }
+  #screenAuth .panel.active { display:block; }
+  
+  #screenAuth .tg-btn { width:100%;padding:14px;background:var(--accent, #00ff85);color:#000;border:none;border-radius:999px;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:opacity .15s, transform .1s;-webkit-tap-highlight-color:transparent; }
+  #screenAuth .tg-btn:active { transform:scale(.98);opacity:.85; }
+  #screenAuth .tg-btn svg { width:22px;height:22px;fill:#fff;flex-shrink:0; }
+  
+  #screenAuth .tg-hint { margin-top:14px;font-size:12px;color:var(--hint_color, #8e9db0);text-align:center;line-height:1.5; }
+  
+  #screenAuth .polling { display:none;margin-top:20px;padding:14px;background:rgba(0,255,133,.08);border:1px solid rgba(0,255,133,.2);border-radius:14px;text-align:center; }
+  #screenAuth .polling.visible { display:block; }
+  #screenAuth .polling-text { font-size:13px;color:var(--accent, #00ff85); }
+  
+  #screenAuth .dots::after { content:'';animation:dotdot 1.5s infinite; }
+  @keyframes dotdot { 0%{content:'';}25%{content:'.';}50%{content:'..';}75%{content:'...';} }
+  
+  #screenAuth .input-group { margin-bottom:14px; text-align: left; }
+  #screenAuth .input-label { font-size:13px;color:var(--hint_color, #8e9db0);margin-bottom:6px;display:block;font-weight:500;margin-left:4px; }
+  #screenAuth .input-field { width:100%;padding:14px 16px;background:var(--secondary_bg_color, rgba(255,255,255,0.07));border:1px solid var(--section_separator_color, transparent);border-radius:12px;color:var(--text_color, #fff);font-size:16px;font-family:inherit;outline:none;transition:all .2s; -webkit-appearance:none; appearance:none; }
+  #screenAuth .input-field:focus { border-color:rgba(0,255,133,0.35);background:var(--secondary_bg_color, rgba(255,255,255,0.1)); }
+  #screenAuth .input-field::placeholder { color:var(--hint_color, #8e9db0); }
+  
+  #screenAuth .sub-tabs { display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--separator_color, rgba(255,255,255,0.08)); }
+  #screenAuth .sub-tab { flex:1;text-align:center;padding:10px;font-size:13px;font-weight:600;color:var(--hint_color, #8e9db0);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s; }
+  #screenAuth .sub-tab.active { color:var(--accent, #00ff85);border-bottom-color:var(--accent, #00ff85); }
+  
+  #screenAuth .auth-btn { width:100%;padding:14px;background:var(--accent, #00ff85);color:#000;border:none;border-radius:999px;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;transition:opacity .15s, transform .1s;margin-top:4px;-webkit-tap-highlight-color:transparent; }
+  #screenAuth .auth-btn:active { transform:scale(.98);opacity:.85; }
+  
+  #screenAuth .error-msg { background:rgba(255,69,58,.1);border:1px solid rgba(255,69,58,.3);border-radius:10px;padding:12px;font-size:13px;color:#ff6b61;margin-bottom:14px;display:none; text-align:center; }
+  #screenAuth .error-msg.visible { display:block; }
+  #screenAuth .success-msg { background:rgba(52,199,89,.1);border:1px solid rgba(52,199,89,.3);border-radius:10px;padding:12px;font-size:13px;color:#4cd964;margin-bottom:14px;display:none;text-align:center; }
+  #screenAuth .success-msg.visible { display:block; }
+  
+  #screenAuth .divider { display:flex;align-items:center;gap:12px;margin:20px 0 0;color:var(--hint_color, #8e9db0);font-size:12px; }
+  #screenAuth .divider::before,#screenAuth .divider::after { content:'';flex:1;height:1px;background:var(--separator_color, rgba(255,255,255,0.08)); }
+
+  /* Pre-auth guard: while auth screen is active, hide app navigation/content */
+  #screenAuth.active ~ #tabBar {
+    display: none !important;
+  }
+  #screenAuth.active ~ .screen.active {
+    display: none !important;
+  }
+
+  /* Light theme contrast tuning for auth screen */
+  html[data-theme="light"] #screenAuth .app-name { color: #1b2430; }
+  html[data-theme="light"] #screenAuth .app-tagline { color: #5c6a7a; }
+  html[data-theme="light"] #screenAuth .auth-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  }
+  html[data-theme="light"] #screenAuth .tabs { background: #eef2f7; }
+  html[data-theme="light"] #screenAuth .tab-btn { color: #556274; }
+  html[data-theme="light"] #screenAuth .tg-hint { color: #66758a; }
+  html[data-theme="light"] #screenAuth .input-label { color: #556274; }
+  html[data-theme="light"] #screenAuth .input-field {
+    background: #f5f8fc;
+    color: #1f2937;
+    border: 1px solid #d7e0ea;
+  }
+  html[data-theme="light"] #screenAuth .input-field::placeholder { color: #8a97a8; }
+  html[data-theme="light"] #screenAuth .sub-tabs { border-bottom-color: #dbe3ec; }
+  html[data-theme="light"] #screenAuth .sub-tab { color: #556274; }
+  html[data-theme="light"] #screenAuth .divider { color: #66758a; }
+  html[data-theme="light"] #screenAuth .divider::before,
+  html[data-theme="light"] #screenAuth .divider::after { background: #dbe3ec; }
+
+  </style>
+</head>
+
+<body class="dash-body">
+
+  <div class="dash-bg" aria-hidden="true">
+    <div class="glow glow-1"></div>
+    <div class="glow glow-2"></div>
+    <div class="grid"></div>
+  </div>
+
+  <!-- SVG Definitions: Protected from script overwrite -->
+  <div id="logoHost" aria-hidden="true" style="display:none;">
+    <svg>
+      <defs>
+        <g id="svoy-logo-path" transform="translate(0,1024) scale(0.1,-0.1)">
+          <path
+            d="M3033 7920 c-212 -22 -363 -95 -495 -240 -73 -79 -117 -161 -150 -276 -29 -103 -31 -305 -4 -434 54 -255 174 -534 386 -895 48 -82 100 -170 114 -195 57 -98 95 -179 122 -260 23 -73 28 -102 28 -200 0 -104 -3 -124 -32 -209 -32 -92 -84 -197 -149 -298 -18 -29 -33 -54 -33 -56 0 -2 -31 -56 -68 -118 -233 -387 -382 -727 -449 -1024 -24 -104 -24 -369 0 -455 72 -260 273 -452 555 -527 87 -23 115 -26 277 -26 164 -1 193 2 333 31 341 71 733 234 1167 483 224 129 350 210 580 375 402 289 582 443 985 840 315 310 347 334 453 334 129 0 207 -72 367 -340 213 -357 353 -774 320 -950 -22 -117 -80 -161 -221 -168 -104 -5 -185 7 -340 53 -265 78 -526 201 -772 362 -85 56 -132 82 -140 76 -7 -5 -52 -41 -102 -80 -105 -82 -448 -329 -467 -336 -16 -5 -16 -5 57 -54 260 -174 631 -360 955 -481 166 -61 203 -73 355 -111 197 -49 257 -56 465 -56 214 0 258 8 395 67 97 43 169 94 246 175 111 118 169 245 190 417 17 141 -6 336 -62 531 -34 116 -137 361 -219 520 -79 154 -96 183 -288 509 -61 104 -126 228 -144 275 -31 82 -32 93 -33 226 0 197 12 228 250 633 6 10 43 73 84 141 162 271 279 555 327 790 22 109 25 144 22 266 -4 121 -8 152 -33 224 -78 228 -251 382 -498 441 -170 41 -376 37 -657 -11 -247 -43 -676 -193 -985 -346 -91 -45 -395 -217 -395 -223 0 -3 56 -43 124 -89 68 -46 188 -132 267 -191 l144 -107 50 32 c268 171 612 316 895 375 125 27 292 32 363 11 57 -17 101 -63 118 -123 42 -155 -74 -531 -259 -843 -109 -184 -196 -291 -266 -327 -30 -16 -60 -22 -111 -22 -61 -1 -77 3 -126 31 -56 33 -82 55 -374 321 -747 679 -1516 1161 -2230 1397 -340 113 -652 160 -892 135z m369 -575 c108 -17 147 -26 322 -81 320 -100 663 -275 1071 -547 392 -262 846 -639 1000 -830 238 -295 263 -543 86 -845 -107 -184 -362 -435 -736 -728 -712 -557 -1562 -980 -1981 -987 -82 -2 -96 1 -149 28 -137 70 -146 207 -35 528 84 245 240 551 369 724 89 121 155 164 251 164 107 1 129 -15 400 -291 135 -137 286 -284 335 -326 50 -43 93 -81 96 -86 5 -8 106 57 194 125 117 90 295 241 293 247 -2 4 -52 50 -113 102 -149 129 -358 347 -423 440 -118 172 -167 335 -145 487 36 246 208 472 605 792 l97 78 -92 74 c-51 40 -163 122 -249 181 l-157 106 -58 -46 c-108 -88 -217 -188 -410 -376 -200 -195 -252 -233 -338 -245 -92 -12 -174 33 -265 147 -130 161 -314 542 -370 765 -42 164 -27 311 37 367 54 49 183 60 365 33z" />
+        </g>
+      </defs>
+    </svg>
+  </div>
+
+  <!-- SVG sprite host — заполняется через JS из sprite.svg -->
+  <div id="spriteHost" aria-hidden="true" style="display:none;"></div>
+
+  <!-- Web-only header (hidden on mobile, shown on desktop via web-dash.css) -->
+  <header class="web-header">
+    <a href="/" class="web-header-logo">Svoy<span>VPN</span></a>
+    <div class="web-header-right">
+      <a href="/" class="web-header-back">← На главную</a>
+      <a href="https://t.me/SvoyVPN_bot" target="_blank" rel="noopener" class="web-header-tg">
+        <svg viewBox="0 0 24 24"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.888-.666 3.463-1.509 5.773-2.506 6.93-2.99 3.332-1.396 4.024-1.636 4.475-1.643z"/></svg>
+        Telegram
+      </a>
+    </div>
+  </header>
+
+  <div class="app">
+
+    <!-- ═══ SCREEN: VPN ═══ -->
+    
+    <!-- ═══ SCREEN: AUTH ═══ -->
+    <div id="screenAuth" class="screen">
+      <!-- Logo & Header -->
+      <div class="logo-anim">
+        <div class="ring" style="--ring-opacity:.15;"></div>
+        <div class="ring" style="--ring-opacity:.25;"></div>
+        <div class="ring" style="--ring-opacity:.35;"></div>
+        <div class="logo-core">
+          <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+            <g transform="translate(0,1024) scale(0.1,-0.1)">
+              <path d="M3033 7920 c-212 -22 -363 -95 -495 -240 -73 -79 -117 -161 -150 -276 -29 -103 -31 -305 -4 -434 54 -255 174 -534 386 -895 48 -82 100 -170 114 -195 57 -98 95 -179 122 -260 23 -73 28 -102 28 -200 0 -104 -3 -124 -32 -209 -32 -92 -84 -197 -149 -298 -18 -29 -33 -54 -33 -56 0 -2 -31 -56 -68 -118 -233 -387 -382 -727 -449 -1024 -24 -104 -24 -369 0 -455 72 -260 273 -452 555 -527 87 -23 115 -26 277 -26 164 -1 193 2 333 31 341 71 733 234 1167 483 224 129 350 210 580 375 402 289 582 443 985 840 315 310 347 334 453 334 129 0 207 -72 367 -340 213 -357 353 -774 320 -950 -22 -117 -80 -161 -221 -168 -104 -5 -185 7 -340 53 -265 78 -526 201 -772 362 -85 56 -132 82 -140 76 -7 -5 -52 -41 -102 -80 -105 -82 -448 -329 -467 -336 -16 -5 -16 -5 57 -54 260 -174 631 -360 955 -481 166 -61 203 -73 355 -111 197 -49 257 -56 465 -56 214 0 258 8 395 67 97 43 169 94 246 175 111 118 169 245 190 417 17 141 -6 336 -62 531 -34 116 -137 361 -219 520 -79 154 -96 183 -288 509 -61 104 -126 228 -144 275 -31 82 -32 93 -33 226 0 197 12 228 250 633 6 10 43 73 84 141 162 271 279 555 327 790 22 109 25 144 22 266 -4 121 -8 152 -33 224 -78 228 -251 382 -498 441 -170 41 -376 37 -657 -11 -247 -43 -676 -193 -985 -346 -91 -45 -395 -217 -395 -223 0 -3 56 -43 124 -89 68 -46 188 -132 267 -191 l144 -107 50 32 c268 171 612 316 895 375 125 27 292 32 363 11 57 -17 101 -63 118 -123 42 -155 -74 -531 -259 -843 -109 -184 -196 -291 -266 -327 -30 -16 -60 -22 -111 -22 -61 -1 -77 3 -126 31 -56 33 -82 55 -374 321 -747 679 -1516 1161 -2230 1397 -340 113 -652 160 -892 135z m369 -575 c108 -17 147 -26 322 -81 320 -100 663 -275 1071 -547 392 -262 846 -639 1000 -830 238 -295 263 -543 86 -845 -107 -184 -362 -435 -736 -728 -712 -557 -1562 -980 -1981 -987 -82 -2 -96 1 -149 28 -137 70 -146 207 -35 528 84 245 240 551 369 724 89 121 155 164 251 164 107 1 129 -15 400 -291 135 -137 286 -284 335 -326 50 -43 93 -81 96 -86 5 -8 106 57 194 125 117 90 295 241 293 247 -2 4 -52 50 -113 102 -149 129 -358 347 -423 440 -118 172 -167 335 -145 487 36 246 208 472 605 792 l97 78 -92 74 c-51 40 -163 122 -249 181 l-157 106 -58 -46 c-108 -88 -217 -188 -410 -376 -200 -195 -252 -233 -338 -245 -92 -12 -174 33 -265 147 -130 161 -314 542 -370 765 -42 164 -27 311 37 367 54 49 183 60 365 33z"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+      <div class="app-name">SvoyVPN</div>
+      <div class="app-tagline">Быстрый и надёжный, потому что Свой</div>
+
+      <!-- Auth Card -->
+      <div class="auth-card">
+        <div class="tabs">
+          <button class="tab-btn active" id="tabTg">Telegram</button>
+          <button class="tab-btn" id="tabEmail">Email</button>
+        </div>
+
+        <!-- Telegram Panel -->
+        <div id="panelTg" class="panel active">
+          <button class="tg-btn" id="btnTgLogin">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.02 9.52c-.15.658-.54.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.462c.537-.194 1.006.131.883.702z"/>
+            </svg>
+            Войти через Telegram
+          </button>
+          <div id="pollingBox" class="polling">
+            <div class="polling-text">Ожидаем подтверждения от бота<span class="dots"></span></div>
+          </div>
+          <div id="tgError" class="error-msg"></div>
+          <div class="tg-hint">Вы будете перенаправлены в Telegram. После нажатия «Старт» в боте вход произойдёт автоматически.</div>
+        </div>
+
+        <!-- Email Panel -->
+        <div id="panelEmail" class="panel">
+          <div class="sub-tabs">
+            <div id="subTabLogin" class="sub-tab active">Вход</div>
+            <div id="subTabRegister" class="sub-tab">Регистрация</div>
+          </div>
+          
+          <!-- Login Form -->
+          <div id="webLoginForm">
+            <div id="loginError" class="error-msg"></div>
+            <div class="input-group">
+              <label class="input-label">Email</label>
+              <input class="input-field" type="email" id="loginUsr" name="loginUsr" placeholder="you@example.com" value="" autocomplete="off"/>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Пароль</label>
+              <input class="input-field" type="password" id="loginKey" name="loginKey" placeholder="••••••••" value="" autocomplete="new-password"/>
+            </div>
+            <div style="text-align:right;margin-bottom:16px;">
+              <a href="javascript:void(0)" id="btnShowReset" style="color:#8e9db0;font-size:13px;text-decoration:none;">Забыли пароль?</a>
+            </div>
+            <button class="auth-btn" id="btnLoginSubmit">Войти в аккаунт</button>
+          </div>
+
+          <!-- Reset Password Form -->
+          <div id="webResetForm" style="display:none;">
+            <div id="resetError" class="error-msg"></div>
+            <div id="resetSuccess" class="success-msg"></div>
+            <div id="resetStep1">
+              <div class="input-group">
+                <label class="input-label">Email</label>
+                <input class="input-field" type="email" id="resetEmail" placeholder="you@example.com"/>
+              </div>
+              <button class="auth-btn" id="btnResetSendOtp">Получить код</button>
+            </div>
+            <div id="resetStep2" style="display:none;">
+              <p style="font-size:13px;color:#8e9db0;margin-bottom:14px;text-align:center;">Введите код из письма и новый пароль</p>
+              <div class="input-group">
+                <label class="input-label">Код из письма</label>
+                <input class="input-field" type="text" id="resetOtp" placeholder="123456" maxlength="6" inputmode="numeric"/>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Новый пароль</label>
+                <input class="input-field" type="password" id="resetNewPass" placeholder="••••••••"/>
+              </div>
+              <button class="auth-btn" id="btnResetSubmit">Сменить пароль</button>
+            </div>
+            <button id="btnResetBack" style="width:100%;padding:12px;background:none;border:none;color:#8e9db0;font-size:13px;cursor:pointer;margin-top:8px;">← Вернуться ко входу</button>
+          </div>
+
+          <!-- Register Form -->
+          <div id="webRegisterForm" style="display:none;">
+            <div id="registerError" class="error-msg"></div>
+            <div id="registerSuccess" class="success-msg"></div>
+            <div id="regStep1">
+              <div class="input-group">
+                <label class="input-label">Email</label>
+                <input class="input-field" type="email" id="regUsr" name="regUsr" placeholder="you@example.com" value="" autocomplete="off"/>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Пароль (минимум 6 символов)</label>
+                <input class="input-field" type="password" id="regKey1" name="regKey1" placeholder="••••••••" value="" autocomplete="new-password"/>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Повторите пароль</label>
+                <input class="input-field" type="password" id="regKey2" name="regKey2" placeholder="••••••••" value="" autocomplete="new-password"/>
+              </div>
+              <button class="auth-btn" id="btnRegSendOtp">Получить код на email</button>
+            </div>
+            <div id="regStep2" style="display:none;">
+              <p style="font-size:13px;color:#8e9db0;margin-bottom:14px;text-align:center;">Введите 6-значный код,<br>отправленный на вашу почту</p>
+              <div class="input-group">
+                <label class="input-label">Код подтверждения</label>
+                <input class="input-field" type="text" id="regOtp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code"/>
+              </div>
+              <button class="auth-btn" id="btnRegSubmit">Подтвердить и войти</button>
+              <button id="btnRegBack" style="width:100%;padding:12px;background:none;border:none;color:#8e9db0;font-size:13px;cursor:pointer;margin-top:8px;">← Изменить email</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+<div id="screenVpn" class="screen">
+      <div class="screen-content vpn-screen-layout">
+
+        <!-- Animated logo -->
+        <div class="vpn-screen__top">
+          <div class="logo-anim">
+            <div class="ring" style="--ring-opacity:.15;"></div>
+            <div class="ring" style="--ring-opacity:.25;"></div>
+            <div class="ring" style="--ring-opacity:.35;"></div>
+            <div class="logo-core">
+              <svg viewBox="0 0 1024 1024" fill="currentColor" style="width:75px;height:75px;">
+                <use href="#svoy-logo-path" />
+              </svg>
+            </div>
+          </div>
+
+          <div class="gap-8"></div>
+          <p class="title text-center">SvoyVPN</p>
+          <p class="body text-muted text-center" style="margin-top:4px;">Быстрый и надёжный, потому что Свой</p>
+          <p id="vpnStatus" style="display:none;"></p>
+
+          <div class="gap-10"></div>
+          <div class="product-switch" role="tablist" aria-label="Продукт">
+            <button type="button" class="product-switch__btn product-switch__btn--active" data-product="vpn" id="btnProductVpn" aria-selected="true">VPN</button>
+            <button type="button" class="product-switch__btn" data-product="esim" id="btnProductEsim" aria-selected="false">eSIM</button>
+          </div>
+        </div>
+
+        <div class="vpn-screen__mid">
+          <!-- Десктоп (≥1024px): карта на главной VPN; моб. — скрыто в CSS -->
+          <div class="vpn-desktop-map-block">
+            <div class="vpn-desktop-map-block__toolbar">
+              <p class="section-title vpn-desktop-map-block__title" style="display:flex;align-items:center;gap:6px; margin:0;">
+                <svg style="width:16px;height:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path
+                    d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+                </svg>
+                Доступные сервера
+              </p>
+            </div>
+            <div id="serverMapWrap" class="server-map-wrap" style="display: none;">
+              <div id="mapContainer" class="map-container">
+                <!-- SVG and pins go here -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="vpn-screen__bottom">
+          <div id="subBlockBox" class="vpn-screen__sub-box">
+            <!-- Loaded by JS -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: eSIM ═══ -->
+    <div id="screenEsim" class="screen">
+      <div class="screen-content vpn-screen-layout">
+
+        <div class="vpn-screen__top">
+          <div class="logo-anim">
+            <div class="ring" style="--ring-opacity:.15;"></div>
+            <div class="ring" style="--ring-opacity:.25;"></div>
+            <div class="ring" style="--ring-opacity:.35;"></div>
+            <div class="logo-core">
+              <svg viewBox="0 0 1024 1024" fill="currentColor" style="width:75px;height:75px;">
+                <use href="#svoy-logo-path" />
+              </svg>
+            </div>
+          </div>
+
+          <div class="gap-8"></div>
+          <div class="text-center" style="margin-top:6px;">
+            <span class="esim-title-with-beta title">
+              <span class="esim-title-with-beta__text">Svoy eSIM</span>
+              <span class="esim-beta-corner" aria-hidden="true">beta</span>
+            </span>
+          </div>
+          <p class="body text-muted text-center" style="margin-top:6px;">Тариф по стране — оплата как у подписки (Stars, карта, Crypto Pay)</p>
+          <p id="esimModeHint" class="caption text-muted text-center" style="margin-top:8px;opacity:0.85;"></p>
+
+          <div class="gap-10"></div>
+          <div class="product-switch" role="tablist" aria-label="Продукт">
+            <button type="button" class="product-switch__btn" data-product="vpn" aria-selected="false">VPN</button>
+            <button type="button" class="product-switch__btn product-switch__btn--active" data-product="esim" aria-selected="true">eSIM</button>
+          </div>
+        </div>
+
+        <div class="vpn-screen__mid esim-screen__mid-stack">
+          <div class="esim-screen__form">
+            <label class="esim-label" for="esimCountry">Страна / регион</label>
+            <select id="esimCountry" class="esim-select">
+              <option value="">Загрузка…</option>
+            </select>
+
+            <div class="gap-12"></div>
+            <p class="section-title" style="margin:0 0 8px 0;">Тарифы</p>
+            <div id="esimPackages" class="esim-packages">
+              <div class="esim-packages-placeholder text-muted body">Выберите страну</div>
+            </div>
+
+            <div class="gap-16"></div>
+            <button type="button" id="btnEsimBuy" class="btn-primary" style="width:100%;" disabled>Оплатить</button>
+
+            <div id="esimResult" class="esim-result" style="display:none;">
+              <p class="section-title" style="margin-top:20px;">Ваш eSIM</p>
+              <div class="esim-qr-wrap">
+                <img id="esimQrImg" alt="QR eSIM" class="esim-qr-img" />
+              </div>
+              <p class="caption text-muted" style="margin-top:8px;">Код активации</p>
+              <div class="esim-code-row">
+                <code id="esimAcCode" class="esim-ac"></code>
+                <button type="button" id="btnEsimCopyAc" class="btn-secondary esim-copy-btn">Копировать</button>
+              </div>
+              <p class="caption text-muted" style="margin-top:12px;">SMDP+ адрес</p>
+              <code id="esimSmdpCode" class="esim-ac esim-ac--sm"></code>
+            </div>
+          </div>
+
+          <div id="esimBetaGate" class="esim-beta-gate" hidden>
+            <div class="esim-beta-gate__backdrop" aria-hidden="true"></div>
+            <div class="esim-beta-gate__panel">
+              <p class="esim-beta-gate__lead body" style="margin:0;line-height:1.45;">
+                eSIM позволяет пользоваться <strong>зарубежным интернетом</strong> без необходимости включать VPN и
+                зависеть от ограничений в стране.
+              </p>
+              <p class="esim-beta-gate__hint esim-beta-gate__hint--need-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;">
+                Хотите попробовать — <strong>свяжите аккаунт с почтой</strong> и укажите email ниже. Заявку рассматривает администратор;
+                после одобрения придёт письмо на этот адрес.
+              </p>
+              <p class="esim-beta-gate__hint esim-beta-gate__hint--has-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;" hidden>
+                Укажите email для уведомления. Заявку рассматривает администратор; после одобрения мы пришлём письмо на этот адрес.
+              </p>
+              <button type="button" class="btn-secondary esim-beta-gate__link-email" style="width:100%;margin-top:14px;">
+                Привязать почту
+              </button>
+              <label class="esim-label" for="esimBetaEmailMain" style="margin-top:16px;">Email для уведомления</label>
+              <input type="email" id="esimBetaEmailMain" class="esim-select esim-beta-email-input" placeholder="name@example.com"
+                autocomplete="email" inputmode="email" />
+              <button type="button" class="btn-primary esim-beta-notify-btn" style="width:100%;margin-top:12px;">
+                Отправить заявку
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: МОИ eSIM ═══ -->
+    <div id="screenEsimMine" class="screen">
+      <div class="screen-content esim-mine-screen esim-mine-screen--stack"
+        style="display:flex;flex-direction:column;align-items:center;width:100%;max-width:420px;margin:0 auto;box-sizing:border-box;position:relative;">
+        <div class="esim-mine-screen__inner" style="width:100%;">
+          <p class="title text-center" style="margin:0;">Мои eSIM</p>
+          <p class="body text-muted text-center" style="margin-top:8px;">Купленные тарифы, QR и коды активации</p>
+          <div class="gap-12"></div>
+          <div id="esimMineList" class="esim-mine-list" style="width:100%;"></div>
+        </div>
+        <div id="esimBetaGateMine" class="esim-beta-gate esim-beta-gate--mine" hidden>
+          <div class="esim-beta-gate__backdrop" aria-hidden="true"></div>
+          <div class="esim-beta-gate__panel">
+            <p class="esim-beta-gate__lead body" style="margin:0;line-height:1.45;">
+              eSIM позволяет пользоваться <strong>зарубежным интернетом</strong> без необходимости включать VPN и
+              зависеть от ограничений в стране.
+            </p>
+            <p class="esim-beta-gate__hint esim-beta-gate__hint--need-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;">
+              Хотите попробовать — <strong>свяжите аккаунт с почтой</strong> и укажите email ниже. Заявку рассматривает администратор;
+              после одобрения придёт письмо на этот адрес.
+            </p>
+            <p class="esim-beta-gate__hint esim-beta-gate__hint--has-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;" hidden>
+              Укажите email для уведомления. Заявку рассматривает администратор; после одобрения мы пришлём письмо на этот адрес.
+            </p>
+            <button type="button" class="btn-secondary esim-beta-gate__link-email" style="width:100%;margin-top:14px;">
+              Привязать почту
+            </button>
+            <label class="esim-label" for="esimBetaEmailMine" style="margin-top:16px;">Email для уведомления</label>
+            <input type="email" id="esimBetaEmailMine" class="esim-select esim-beta-email-input" placeholder="name@example.com"
+              autocomplete="email" inputmode="email" />
+            <button type="button" class="btn-primary esim-beta-notify-btn" style="width:100%;margin-top:12px;">
+              Отправить заявку
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: SETUP ═══ -->
+    <div id="screenSetup" class="screen">
+      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
+
+        <!-- Animated logo (Setup / Gear) -->
+        <div class="logo-anim">
+          <div class="ring" style="--ring-opacity:.15;"></div>
+          <div class="ring" style="--ring-opacity:.25;"></div>
+          <div class="ring" style="--ring-opacity:.35;"></div>
+          <div class="logo-core" style="color: #fff;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" style="width:44px; height:44px; fill:none!important;">
+              <circle cx="12" cy="12" r="3" style="fill:none!important;" />
+              <path class="gear-teeth"
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                style="fill:none!important;" />
+            </svg>
+          </div>
+        </div>
+        <div class="gap-8"></div>
+
+        <!-- ── Onboarding Carousel ── -->
+        <div class="ob-carousel" id="obCarousel" style="width:100%;">
+
+          <!-- Progress dots -->
+          <div class="ob-dots" id="obDots">
+            <div class="ob-dot active" id="obDot0"></div>
+            <div class="ob-dot" id="obDot1"></div>
+            <div class="ob-dot" id="obDot2"></div>
+            <div class="ob-dot" id="obDot3"></div>
+            <div class="ob-dot" id="obDot4"></div>
+            <div class="ob-dot" id="obDot5"></div>
+          </div>
+
+          <!-- Slides track -->
+          <div class="ob-track" id="obTrack">
+
+            <!-- ── SLIDE 0: Subscription Check ── -->
+            <div class="ob-slide" id="obSlide0">
+              <div class="ob-slide-inner">
+                <p class="ob-title" style="margin-top:20px;">Активация подписки</p>
+                <p class="ob-desc">Выполните это действие, чтобы получить доступ к серверам и продолжить настройку.</p>
+
+                <div id="obSubCheckBlock" style="margin-bottom:16px;">
+                  <!-- Dynamically populated in JS -->
+                </div>
+              </div>
+            </div>
+
+            <!-- ── SLIDE 1: Choose device ── -->
+            <div class="ob-slide" id="obSlide1">
+              <div class="ob-slide-inner">
+                <p class="ob-title" style="margin-top:20px;">Устройство</p>
+                <p class="ob-desc">Укажите ваше устройство — на чем будем смотреть?</p>
+                <div class="ob-device-grid">
+                  <!-- iPhone -->
+                  <div class="ob-device-card" data-device="apple">
+                    <div class="ob-check"><svg viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></div>
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.4c1.3.07 2.17.73 2.96.75 1.13-.24 2.22-.93 3.45-.84 1.24.1 2.18.65 2.79 1.56-3.02 1.8-2.26 5.78.67 6.94-.67 1.58-1.54 3.15-1.87 4.47zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
+                    </svg>
+                    <span>iPhone</span>
+                  </div>
+                  <!-- Android -->
+                  <div class="ob-device-card" data-device="android">
+                    <div class="ob-check"><svg viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></div>
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4483-.9993.9993-.9993c.5511 0 .9993.4483.9993.9993.0001.5511-.4482.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4483-.9993.9993-.9993c.5511 0 .9993.4483.9993.9993 0 .5511-.4483.9997-.9993.9997m11.4046-6.0197l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.2439 13.8533 7.8508 12 7.8508s-3.5902.3931-5.1367 1.0989L4.841 5.4362a.4161.4161 0 00-.5677-.1521.4157.4157 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3435-4.1021-2.6892-7.5743-6.1185-9.4393" />
+                    </svg>
+                    <span>Android</span>
+                  </div>
+                  <!-- Windows -->
+                  <div class="ob-device-card" data-device="windows">
+                    <div class="ob-check"><svg viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></div>
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M3 12V6.75l6-1.32v6.18H3zm17 0V2l-9 1.98V12h9zm-17 1h6v6.06L3 17.73V13zm17 0h-9v8.04L20 22V13z" />
+                    </svg>
+                    <span>Windows</span>
+                  </div>
+                  <!-- Mac -->
+                  <div class="ob-device-card" data-device="mac">
+                    <div class="ob-check"><svg viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></div>
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z" />
+                    </svg>
+                    <span>macOS</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── SLIDE 2: Download app (content injected by JS) ── -->
+            <div class="ob-slide" id="obSlide2">
+              <div class="ob-slide-inner" id="obDownloadContent">
+                <!-- populated dynamically -->
+              </div>
+            </div>
+
+            <!-- ── SLIDE 3: Connect (content injected by JS) ── -->
+            <div class="ob-slide" id="obSlide3">
+              <div class="ob-slide-inner" id="obConnectContent">
+                <!-- populated dynamically -->
+              </div>
+            </div>
+
+            <!-- ── SLIDE 4: Support -->
+            <div class="ob-slide" id="obSlide4">
+              <div class="ob-slide-inner">
+                <p class="ob-title" style="margin-top:20px;">Поддержка</p>
+                <p class="ob-desc">Если возникли вопросы или что-то не получается — мы всегда на связи.</p>
+
+                <div class="ob-app-list">
+                  <a href="https://t.me/SvoyVPN_support" id="obSupportLink" class="ob-app-item" target="_blank"
+                    rel="noopener">
+                    <div class="ob-app-icon" style="background:rgba(58,168,252,.12);">
+                      <svg viewBox="0 0 24 24" style="fill:var(--accent_text_color,#3aa8fc);width:24px;height:24px;">
+                        <path
+                          d="M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7l4 4 4-4h3c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14h-3.83L15 18.17 12.83 16H3V4h18v12z" />
+                      </svg>
+                    </div>
+                    <div class="ob-app-info">
+                      <p class="ob-app-name">Написать в поддержку</p>
+                      <p class="ob-app-store" id="obSupportHandle">@SvoyVPN_support</p>
+                    </div>
+                    <span class="ob-app-arrow">›</span>
+                  </a>
+
+                  <a href="https://t.me/SvoyVPN_channel" class="ob-app-item" target="_blank" rel="noopener">
+                    <div class="ob-app-icon" style="background:rgba(52,199,89,.12);">
+                      <svg viewBox="0 0 24 24" style="fill:#34c759;width:24px;height:24px;">
+                        <path
+                          d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5z" />
+                      </svg>
+                    </div>
+                    <div class="ob-app-info">
+                      <p class="ob-app-name">Наш канал</p>
+                      <p class="ob-app-store">Новости и обновления</p>
+                    </div>
+                    <span class="ob-app-arrow">›</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── SLIDE 5: Update subscription ── -->
+            <div class="ob-slide" id="obSlide5">
+              <div class="ob-slide-inner">
+                <p class="ob-title" style="margin-top:20px;">Обновление серверов</p>
+                <p class="ob-desc">Если мы добавили новые серверы или что-то не работает, нужно обновить серверы в
+                  приложении.</p>
+                <div class="ob-app-list">
+                  <div class="ob-app-item" style="cursor:default;">
+                    <div class="ob-app-icon" style="background:rgba(58,168,252,.12);">
+                      <svg viewBox="0 0 24 24" style="fill:var(--accent_text_color,#3aa8fc);width:24px;height:24px;">
+                        <path
+                          d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+                      </svg>
+                    </div>
+                    <div class="ob-app-info">
+                      <p class="ob-app-name">Зайдите в приложение</p>
+                      <p class="ob-app-store">Свайпните вниз или нажмите «Update»</p>
+                    </div>
+                  </div>
+                  <div class="ob-app-item" style="cursor:default;">
+                    <div class="ob-app-icon" style="background:rgba(52,199,89,.12);">
+                      <svg viewBox="0 0 24 24" style="fill:#34c759;width:24px;height:24px;">
+                        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                      </svg>
+                    </div>
+                    <div class="ob-app-info">
+                      <p class="ob-app-name">Готово</p>
+                      <p class="ob-app-store">Серверы подгружены и снова работают</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /ob-track -->
+
+          <!-- Action buttons -->
+          <div class="ob-actions">
+            <div class="ob-action-row" id="obActionRow">
+              <button class="ob-btn-copied" id="obBtnCopied">✓ Скопировано</button>
+              <button class="ob-btn-next" id="obBtnNext">Скопировать ссылку</button>
+            </div>
+            <button class="ob-btn-back" id="obBtnBack" style="display:none;">← Назад</button>
+          </div>
+
+        </div><!-- /ob-carousel -->
+
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: PROFILE ═══ -->
+    <div id="screenProfile" class="screen">
+      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
+
+        <!-- Animated logo with Avatar acting as the core -->
+        <div class="logo-anim">
+          <div class="ring" style="--ring-opacity:.15;"></div>
+          <div class="ring" style="--ring-opacity:.25;"></div>
+          <div class="ring" style="--ring-opacity:.35;"></div>
+          <div id="avatar" class="logo-core avatar"
+            style="width:88px;height:88px;margin:0;font-size:44px;padding:0;overflow:hidden;">?</div>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top: 8px;">
+          <p id="profileName" class="title text-center">Пользователь</p>
+          <div id="profileBadge" class="status-seal" style="display:none;">
+            <svg viewBox="0 0 24 24" class="seal-svg">
+              <!-- Rounded, soft 10-point scalloped seal -->
+              <path class="seal-bg"
+                d="M10.8,3.3C11.5,2.4,12.5,2.4,13.2,3.3L14.7,5C15,5.4,15.6,5.6,16.1,5.5L18.1,5C19.2,4.8,20.1,5.6,19.9,6.7L19.4,8.7C19.3,9.2,19.5,9.8,20,10.1L21.7,11.3C22.6,12,22.6,13,21.7,13.7L20,14.9C19.5,15.2,19.3,15.8,19.4,16.3L19.9,18.3C20.1,19.4,19.2,20.2,18.1,20L16.1,19.5C15.6,19.4,15,19.6,14.7,20L13.2,21.7C12.5,22.6,11.5,22.6,10.8,21.7L9.3,20C9,19.6,8.4,19.4,7.9,19.5L5.9,20C4.8,20.2,3.9,19.4,4.1,18.3L4.6,16.3C4.7,15.8,4.5,15.2,4,14.9L2.3,13.7C1.4,13,1.4,12,2.3,11.3L4,10.1C4.5,9.8,4.7,9.2,4.6,8.7L4.1,6.7C3.9,5.6,4.8,4.8,5.9,5L7.9,5.5C8.4,5.6,9,5.4,9.3,5L10.8,3.3Z"
+                fill="var(--accent_text_color, #3aa8fc)" />
+              <!-- Even smaller focused checkmark -->
+              <path class="seal-check" d="M10.5 14L8 11.5L7.2 12.3L10.5 15.6L16.8 9.3L16 8.5L10.5 14Z" fill="white" />
+            </svg>
+            <span id="profileBadgeText" class="seal-text"></span>
+          </div>
+        </div>
+        <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px; display:none;">—</p>
+
+        <div id="profileAuthLinkBox" class="profile-auth-slot" style="display:none" aria-live="polite"></div>
+
+        <!-- Сервера: моб. / узкая ширина — карусель; на ПК блок скрыт в desktop-pc.css -->
+        <div id="profileServersBlock" class="profile-servers-block">
+          <div class="profile-servers-block__head">
+            <p class="section-title profile-servers-block__title" style="display:flex;align-items:center;gap:6px;margin:0;">
+              <svg style="width:16px;height:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+              </svg>
+              Доступные сервера
+            </p>
+          </div>
+          <div class="server-carousel" id="serverCarouselShell">
+            <div id="serversWrapProfile" class="server-carousel__track">
+              <div class="server-card server-card--loading text-muted body">Загрузка…</div>
+            </div>
+          </div>
+          <p class="server-carousel__hint caption text-muted">Свайпните в сторону, чтобы листать сервера</p>
+        </div>
+
+        <div class="link-list profile-link-list-below-auth">
+
+          <div class="link-card" id="btnChannel">
+            <div class="link-icon">
+              <!-- Telegram Logo -->
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.888-.666 3.463-1.509 5.773-2.506 6.93-2.99 3.332-1.396 4.024-1.636 4.475-1.643z" />
+              </svg>
+            </div>
+            <div class="link-content">
+              <span class="link-name">Канал</span>
+              <span class="link-subtext">Все новости и обновления</span>
+            </div>
+            <span class="link-arrow">›</span>
+          </div>
+          <div class="link-card" id="btnSupport">
+            <div class="link-icon">
+              <!-- Support headset icon -->
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M12 2c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z" />
+              </svg>
+            </div>
+            <div class="link-content">
+              <span class="link-name">Поддержка</span>
+              <span class="link-subtext">Что то не так? Напиши мы поможем</span>
+            </div>
+            <span class="link-arrow">›</span>
+          </div>
+
+          <!-- Android Logout Button (hidden by default) -->
+          <div class="link-card" id="btnLogout" style="display:none; color:#ff453a;">
+            <div class="link-icon" style="background:rgba(255,69,58,0.1); color:#ff453a;">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+              </svg>
+            </div>
+            <div class="link-content">
+              <span class="link-name">Выйти из аккаунта</span>
+              <span class="link-subtext">Сменить пользователя или перезайти</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: REFERRAL (внутри .app — иначе body overflow:hidden обрезает экран) ═══ -->
+    <div id="screenReferral" class="screen">
+      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
+
+        <div class="logo-anim">
+          <div class="ring" style="--ring-opacity:.15;"></div>
+          <div class="ring" style="--ring-opacity:.25;"></div>
+          <div class="ring" style="--ring-opacity:.35;"></div>
+          <div class="logo-core" style="color: #fff;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" style="width:44px;height:44px;fill:none!important;" aria-hidden="true">
+              <use href="#referral"></use>
+            </svg>
+          </div>
+        </div>
+
+        <div class="gap-8"></div>
+        <p class="title-s text-center">Приглашайте друзей —<br>получайте бонусные дни</p>
+        <div class="gap-8"></div>
+        <p id="refDesc" class="body text-muted text-center" style="padding:0 8px;">Загрузка…</p>
+
+        <div class="gap-12"></div>
+
+        <div class="card referral-card">
+          <p class="caption text-muted referral-card__label">Ваша реферальная ссылка</p>
+          <p id="refLinkText" class="body referral-card__link">—</p>
+          <div class="referral-card__stats">
+            <div>
+              <p class="caption text-muted">Приглашено</p>
+              <p id="refCount" class="subtitle">—</p>
+            </div>
+            <div>
+              <p class="caption text-muted">Бонусных дней</p>
+              <p id="refBonus" class="subtitle">—</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-12"></div>
+
+        <button id="btnCopyRef" class="btn-primary">Скопировать ссылку</button>
+        <div class="gap-8"></div>
+        <button id="btnShareRef" class="btn-share">Поделиться</button>
+
+      </div>
+    </div>
+
+    <!-- ═══ TAB BAR ═══ -->
+    <nav id="tabBar" class="tab-bar">
+      <button type="button" class="tab active" data-home-tab="1" data-screen="screenVpn">
+        <svg class="tab-icon tab-icon-vpn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-1" />
+          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-2" />
+        </svg>
+        <span class="tab-label">Главная</span>
+      </button>
+      <button type="button" class="tab tab--vpn-only" data-screen="screenSetup">
+        <svg class="tab-icon tab-icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path class="gear-teeth"
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        <span class="tab-label">Подключиться</span>
+      </button>
+      <button type="button" class="tab tab--esim-only" data-screen="screenEsimMine">
+        <svg class="tab-icon tab-icon-esim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+          <path d="M9 6h6M9 10h6M9 14h4" />
+        </svg>
+        <span class="tab-label">Мои eSIM</span>
+      </button>
+      <button type="button" class="tab tab--vpn-only" data-screen="screenReferral">
+        <svg class="tab-icon tab-icon-gift" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 12 20 22 4 22 4 12"></polyline>
+          <rect x="2" y="7" width="20" height="5"></rect>
+          <line x1="12" y1="22" x2="12" y2="7"></line>
+          <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path>
+          <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
+        </svg>
+        <span class="tab-label">Подарки</span>
+      </button>
+      <button type="button" class="tab" data-screen="screenProfile">
+        <span class="tab-icon-clip" aria-hidden="true">
+          <svg class="tab-icon tab-icon-profile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4" class="profile-head" />
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" class="profile-body" />
+          </svg>
+          <span id="profileServersHintDot" class="tab-hint-dot" hidden></span>
+        </span>
+        <span class="tab-label">Профиль</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- ═══ MODAL: LINK EMAIL (Telegram) ═══ -->
+  <div id="modalLinkEmail" class="modal">
+    <div class="modal-backdrop" onclick="hideModal('modalLinkEmail')"></div>
+    <div class="modal-content modal-link-email">
+      <div class="modal-link-email__head">
+        <p class="title-s modal-link-email__title">Привязка почты</p>
+        <button type="button" class="modal-link-email__close" onclick="hideModal('modalLinkEmail')"
+          aria-label="Закрыть">✕</button>
+      </div>
+      <div id="linkEmailStep1">
+        <p class="modal-link-email__hint">Код придёт в Telegram и на указанный email. Если почта уже есть в системе —
+          пароль не нужен (вход останется по текущему паролю).</p>
+        <div class="modal-link-email__fields">
+          <div class="modal-link-email__group">
+            <label class="modal-link-email__label" for="linkEmailAddr">Email</label>
+            <input type="email" id="linkEmailAddr" class="link-email-input" placeholder="name@example.com"
+              autocomplete="email" />
+          </div>
+          <div class="modal-link-email__group">
+            <label class="modal-link-email__label" for="linkEmailPass">Пароль <span
+                class="modal-link-email__label-hint">(только для новой почты, мин. 6 символов)</span></label>
+            <input type="password" id="linkEmailPass" class="link-email-input"
+              placeholder="Оставьте пустым, если почта уже зарегистрирована" autocomplete="new-password" />
+          </div>
+        </div>
+        <button type="button" id="btnLinkEmailSend" class="btn-primary modal-link-email__submit">Получить код</button>
+      </div>
+      <div id="linkEmailMergeStep" class="link-email-merge-step" style="display:none;">
+        <div class="link-email-merge-anim" aria-hidden="true">
+          <div class="link-email-merge-orb link-email-merge-orb--tg"></div>
+          <div class="link-email-merge-orb link-email-merge-orb--mail"></div>
+          <div class="link-email-merge-bridge"></div>
+        </div>
+        <p class="modal-link-email__hint link-email-merge-lead">Эта почта уже есть в SvoyVPN (вход только по email).</p>
+        <p class="link-email-merge-text">Объединить её с вашим <b>Telegram</b>? Подписка, баланс и ключи с почты
+          <span id="linkEmailMergeMasked" class="link-email-merge-masked">…</span> перейдут в этот Telegram-аккаунт.</p>
+        <p class="link-email-merge-note">Это одноразовое действие: после подтверждения вход по старому «только почта» сольётся с текущим профилем.</p>
+        <button type="button" id="btnLinkEmailMergeConfirm" class="btn-primary modal-link-email__submit">Да, объединить и получить код</button>
+        <button type="button" id="btnLinkEmailMergeCancel" class="btn-secondary modal-link-email__submit link-email-merge-back">Назад</button>
+      </div>
+      <div id="linkEmailStep2" style="display:none;">
+        <p class="modal-link-email__hint">Введите код из Telegram или из письма.</p>
+        <div class="modal-link-email__group">
+          <label class="modal-link-email__label" for="linkEmailOtp">Код подтверждения</label>
+          <input type="text" id="linkEmailOtp" class="link-email-input link-email-input--otp" inputmode="numeric"
+            placeholder="••••••" maxlength="8" autocomplete="one-time-code" />
+        </div>
+        <button type="button" id="btnLinkEmailConfirm" class="btn-primary modal-link-email__submit">Подтвердить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ MODAL: LINK TELEGRAM (веб-вход по почте) ═══ -->
+  <div id="modalLinkTg" class="modal">
+    <div class="modal-backdrop" onclick="hideModal('modalLinkTg')"></div>
+    <div class="modal-content" style="padding-top:14px;text-align:center;">
+      <p class="title-s" style="margin:0 0 8px;">Привязка Telegram</p>
+      <p class="body text-muted" style="font-size:13px;line-height:1.4;margin:0 0 16px;">Откройте бота и нажмите Start. Это окно можно закрыть после успеха.</p>
+      <a id="linkTgOpenBtn" href="#" target="_blank" rel="noopener" class="btn-primary" style="display:inline-block;text-decoration:none;padding:14px 24px;">Открыть бота</a>
+    </div>
+  </div>
+
+  <!-- ═══ MODAL: PLAN ═══ -->
+  <div id="modalPlan" class="modal">
+    <div class="modal-backdrop" onclick="hideModal('modalPlan')"></div>
+    <div class="modal-content" style="display:flex;flex-direction:column; padding-top: 14px;">
+
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
+        <div id="planModalHeader" style="display:flex; flex-direction:row; align-items:center; gap:8px;">
+          <p class="title-s" style="margin:0;">Подписка</p>
+        </div>
+        <button onclick="hideModal('modalPlan')" aria-label="Закрыть"
+          style="background:var(--section_bg_color, #f7f9fb); border:none; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:var(--subtitle_text_color, #8e8e93); cursor:pointer; -webkit-tap-highlight-color:transparent; flex-shrink:0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="gap-12"></div>
+      <div id="tariffsWrap" class="tariff-grid"></div>
+
+      <p class="section-title">Способ оплаты</p>
+      <div id="pmWrap" class="pm-list"></div>
+
+      <div id="deviceCountBox" class="card" style="display:none;padding:14px;margin-top:10px;">
+        <p class="section-title" style="margin:0 0 8px;">Устройств в подписке: <span id="deviceCountValue">1</span></p>
+        <input id="deviceCountRange" type="range" min="1" max="5" value="1" style="width:100%;" />
+        <p id="deviceCountHint" class="body text-muted" style="margin:8px 0 0;font-size:12px;"></p>
+      </div>
+
+      <div class="pay-row">
+        <div>
+          <p class="total-label">Итого</p>
+          <p id="totalPrice" class="total-price">—</p>
+        </div>
+        <button id="btnPay" class="btn-primary" disabled>Оплатить</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ MODAL: eSIM PAY ═══ -->
+  <div id="modalEsimPay" class="modal">
+    <div class="modal-backdrop" onclick="hideModal('modalEsimPay')"></div>
+    <div class="modal-content" style="display:flex;flex-direction:column; padding-top: 14px;">
+
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
+        <p class="title-s" style="margin:0;">Оплата eSIM</p>
+        <button onclick="hideModal('modalEsimPay')" aria-label="Закрыть"
+          style="background:var(--section_bg_color, #f7f9fb); border:none; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:var(--subtitle_text_color, #8e8e93); cursor:pointer; -webkit-tap-highlight-color:transparent; flex-shrink:0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <p class="body text-muted" style="font-size:13px;line-height:1.4;margin:0 0 12px;">Выберите способ оплаты и подтвердите покупку.</p>
+
+      <p class="section-title">Способ оплаты</p>
+      <div id="esimPmWrap" class="pm-list"></div>
+
+      <div class="pay-row">
+        <div>
+          <p class="total-label">Итого</p>
+          <p id="esimTotalPrice" class="total-price">—</p>
+        </div>
+        <button id="btnPayEsim" class="btn-primary" disabled>Оплатить</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Success Overlay -->
+  <div id="successOverlay" class="success-overlay" style="display:none;">
+    <div class="success-card">
+      <div class="success-icon-wrap">
+        <svg class="success-checkmark" viewBox="0 0 52 52">
+          <circle class="success-checkmark__circle" cx="26" cy="26" r="25" fill="none" />
+          <path class="success-checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+        </svg>
+      </div>
+      <p class="title-s text-center">Оплата успешна!</p>
+      <p class="body text-center text-muted" style="margin-top: 8px;">Ваша подписка активирована.<br>Детальный чек
+        отправлен вам в бот.</p>
+      <div class="gap-16"></div>
+      <button onclick="hideSuccessOverlay()" class="btn-primary"
+        style="width: auto; padding: 12px 32px;">Отлично</button>
+    </div>
+    <div id="confetti-container"></div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <div id="spriteHost" style="display:none;"></div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   HASH ROUTING — /app.html#screen → showScreen()
+═══════════════════════════════════════════════ */
+(function() {
+  var HASH_MAP = {
+    'home':     'screenVpn',
+    'vpn':      'screenVpn',
+    'esim':     'screenEsim',
+    'myesim':   'screenEsimMine',
+    'setup':    'screenSetup',
+    'connect':  'screenSetup',
+    'referral': 'screenReferral',
+    'gifts':    'screenReferral',
+    'profile':  'screenProfile',
+  };
+
+  function getTargetScreen() {
+    var h = location.hash.replace('#','').toLowerCase().trim();
+    return h ? HASH_MAP[h] : null;
+  }
+
+  /* update hash when screen changes — wrap showScreen */
+  var SCREEN_HASH = {
+    screenVpn:       'home',
+    screenEsim:      'esim',
+    screenEsimMine:  'myesim',
+    screenSetup:     'setup',
+    screenReferral:  'referral',
+    screenProfile:   'profile',
+  };
+
+  function patchShowScreen() {
+    if (!window.showScreen) return false;
+    var orig = window.showScreen;
+    window.showScreen = function(id) {
+      orig(id);
+      var hash = SCREEN_HASH[id];
+      if (hash && location.hash !== '#' + hash) {
+        history.replaceState(null, '', '#' + hash);
+      }
+    };
+    return true;
+  }
+
+  /* navigate to hash on load — retry until showScreen available */
+  function navigateToHash() {
+    var target = getTargetScreen();
+    if (!target) return;
+    if (patchShowScreen()) {
+      /* app already ready */
+      window.showScreen(target);
+    } else {
+      /* wait for app_v124.js to expose showScreen */
+      var tries = 0;
+      var iv = setInterval(function() {
+        if (window.showScreen || tries++ > 60) {
+          clearInterval(iv);
+          patchShowScreen();
+          if (window.showScreen && target) window.showScreen(target);
+        }
+      }, 80);
+    }
+  }
+
+  /* patch immediately if already available, else defer */
+  if (!patchShowScreen()) {
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() { patchShowScreen(); navigateToHash(); }, 200);
+    });
+  } else {
+    navigateToHash();
+  }
+
+  /* handle browser back/forward */
+  window.addEventListener('popstate', function() {
+    var t = getTargetScreen();
+    if (t && window.showScreen) window.showScreen(t);
+  });
+})();
+</script>
+
+</body>
+
+</html>

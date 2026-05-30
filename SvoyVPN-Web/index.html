@@ -1,1084 +1,1579 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
-
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>SvoyVPN</title>
-  <meta property="og:title" content="SvoyVPN" />
-  <meta property="og:type" content="website" />
-  <meta name="og:description" content="Быстрый и приватный VPN от SvoyVPN" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SvoyVPN — быстрый и приватный VPN</title>
+<meta name="description" content="VPN с bypass-трафиком, eSIM и тарифами Free и Plus. YouTube, TikTok, ChatGPT без ограничений.">
+<meta property="og:title" content="SvoyVPN">
+<meta name="theme-color" content="#050505">
+<link rel="icon" type="image/svg+xml" href="need/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050505;
+  --surface:#0d0d0d;
+  --surface-2:#131313;
+  --text:#f5f5f5;
+  --text-soft:#8e8e93;
+  --accent:#00ff85;
+  --blue:#3b82f6;
+  --border:rgba(255,255,255,.08);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body,button,a,input{touch-action:manipulation}
+html{scroll-behavior:auto}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 
-  <!-- .ico переименован в favicon-svoy.ico: браузеры часто кэшируют /favicon.ico навсегда; на сервере должен быть тот же файл (git pull). -->
-  <link rel="icon" type="image/png" href="need/favicon-96x96.png?v=5" sizes="96x96" />
-  <link rel="icon" type="image/svg+xml" href="need/favicon.svg?v=5" />
-  <link rel="icon" type="image/x-icon" href="need/favicon-svoy.ico" />
-  <link rel="apple-touch-icon" sizes="180x180" href="need/apple-touch-icon.png?v=5" />
+/* ── scroll progress bar ── */
+#scroll-bar{position:fixed;top:0;left:0;height:2px;background:var(--accent);z-index:9999;width:0%;transition:width .05s linear;box-shadow:0 0 8px var(--accent)}
 
-  <meta name="theme-color" content="#18222d" />
+/* ── cursor spotlight ── */
+#cursor-glow{position:fixed;pointer-events:none;z-index:9998;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(0,255,133,.04) 0%,transparent 65%);transform:translate(-50%,-50%);transition:opacity .4s;opacity:0}
 
-  <script src="need/libs/telegram-web-app.js"></script>
-  <script>
-    /* Early theme sync — force Telegram header color */
-    (function () {
-      var urlParams = new URLSearchParams(window.location.search);
-      var tg = window.Telegram && window.Telegram.WebApp;
-      var urlTheme = urlParams.get('theme');
-      var inTg = tg && tg.initData && String(tg.initData).length > 0;
-      var scheme;
-      if (urlTheme) {
-        scheme = urlTheme;
-      } else if (inTg) {
-        scheme = (tg.colorScheme === 'dark' || tg.colorScheme === 'light') ? tg.colorScheme : 'dark';
-      } else {
-        scheme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-      }
-      var bg = scheme === 'dark' ? '#18222d' : '#ffffff';
+/* ── reveal on scroll ── */
+.reveal{opacity:0;transform:translateY(32px);transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.reveal-left{opacity:0;transform:translateX(-32px);transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}
+.reveal-left.visible{opacity:1;transform:translateX(0)}
+.reveal-right{opacity:0;transform:translateX(32px);transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}
+.reveal-right.visible{opacity:1;transform:translateX(0)}
 
-      /* Meta tag for WebView */
-      var meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.setAttribute('content', bg);
+/* ── magnetic button glow on hover ── */
+.btn{position:relative;overflow:hidden}
+.btn::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,.15),transparent 60%);opacity:0;transition:opacity .3s;pointer-events:none}
+.btn:hover::after{opacity:1}
 
-      /* Bot API 6.1+; на WebApp 6.0 вызов даёт лишь warning в консоли */
-      if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')) {
-        try { tg.setHeaderColor(bg); } catch (_) { }
-        try { tg.setBackgroundColor(bg); } catch (_) { }
-      }
-      
-      /* Apply theme to html/body early */
-      document.documentElement.setAttribute('data-theme', scheme);
+/* ── card ripple ── */
+.card-ripple{position:absolute;border-radius:50%;background:rgba(0,255,133,.12);transform:scale(0);animation:ripple .6s ease-out forwards;pointer-events:none}
+@keyframes ripple{to{transform:scale(4);opacity:0}}
 
-      /* Clear login fields on load to prevent browser autofill */
-      window.addEventListener('load', function() {
-        setTimeout(function() {
-          ['loginUsr', 'loginKey', 'regUsr', 'regKey1', 'regKey2'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-          });
-        }, 150);
-      });
-    })();
-  </script>
+.bg{position:fixed;inset:0;overflow:hidden;z-index:-10}
+.glow{position:absolute;width:700px;height:700px;border-radius:50%;filter:blur(120px);opacity:.12}
+.glow-1{background:var(--accent);top:-200px;left:-200px}
+.glow-2{background:var(--blue);bottom:-300px;right:-200px}
+.grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:60px 60px;mask-image:radial-gradient(circle at center,black 40%,transparent 100%)}
 
-  <link rel="preload" as="font" href="need/fonts/Inter-Regular.woff2" type="font/woff2" crossorigin />
-  <link rel="preload" as="font" href="need/fonts/Inter-Bold.woff2" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="need/assets/index_v111.css" />
-  <link rel="stylesheet" href="need/app_v124.css?v=139" />
-  <link rel="stylesheet" href="need/desktop-pc.css?v=24" />
+.site-nav{position:fixed;top:0;left:0;right:0;width:100%;z-index:100;backdrop-filter:blur(20px);background:rgba(5,5,5,.5);border-bottom:1px solid rgba(255,255,255,.04)}
+.site-nav .nav-inner{width:min(1400px,92%);margin:auto;height:90px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:1.4rem;font-weight:700;letter-spacing:-.04em;text-decoration:none;color:var(--text)}
+.logo span{color:var(--accent)}
+.nav-links{display:flex;gap:40px}
+.nav-links a{color:var(--text-soft);text-decoration:none;transition:.4s}
+.nav-links a:hover{color:#fff}
+.nav-actions{display:flex;gap:14px;align-items:center}
 
-  <script defer src="need/app_v124.js?v=150"></script>
+.btn{height:52px;padding:0 26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;font-size:14px;font-weight:500;border:none;cursor:pointer;font-family:inherit;transition:.5s cubic-bezier(.16,1,.3,1)}
+.btn:hover{transform:translateY(-3px)}
+.btn-secondary{border:1px solid var(--border);color:var(--text);background:rgba(255,255,255,.03)}
+.btn-primary{background:#fff;color:#000;font-weight:600}
+.btn-accent{background:var(--accent);color:#000;font-weight:600}
+.btn svg{width:14px;height:14px;fill:currentColor;flex-shrink:0}
 
-  <style>
-  /* Auth Screen — Exact Mobile Style */
-  #screenAuth {
-      background: var(--bg_color, #18222d);
-      overflow-y: auto;
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      padding: 60px 20px 40px;
+.hero{min-height:100vh;display:flex;align-items:center;position:relative;padding-top:90px}
+.container{width:min(1400px,92%);margin:auto}
+.hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:80px;align-items:center}
+
+.hero-tag{display:inline-flex;align-items:center;gap:12px;padding:14px 22px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:var(--text-soft);margin-bottom:32px;backdrop-filter:blur(20px);font-size:14px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 20px var(--accent),0 0 50px var(--accent);flex-shrink:0}
+
+.hero h1{font-size:clamp(2.75rem,5.5vw,5rem);line-height:1.12;letter-spacing:-.04em;font-weight:800;max-width:720px}
+.hero h1 .line{display:block}
+.hero h1 span{color:var(--accent)}
+.hero-lead{margin-top:28px;max-width:520px;color:var(--text-soft);font-size:17px;line-height:1.65;font-weight:400}
+.hero-actions{margin-top:50px;display:flex;gap:18px;flex-wrap:wrap}
+
+.stats{margin-top:70px;display:flex;gap:20px;flex-wrap:wrap}
+.stat-card{flex:1;min-width:200px;min-height:150px;padding:28px;border-radius:30px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);position:relative;overflow:hidden;transition:.6s cubic-bezier(.16,1,.3,1)}
+.stat-card:hover{transform:translateY(-10px);border-color:rgba(0,255,133,.25);box-shadow:0 0 60px rgba(0,255,133,.08)}
+.stat-card::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at top left,rgba(0,255,133,.12),transparent 40%);pointer-events:none}
+.stat-number{position:relative;font-size:2.5rem;font-weight:700;letter-spacing:-.05em}
+.stat-label{position:relative;margin-top:14px;color:var(--text-soft);line-height:1.6;font-size:14px}
+
+.hero-visual{position:relative;height:min(72vh,720px);min-height:480px;display:flex;align-items:center;justify-content:center}
+.globe-mount{position:relative;width:min(100%,540px);aspect-ratio:1/1;cursor:grab;touch-action:none}
+.globe-mount canvas{display:block;width:100%!important;height:100%!important;outline:none}
+.globe-mount:active{cursor:grabbing}
+.globe-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-soft);font-size:14px;letter-spacing:.05em;text-transform:uppercase;pointer-events:none;z-index:2}
+.globe-panel{
+  position:absolute;left:50%;bottom:24px;transform:translateX(-50%) translateY(12px);
+  width:min(300px,calc(100% - 32px));padding:20px 22px;border-radius:22px;
+  background:rgba(8,8,8,.82);border:1px solid rgba(255,255,255,.1);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  box-shadow:0 20px 60px rgba(0,0,0,.5),0 0 40px rgba(0,255,133,.08);
+  opacity:0;pointer-events:none;transition:opacity .35s,transform .35s;z-index:10;
+}
+.globe-panel.visible{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto}
+.globe-panel[hidden]{display:none!important}
+.globe-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+.globe-panel-head h3{font-size:1.25rem;font-weight:700;letter-spacing:-.03em;margin:0}
+.globe-panel-region{font-size:12px;color:var(--accent);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-top:4px}
+.globe-panel-close{width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text-soft);cursor:pointer;font-size:18px;line-height:1;flex-shrink:0}
+.globe-panel-close:hover{color:#fff;border-color:rgba(255,255,255,.2)}
+.globe-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.globe-stat{padding:12px 10px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);text-align:center}
+.globe-stat b{display:block;font-size:1.1rem;font-weight:700;color:var(--accent);letter-spacing:-.02em}
+.globe-stat span{font-size:10px;color:var(--text-soft);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;display:block}
+.globe-hint{position:absolute;top:16px;right:16px;font-size:11px;color:var(--text-soft);opacity:.7;pointer-events:none;z-index:3}
+
+.section{padding:140px 0}
+.section-head{margin-bottom:80px}
+.section-label{color:var(--accent);margin-bottom:20px;font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+.section-title{font-size:clamp(2.5rem,5vw,4.5rem);line-height:.95;letter-spacing:-.06em;max-width:900px;font-weight:800}
+
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.card{
+  min-height:280px;border-radius:36px;
+  background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.08);
+  padding:34px;position:relative;overflow:hidden;
+  transition:.7s cubic-bezier(.16,1,.3,1);
+}
+.card:hover{transform:translateY(-10px);border-color:rgba(255,255,255,.14);box-shadow:0 30px 80px rgba(0,0,0,.4)}
+.card:hover .card-illustration{opacity:.55;transform:scale(1.05)}
+.card:hover .card-illo-glow{opacity:1}
+
+/* illustration container — top-right of each card */
+.card-illustration{
+  position:absolute;top:0;right:0;
+  width:160px;height:160px;
+  opacity:.38;
+  transition:opacity .7s,transform .7s;
+  pointer-events:none;
+}
+.card-illo-glow{
+  position:absolute;top:-20px;right:-20px;
+  width:140px;height:140px;
+  border-radius:50%;
+  filter:blur(40px);
+  opacity:0;
+  transition:opacity .6s;
+  pointer-events:none;
+}
+
+.card-number{font-size:3rem;font-weight:700;letter-spacing:-.08em;color:rgba(255,255,255,.13)}
+.card-title{margin-top:24px;font-size:1.45rem;font-weight:600;letter-spacing:-.02em}
+.card-text{margin-top:14px;color:var(--text-soft);line-height:1.8;font-size:15px}
+.card-badge{display:inline-block;margin-top:12px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);padding:4px 10px;border-radius:999px;border:1px solid rgba(0,255,133,.25);background:rgba(0,255,133,.08)}
+
+/* ─── PRICING — price-tag style ─────────────────────────── */
+.price-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;max-width:880px;align-items:start}
+
+/* outer wrapper — no background, just spacing */
+.price-card{
+  position:relative;padding:0;overflow:visible;
+  background:none;border:none;
+  transition:transform .55s cubic-bezier(.16,1,.3,1),box-shadow .55s;
+  cursor:default;
+}
+.price-card:hover{transform:translateY(-8px) rotate(.25deg)}
+
+/* ── two independent halves ── */
+.tag-half{
+  position:relative;overflow:hidden;
+  transition:transform .55s cubic-bezier(.34,1.56,.64,1);
+  will-change:transform;
+}
+
+/* top half: rounded top corners + cut top-right */
+.tag-half-top{
+  border-radius:22px 4px 0 0;
+  border:1px solid var(--th-border, rgba(255,255,255,.1));
+  border-bottom:none;
+  background:var(--th-bg,#0b0b0b);
+  padding:48px 32px 26px;
+  transform-origin:center bottom;
+}
+/* cut-corner triangle */
+.tag-half-top::after{
+  content:'';position:absolute;top:-1px;right:-1px;
+  border-style:solid;border-width:0 40px 40px 0;
+  border-color:transparent #050505 transparent transparent;
+}
+
+/* bottom half: rounded bottom corners */
+.tag-half-bottom{
+  border-radius:0 0 22px 22px;
+  border:1px solid var(--th-border, rgba(255,255,255,.1));
+  border-top:none;
+  background:var(--th-bg,#0b0b0b);
+  padding:22px 32px 28px;
+  transform-origin:center top;
+}
+
+/* hole punch on top half */
+.tag-hole{
+  position:absolute;top:20px;left:50%;transform:translateX(-50%);
+  width:14px;height:14px;border-radius:50%;
+  background:#050505;border:1.5px solid rgba(255,255,255,.2);z-index:3;
+}
+.tag-hole::before{
+  content:'';position:absolute;left:50%;top:-12px;transform:translateX(-50%);
+  width:1.5px;height:10px;background:rgba(255,255,255,.18);border-radius:1px;
+}
+
+/* ── tear zone between halves ── */
+.tag-tear-zone{
+  position:relative;height:28px;z-index:10;
+  display:flex;align-items:center;justify-content:center;
+  cursor:grab;user-select:none;
+}
+.tag-tear-zone:active{cursor:grabbing}
+
+/* dashed line */
+.tag-tear{
+  position:absolute;inset:0 0 auto;top:50%;
+  height:0;border-top:2px dashed var(--th-dash,rgba(255,255,255,.12));
+  pointer-events:none;
+  transition:border-color .3s;
+}
+/* semicircle notches */
+.tag-tear::before,.tag-tear::after{
+  content:'';position:absolute;
+  top:50%;transform:translateY(-50%);
+  width:22px;height:22px;border-radius:50%;
+  background:#050505;border:1px solid var(--th-border,rgba(255,255,255,.1));
+}
+.tag-tear::before{left:-11px}
+.tag-tear::after{right:-11px}
+
+/* scissors + hint label */
+.tear-hint{
+  position:relative;z-index:2;
+  display:flex;align-items:center;gap:5px;
+  background:#050505;padding:2px 8px;border-radius:6px;
+  border:1px solid var(--th-dash,rgba(255,255,255,.12));
+  font-size:10px;color:rgba(255,255,255,.3);letter-spacing:.04em;
+  pointer-events:none;
+  transition:opacity .3s,color .3s;
+  white-space:nowrap;
+}
+.tear-hint .scissors{font-size:11px}
+
+/* hover: brighten hint */
+.tag-tear-zone:hover .tear-hint{color:rgba(255,255,255,.65)}
+.tag-tear-zone:hover .tag-tear{border-color:rgba(255,255,255,.25)}
+
+/* ── idle hint: пилится вправо как стикер ── */
+@keyframes stickerHintTop{
+  0%,100%{transform:translateX(0) rotate(0deg)}
+  30%{transform:translateX(14px) rotate(1.2deg) translateY(-3px)}
+  55%{transform:translateX(8px) rotate(.6deg) translateY(-1px)}
+  80%{transform:translateX(14px) rotate(1.2deg) translateY(-3px)}
+}
+@keyframes stickerHintBot{
+  0%,100%{transform:translateY(0)}
+  30%{transform:translateY(8px)}
+  55%{transform:translateY(4px)}
+  80%{transform:translateY(8px)}
+}
+.tear-playing .tag-half-top{animation:stickerHintTop 1.2s cubic-bezier(.36,.07,.19,.97) forwards}
+.tear-playing .tag-half-bottom{animation:stickerHintBot 1.2s cubic-bezier(.36,.07,.19,.97) forwards}
+
+/* ── reveal layer behind card ── */
+.price-wrap{position:relative}
+.price-reveal{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  border-radius:22px;
+  border:2px dashed rgba(0,255,133,.28);
+  color:var(--accent);font-size:1.1rem;font-weight:700;letter-spacing:-.02em;
+  opacity:0;transition:opacity .15s;
+  pointer-events:none;
+}
+.price-wrap.peeling .price-reveal{opacity:1}
+
+/* tier label */
+.tag-tier{font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:18px}
+
+/* big price */
+.tag-price-row{display:flex;align-items:baseline;gap:0;margin-bottom:6px}
+.tag-amount{font-size:4.2rem;font-weight:800;letter-spacing:-.07em;line-height:1;min-width:2.4ch}
+.tag-rub{font-size:1.5rem;font-weight:700;color:rgba(255,255,255,.45);margin-left:4px;align-self:flex-start;padding-top:6px}
+.tag-period{font-size:12px;color:rgba(255,255,255,.35);margin-left:4px;align-self:flex-end;margin-bottom:3px}
+.tag-sub{font-size:13px;color:rgba(255,255,255,.35);height:1.3em;overflow:hidden}
+.tag-save-wrap{height:22px;overflow:hidden;margin-top:6px}
+.tag-save{font-size:12px;color:var(--accent);opacity:0;transition:opacity .3s;font-weight:500}
+.tag-save.show{opacity:1}
+
+.plist{list-style:none;display:flex;flex-direction:column;gap:11px;margin-bottom:24px}
+.plist li{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text-soft)}
+.plist li strong{color:var(--text)}
+.plist li.dim{opacity:.4}
+.pcheck{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px}
+.pcheck-y{background:rgba(0,255,133,.12);color:var(--accent)}
+.pcheck-n{background:rgba(255,255,255,.04);color:rgba(255,255,255,.3)}
+
+/* barcode */
+.tag-barcode{
+  width:100%;height:24px;margin:20px 0 18px;border-radius:2px;opacity:.4;
+  background:repeating-linear-gradient(90deg,
+    rgba(255,255,255,.18) 0,rgba(255,255,255,.18) 2px,transparent 2px,transparent 5px,
+    rgba(255,255,255,.12) 5px,rgba(255,255,255,.12) 6px,transparent 6px,transparent 10px,
+    rgba(255,255,255,.18) 10px,rgba(255,255,255,.18) 13px,transparent 13px,transparent 15px,
+    rgba(255,255,255,.1) 15px,rgba(255,255,255,.1) 16px,transparent 16px,transparent 20px,
+    rgba(255,255,255,.18) 20px,rgba(255,255,255,.18) 23px,transparent 23px,transparent 26px,
+    rgba(255,255,255,.12) 26px,rgba(255,255,255,.12) 27px,transparent 27px,transparent 30px,
+    rgba(255,255,255,.18) 30px,rgba(255,255,255,.18) 32px,transparent 32px,transparent 36px,
+    rgba(255,255,255,.1) 36px,rgba(255,255,255,.1) 38px,transparent 38px,transparent 40px);
+}
+.tag-code{font-size:9px;letter-spacing:.12em;color:rgba(255,255,255,.2);text-align:center;font-family:monospace;margin-bottom:4px}
+
+/* ── FREE card ── */
+.tag-free{--th-bg:#0d0d0d;--th-border:rgba(255,255,255,.1);--th-dash:rgba(255,255,255,.12)}
+.tag-free .tag-amount{color:#fff}
+
+/* ── PLUS card ── */
+.tag-plus{--th-bg:#0b120e;--th-border:rgba(0,255,133,.22);--th-dash:rgba(0,255,133,.25)}
+.tag-plus .tag-amount{color:var(--accent)}
+.tag-plus .tag-tier{color:rgba(0,255,133,.5)}
+.tag-plus .tag-half-top{box-shadow:inset 0 1px 0 rgba(0,255,133,.08)}
+.tag-plus .tag-half-top::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 0%,rgba(0,255,133,.1),transparent 65%);
+  pointer-events:none;
+}
+.tag-plus .tag-half-top::after{border-color:transparent var(--bg) transparent transparent}
+.tag-plus .tag-barcode{
+  background:repeating-linear-gradient(90deg,
+    rgba(0,255,133,.22) 0,rgba(0,255,133,.22) 2px,transparent 2px,transparent 5px,
+    rgba(0,255,133,.12) 5px,rgba(0,255,133,.12) 6px,transparent 6px,transparent 10px,
+    rgba(0,255,133,.22) 10px,rgba(0,255,133,.22) 13px,transparent 13px,transparent 15px,
+    rgba(0,255,133,.1) 15px,rgba(0,255,133,.1) 16px,transparent 16px,transparent 20px,
+    rgba(0,255,133,.22) 20px,rgba(0,255,133,.22) 23px,transparent 23px,transparent 26px,
+    rgba(0,255,133,.12) 26px,rgba(0,255,133,.12) 27px,transparent 27px,transparent 30px,
+    rgba(0,255,133,.22) 30px,rgba(0,255,133,.22) 32px,transparent 32px,transparent 36px,
+    rgba(0,255,133,.1) 36px,rgba(0,255,133,.1) 38px,transparent 38px,transparent 40px);
+}
+.tag-plus .tag-code{color:rgba(0,255,133,.3)}
+.tag-plus .tear-hint{border-color:rgba(0,255,133,.2);color:rgba(0,255,133,.35)}
+.tag-plus .tag-tear-zone:hover .tear-hint{color:rgba(0,255,133,.8)}
+
+/* stamp */
+.tag-stamp{
+  position:absolute;top:22px;right:22px;width:62px;height:62px;border-radius:50%;
+  border:2px solid rgba(0,255,133,.35);display:flex;align-items:center;justify-content:center;
+  font-size:7px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);text-align:center;line-height:1.3;
+  transform:rotate(12deg);background:rgba(0,255,133,.05);
+  animation:stampPulse 3s ease-in-out infinite;z-index:4;
+}
+@keyframes stampPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,255,133,.2)}50%{box-shadow:0 0 0 6px rgba(0,255,133,0)}}
+
+/* toggle */
+.yr-row{display:flex;align-items:center;gap:12px;margin-bottom:28px;font-size:14px;color:var(--text-soft)}
+.tog{width:44px;height:26px;border-radius:999px;background:rgba(255,255,255,.1);border:none;cursor:pointer;position:relative;transition:.3s}
+.tog.on{background:var(--accent)}
+.tog::after{content:'';position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:4px;left:4px;transition:.3s}
+.tog.on::after{transform:translateX(18px);background:#000}
+.tog.on::after{transform:translateX(18px);background:#000}
+
+/* ─── eSIM scene ─────────────────────────────────────────── */
+.esim-grid{display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:center}
+.esim-visual{position:relative;height:420px;display:flex;align-items:center;justify-content:center}
+
+/* perspective wrapper — JS rotates this on mousemove */
+.sim-wrap{
+  perspective:900px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;
+}
+
+/* ambient glow under the card */
+.sim-glow{
+  position:absolute;width:320px;height:140px;
+  background:radial-gradient(ellipse,rgba(0,255,133,.22) 0%,transparent 70%);
+  bottom:-30px;filter:blur(28px);pointer-events:none;
+  animation:simGlowPulse 4s ease-in-out infinite;
+}
+@keyframes simGlowPulse{
+  0%,100%{opacity:.7;transform:scaleX(1)}
+  50%{opacity:1;transform:scaleX(1.12)}
+}
+
+/* ghost card behind (depth) */
+.sim-ghost{
+  position:absolute;
+  width:300px;height:190px;
+  border-radius:18px 6px 18px 18px;
+  clip-path:polygon(0 0,calc(100% - 26px) 0,100% 26px,100% 100%,0 100%);
+  background:linear-gradient(135deg,#0c1410,#0a110d);
+  border:1px solid rgba(0,255,133,.08);
+  transform:rotate(-6deg) translate(-12px,10px) scale(.96);
+  filter:blur(1px);
+  opacity:.55;
+}
+
+/* main card */
+.sim-card{
+  position:relative;
+  width:300px;height:190px;
+  border-radius:18px 6px 18px 18px;
+  clip-path:polygon(0 0,calc(100% - 26px) 0,100% 26px,100% 100%,0 100%);
+  background:linear-gradient(140deg,#0d1811 0%,#091208 55%,#0d1610 100%);
+  border:1px solid rgba(0,255,133,.18);
+  box-shadow:
+    0 0 0 1px rgba(0,255,133,.06),
+    0 24px 64px rgba(0,0,0,.65),
+    inset 0 1px 0 rgba(0,255,133,.12);
+  transform-style:preserve-3d;
+  transition:box-shadow .2s;
+  user-select:none;
+  overflow:hidden;
+}
+
+/* holographic shimmer overlay — position driven by JS */
+.sim-holo{
+  position:absolute;inset:0;pointer-events:none;
+  background:conic-gradient(from 0deg at 50% 50%,
+    transparent 0deg,
+    rgba(0,255,133,.07) 40deg,
+    rgba(56,189,248,.07) 80deg,
+    rgba(168,85,247,.06) 120deg,
+    transparent 180deg,
+    rgba(0,255,133,.04) 260deg,
+    transparent 360deg);
+  opacity:0;
+  transition:opacity .3s;
+  mix-blend-mode:overlay;
+  border-radius:inherit;
+}
+.sim-card:hover .sim-holo{opacity:1}
+
+/* circuit trace lines */
+.sim-circuit{
+  position:absolute;right:0;top:0;
+  width:140px;height:100%;opacity:.08;pointer-events:none;
+}
+
+/* ── chip ── */
+.sim-chip{
+  position:absolute;top:30px;left:26px;
+  width:52px;height:42px;
+  background:linear-gradient(135deg,#b8891c 0%,#f0ca50 35%,#d4a030 60%,#e8bc40 100%);
+  border-radius:6px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.3);
+  overflow:hidden;
+}
+/* 8 contact pads */
+.sim-contacts{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:3px;padding:5px;width:100%;height:100%;
+  box-sizing:border-box;
+}
+.sim-contacts span{
+  background:linear-gradient(135deg,#c89420,#a07018);
+  border-radius:2px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.15);
+}
+/* scan line across chip */
+.sim-scan{
+  position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 0%,rgba(255,220,80,.35) 50%,transparent 100%);
+  height:30%;top:-30%;
+  animation:chipScan 3s ease-in-out infinite;
+}
+@keyframes chipScan{
+  0%{top:-30%}
+  60%{top:100%}
+  100%{top:100%}
+}
+
+/* ── brand area ── */
+.sim-brand-block{
+  position:absolute;top:28px;right:20px;
+  text-align:right;
+}
+.sim-logo-text{
+  font-size:15px;font-weight:800;letter-spacing:-.03em;color:#fff;
+  line-height:1;
+}
+.sim-logo-text span{color:var(--accent)}
+.sim-type-badge{
+  display:inline-block;margin-top:6px;
+  font-size:9px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:#000;
+  background:var(--accent);
+  padding:2px 7px;border-radius:4px;
+}
+
+/* ── middle stripe ── */
+.sim-stripe{
+  position:absolute;top:50%;left:0;right:0;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,255,133,.2),rgba(0,255,133,.06),transparent);
+  transform:translateY(-50%);
+}
+
+/* ── signal bars ── */
+.sim-signal{
+  position:absolute;bottom:22px;right:20px;
+  display:flex;align-items:flex-end;gap:3px;
+}
+.sim-signal span{
+  width:5px;border-radius:2px 2px 0 0;
+  background:var(--accent);
+  animation:signalBar 1.8s ease-in-out infinite;
+}
+.sim-signal span:nth-child(1){height:6px; animation-delay:0s}
+.sim-signal span:nth-child(2){height:10px;animation-delay:.15s}
+.sim-signal span:nth-child(3){height:15px;animation-delay:.30s}
+.sim-signal span:nth-child(4){height:20px;animation-delay:.45s}
+@keyframes signalBar{
+  0%,100%{opacity:.3}50%{opacity:1}
+}
+
+/* ── bottom label ── */
+.sim-footer-label{
+  position:absolute;bottom:22px;left:26px;
+}
+.sim-nano{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.28);line-height:1.6}
+.sim-iccid{font-size:9px;letter-spacing:.06em;color:rgba(0,255,133,.4);font-variant-numeric:tabular-nums}
+
+/* ── notch corner ── */
+.sim-notch{
+  position:absolute;top:0;right:0;
+  width:26px;height:26px;
+  background:linear-gradient(225deg,#050505 50%,transparent 50%);
+}
+
+/* ── floating animation on the ghost card only ── */
+@keyframes simFloat{
+  0%,100%{transform:rotate(-6deg) translate(-12px,10px) scale(.96)}
+  50%{transform:rotate(-6deg) translate(-12px,-2px) scale(.96)}
+}
+.sim-ghost{animation:simFloat 6s ease-in-out infinite}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.step-card{border-radius:30px;padding:32px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);transition:.5s}
+.step-card:hover{border-color:rgba(0,255,133,.2);transform:translateY(-6px)}
+.step-n{width:40px;height:40px;border-radius:12px;background:var(--accent);color:#000;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.step-card h3{font-size:1.2rem;font-weight:600;margin-bottom:10px}
+.step-card p{color:var(--text-soft);line-height:1.7;font-size:14px}
+
+footer{padding:80px 0 100px}
+.footer-box{border-radius:40px;padding:80px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);text-align:center;position:relative;overflow:hidden}
+.footer-box::before{content:"";position:absolute;width:500px;height:500px;background:rgba(0,255,133,.08);border-radius:50%;filter:blur(100px);top:-250px;left:50%;transform:translateX(-50%)}
+.footer-box h2{position:relative;font-size:clamp(2.5rem,6vw,4.5rem);line-height:.92;letter-spacing:-.07em;font-weight:800}
+.footer-box p{position:relative;margin:30px auto 50px;max-width:600px;color:var(--text-soft);line-height:1.8;font-size:1.05rem}
+.footer-actions{position:relative;display:flex;justify-content:center;gap:20px;flex-wrap:wrap}
+footer .container{display:flex;flex-direction:column;align-items:center;gap:0}
+.foot-nav{
+  position:static!important;top:auto!important;width:auto!important;z-index:auto!important;
+  margin-top:40px;display:flex;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap;
+  backdrop-filter:none;background:transparent;border:none;
+}
+.foot-nav a{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:44px;padding:0 22px;border-radius:999px;
+  font-size:14px;font-weight:500;color:var(--text);
+  text-decoration:none;border:1px solid var(--border);
+  background:rgba(255,255,255,.04);transition:.3s;
+}
+.foot-nav a:hover{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff}
+.foot-copy{margin-top:24px;text-align:center;font-size:13px;color:var(--text-soft);width:100%}
+
+/* ═══════════ RESPONSIVE ═══════════ */
+
+/* prevent any horizontal overflow globally */
+html,body{max-width:100%;overflow-x:hidden}
+*{box-sizing:border-box}
+
+@media(max-width:1100px){
+  .hero-grid,.esim-grid{grid-template-columns:1fr}
+  .hero-visual{height:auto;min-height:0}
+  .globe-mount{width:min(100%,460px);margin:0 auto}
+  .cards{grid-template-columns:repeat(2,1fr)}
+  .steps{grid-template-columns:1fr}
+  .price-grid{grid-template-columns:1fr;max-width:480px}
+  .stats{flex-direction:column}
+  .esim-visual{order:-1;height:300px}
+  .sim-card,.sim-ghost{width:260px;height:165px}
+  .sim-ghost{transform:rotate(-6deg) translate(-10px,8px) scale(.96)}
+  .section{padding:90px 0}
+}
+
+@media(max-width:768px){
+  /* nav */
+  .nav-links{display:none}
+  .nav-inner{height:64px}
+  .nav-actions .btn{height:42px;padding:0 18px;font-size:13px}
+
+  /* hero */
+  .hero{padding-top:100px}
+  .hero h1{font-size:clamp(2rem,9vw,2.8rem);max-width:100%}
+  .hero-lead{font-size:15px;max-width:100%}
+  .hero-actions{flex-direction:column;align-items:stretch;gap:12px}
+  .hero-actions .btn{width:100%;justify-content:center;height:52px}
+
+  /* stats */
+  .stats{flex-direction:column;gap:12px}
+  .stat-card{min-width:0;width:100%}
+
+  /* globe */
+  .globe-mount{width:min(100%,340px)}
+  .globe-hint{display:none}
+  .globe-panel{
+    position:fixed;left:12px;right:12px;bottom:16px;
+    width:auto;transform:translateY(14px);
   }
-  #screenAuth.active { display: flex; }
+  .globe-panel.visible{transform:translateY(0)}
 
-  #screenAuth .logo-anim {
-    position: relative; width: 176px; height: 176px;
-    display: flex; align-items: center; justify-content: center;
-    margin-bottom: 24px; flex-shrink: 0;
-  }
-  #screenAuth .logo-anim .ring {
-    position: absolute; border-radius: 50%;
-    border: 4px solid var(--accent, #3aa8fc);
-    animation: pulse 2.4s ease-out infinite;
-  }
-  #screenAuth .logo-anim .ring:nth-child(1) { width:100%;height:100%;opacity:.15;animation-delay:0s; }
-  #screenAuth .logo-anim .ring:nth-child(2) { width:75%;height:75%;opacity:.25;animation-delay:.4s; }
-  #screenAuth .logo-anim .ring:nth-child(3) { width:50%;height:50%;opacity:.35;animation-delay:.8s; }
-  
-  #screenAuth .logo-anim .logo-core {
-    width: 88px; height: 88px; border-radius: 50%;
-    background: var(--accent, #3aa8fc);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 1; box-shadow: 0 8px 44px rgba(58, 168, 252,.35);
-  }
-  #screenAuth .logo-anim .logo-core svg { width:75px;height:75px;fill:currentColor;color:#fff; }
-  
-  #screenAuth .app-name { font-size:22px;font-weight:700;line-height:1.2;text-align:center;margin-bottom:4px; color: var(--text_color, #fff); }
-  #screenAuth .app-tagline { font-size:14px;font-weight:400;line-height:1.4;color:var(--hint_color, #8e9db0);text-align:center;margin-bottom:24px; }
-  
-  #screenAuth .auth-card { width:100%;max-width:360px;background:var(--section_bg_color, #21303f);border:1px solid var(--section_separator_color, rgba(255,255,255,.08));border-radius:14px;padding:20px 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); }
-  
-  #screenAuth .tabs { display:flex;background:var(--secondary_bg_color, rgba(255,255,255,0.07));border-radius:12px;padding:4px;margin-bottom:24px; }
-  #screenAuth .tab-btn { flex:1;text-align:center;padding:10px;border-radius:9px;font-size:13px;font-weight:600;color:var(--hint_color, #8e9db0);cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent; border:none; background:none; }
-  #screenAuth .tab-btn.active { background:var(--accent, #3aa8fc);color:#fff; }
-  
-  #screenAuth .panel { display:none; }
-  #screenAuth .panel.active { display:block; }
-  
-  #screenAuth .tg-btn { width:100%;padding:14px;background:var(--accent, #3aa8fc);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:opacity .15s, transform .1s;-webkit-tap-highlight-color:transparent; }
-  #screenAuth .tg-btn:active { transform:scale(.98);opacity:.85; }
-  #screenAuth .tg-btn svg { width:22px;height:22px;fill:#fff;flex-shrink:0; }
-  
-  #screenAuth .tg-hint { margin-top:14px;font-size:12px;color:var(--hint_color, #8e9db0);text-align:center;line-height:1.5; }
-  
-  #screenAuth .polling { display:none;margin-top:20px;padding:14px;background:rgba(58,168,252,.08);border:1px solid rgba(58,168,252,.2);border-radius:12px;text-align:center; }
-  #screenAuth .polling.visible { display:block; }
-  #screenAuth .polling-text { font-size:13px;color:var(--accent, #3aa8fc); }
-  
-  #screenAuth .dots::after { content:'';animation:dotdot 1.5s infinite; }
-  @keyframes dotdot { 0%{content:'';}25%{content:'.';}50%{content:'..';}75%{content:'...';} }
-  
-  #screenAuth .input-group { margin-bottom:14px; text-align: left; }
-  #screenAuth .input-label { font-size:13px;color:var(--hint_color, #8e9db0);margin-bottom:6px;display:block;font-weight:500;margin-left:4px; }
-  #screenAuth .input-field { width:100%;padding:14px 16px;background:var(--secondary_bg_color, rgba(255,255,255,0.07));border:1px solid var(--section_separator_color, transparent);border-radius:12px;color:var(--text_color, #fff);font-size:16px;font-family:inherit;outline:none;transition:all .2s; -webkit-appearance:none; appearance:none; }
-  #screenAuth .input-field:focus { border-color:rgba(58,168,252,0.4);background:var(--secondary_bg_color, rgba(255,255,255,0.1)); }
-  #screenAuth .input-field::placeholder { color:var(--hint_color, #8e9db0); }
-  
-  #screenAuth .sub-tabs { display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--separator_color, rgba(255,255,255,0.08)); }
-  #screenAuth .sub-tab { flex:1;text-align:center;padding:10px;font-size:13px;font-weight:600;color:var(--hint_color, #8e9db0);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s; }
-  #screenAuth .sub-tab.active { color:var(--accent, #3aa8fc);border-bottom-color:var(--accent, #3aa8fc); }
-  
-  #screenAuth .auth-btn { width:100%;padding:14px;background:var(--accent, #3aa8fc);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;transition:opacity .15s, transform .1s;margin-top:4px;-webkit-tap-highlight-color:transparent; }
-  #screenAuth .auth-btn:active { transform:scale(.98);opacity:.85; }
-  
-  #screenAuth .error-msg { background:rgba(255,69,58,.1);border:1px solid rgba(255,69,58,.3);border-radius:10px;padding:12px;font-size:13px;color:#ff6b61;margin-bottom:14px;display:none; text-align:center; }
-  #screenAuth .error-msg.visible { display:block; }
-  #screenAuth .success-msg { background:rgba(52,199,89,.1);border:1px solid rgba(52,199,89,.3);border-radius:10px;padding:12px;font-size:13px;color:#4cd964;margin-bottom:14px;display:none;text-align:center; }
-  #screenAuth .success-msg.visible { display:block; }
-  
-  #screenAuth .divider { display:flex;align-items:center;gap:12px;margin:20px 0 0;color:var(--hint_color, #8e9db0);font-size:12px; }
-  #screenAuth .divider::before,#screenAuth .divider::after { content:'';flex:1;height:1px;background:var(--separator_color, rgba(255,255,255,0.08)); }
+  /* cards grid */
+  .cards{grid-template-columns:1fr}
+  .card{min-height:auto}
+  .card-illustration{width:120px;height:120px}
 
-  /* Pre-auth guard: while auth screen is active, hide app navigation/content */
-  #screenAuth.active ~ #tabBar {
-    display: none !important;
-  }
-  #screenAuth.active ~ .screen.active {
-    display: none !important;
-  }
+  /* pricing */
+  .price-grid{max-width:100%}
+  .price-wrap{width:100%}
+  .price-card{touch-action:pan-y} /* allow vertical scroll, horizontal swipe */
+  .tag-half-top{padding:40px 24px 22px}
+  .tag-half-bottom{padding:18px 24px 24px}
+  .tag-amount{font-size:3.4rem}
+  .tag-tear-zone{height:32px}
 
-  /* Light theme contrast tuning for auth screen */
-  html[data-theme="light"] #screenAuth .app-name { color: #1b2430; }
-  html[data-theme="light"] #screenAuth .app-tagline { color: #5c6a7a; }
-  html[data-theme="light"] #screenAuth .auth-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
-  }
-  html[data-theme="light"] #screenAuth .tabs { background: #eef2f7; }
-  html[data-theme="light"] #screenAuth .tab-btn { color: #556274; }
-  html[data-theme="light"] #screenAuth .tg-hint { color: #66758a; }
-  html[data-theme="light"] #screenAuth .input-label { color: #556274; }
-  html[data-theme="light"] #screenAuth .input-field {
-    background: #f5f8fc;
-    color: #1f2937;
-    border: 1px solid #d7e0ea;
-  }
-  html[data-theme="light"] #screenAuth .input-field::placeholder { color: #8a97a8; }
-  html[data-theme="light"] #screenAuth .sub-tabs { border-bottom-color: #dbe3ec; }
-  html[data-theme="light"] #screenAuth .sub-tab { color: #556274; }
-  html[data-theme="light"] #screenAuth .divider { color: #66758a; }
-  html[data-theme="light"] #screenAuth .divider::before,
-  html[data-theme="light"] #screenAuth .divider::after { background: #dbe3ec; }
+  /* esim */
+  .esim-visual{height:260px}
+  .sim-card,.sim-ghost{width:220px;height:140px}
+  .sim-chip{width:40px;height:32px;top:22px;left:18px}
+  .sim-brand-block{top:20px;right:14px}
+  .sim-logo-text{font-size:12px}
+  .sim-footer-label{bottom:16px;left:18px}
+  .sim-signal{bottom:16px;right:14px}
 
-  </style>
+  /* steps */
+  .steps{grid-template-columns:1fr}
+
+  /* footer */
+  .footer-box{padding:48px 24px}
+  .footer-box h2{font-size:clamp(2rem,8vw,3rem)}
+  .footer-actions{flex-direction:column;align-items:stretch;gap:12px}
+  .footer-actions .btn{width:100%;justify-content:center}
+  .foot-nav{flex-direction:column;align-items:stretch}
+  .foot-nav a{width:100%;justify-content:center}
+
+  /* sections */
+  .section{padding:70px 0}
+  .section-head{margin-bottom:48px}
+  .section-title{font-size:clamp(2rem,7vw,3rem)}
+
+  /* container */
+  .container{width:92%}
+}
+
+@media(max-width:480px){
+  /* globe */
+  .globe-mount{width:min(100%,300px)}
+  .globe-stats{grid-template-columns:repeat(3,1fr)}
+  .globe-stat b{font-size:.9rem}
+  .globe-stat span{font-size:9px}
+
+  /* hero */
+  .hero h1{font-size:clamp(1.8rem,10vw,2.4rem)}
+  .dot{width:8px;height:8px}
+
+  /* pricing tag */
+  .tag-half-top{padding:36px 20px 18px}
+  .tag-half-bottom{padding:16px 20px 20px}
+  .tag-amount{font-size:3rem}
+  .plist{gap:9px}
+  .plist li{font-size:13px}
+
+  /* esim */
+  .esim-visual{display:none} /* hide on very small – keeps layout clean */
+  .esim-grid{grid-template-columns:1fr}
+
+  /* section */
+  .section{padding:56px 0}
+  .section-head{margin-bottom:36px}
+  .container{width:94%}
+
+  /* footer */
+  .footer-box{padding:36px 18px}
+  .footer-box h2{font-size:clamp(1.7rem,9vw,2.5rem);line-height:1.05}
+}
+</style>
 </head>
-
 <body>
 
-  <!-- SVG Definitions: Protected from script overwrite -->
-  <div id="logoHost" aria-hidden="true" style="display:none;">
-    <svg>
-      <defs>
-        <g id="svoy-logo-path" transform="translate(0,1024) scale(0.1,-0.1)">
-          <path
-            d="M3033 7920 c-212 -22 -363 -95 -495 -240 -73 -79 -117 -161 -150 -276 -29 -103 -31 -305 -4 -434 54 -255 174 -534 386 -895 48 -82 100 -170 114 -195 57 -98 95 -179 122 -260 23 -73 28 -102 28 -200 0 -104 -3 -124 -32 -209 -32 -92 -84 -197 -149 -298 -18 -29 -33 -54 -33 -56 0 -2 -31 -56 -68 -118 -233 -387 -382 -727 -449 -1024 -24 -104 -24 -369 0 -455 72 -260 273 -452 555 -527 87 -23 115 -26 277 -26 164 -1 193 2 333 31 341 71 733 234 1167 483 224 129 350 210 580 375 402 289 582 443 985 840 315 310 347 334 453 334 129 0 207 -72 367 -340 213 -357 353 -774 320 -950 -22 -117 -80 -161 -221 -168 -104 -5 -185 7 -340 53 -265 78 -526 201 -772 362 -85 56 -132 82 -140 76 -7 -5 -52 -41 -102 -80 -105 -82 -448 -329 -467 -336 -16 -5 -16 -5 57 -54 260 -174 631 -360 955 -481 166 -61 203 -73 355 -111 197 -49 257 -56 465 -56 214 0 258 8 395 67 97 43 169 94 246 175 111 118 169 245 190 417 17 141 -6 336 -62 531 -34 116 -137 361 -219 520 -79 154 -96 183 -288 509 -61 104 -126 228 -144 275 -31 82 -32 93 -33 226 0 197 12 228 250 633 6 10 43 73 84 141 162 271 279 555 327 790 22 109 25 144 22 266 -4 121 -8 152 -33 224 -78 228 -251 382 -498 441 -170 41 -376 37 -657 -11 -247 -43 -676 -193 -985 -346 -91 -45 -395 -217 -395 -223 0 -3 56 -43 124 -89 68 -46 188 -132 267 -191 l144 -107 50 32 c268 171 612 316 895 375 125 27 292 32 363 11 57 -17 101 -63 118 -123 42 -155 -74 -531 -259 -843 -109 -184 -196 -291 -266 -327 -30 -16 -60 -22 -111 -22 -61 -1 -77 3 -126 31 -56 33 -82 55 -374 321 -747 679 -1516 1161 -2230 1397 -340 113 -652 160 -892 135z m369 -575 c108 -17 147 -26 322 -81 320 -100 663 -275 1071 -547 392 -262 846 -639 1000 -830 238 -295 263 -543 86 -845 -107 -184 -362 -435 -736 -728 -712 -557 -1562 -980 -1981 -987 -82 -2 -96 1 -149 28 -137 70 -146 207 -35 528 84 245 240 551 369 724 89 121 155 164 251 164 107 1 129 -15 400 -291 135 -137 286 -284 335 -326 50 -43 93 -81 96 -86 5 -8 106 57 194 125 117 90 295 241 293 247 -2 4 -52 50 -113 102 -149 129 -358 347 -423 440 -118 172 -167 335 -145 487 36 246 208 472 605 792 l97 78 -92 74 c-51 40 -163 122 -249 181 l-157 106 -58 -46 c-108 -88 -217 -188 -410 -376 -200 -195 -252 -233 -338 -245 -92 -12 -174 33 -265 147 -130 161 -314 542 -370 765 -42 164 -27 311 37 367 54 49 183 60 365 33z" />
-        </g>
-      </defs>
-    </svg>
+<div id="scroll-bar"></div>
+<div id="cursor-glow"></div>
+<div class="bg">
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+  <div class="grid"></div>
+</div>
+
+<nav class="site-nav" aria-label="Главная навигация">
+  <div class="nav-inner">
+    <a href="/" class="logo">Svoy<span>VPN</span></a>
+    <div class="nav-links">
+      <a href="#features">Возможности</a>
+      <a href="#pricing">Тарифы</a>
+      <a href="#esim">eSIM</a>
+      <a href="#howto">Как начать</a>
+    </div>
+    <div class="nav-actions">
+      <a href="https://t.me/SvoyVPN_bot" target="_blank" rel="noopener" class="btn btn-secondary">Бот</a>
+      <a href="/app.html#home" class="btn btn-primary">Дашборд</a>
+    </div>
   </div>
+</nav>
 
-  <!-- SVG sprite host — заполняется через JS из sprite.svg -->
-  <div id="spriteHost" aria-hidden="true" style="display:none;"></div>
-
-  <div class="app">
-
-    <!-- ═══ SCREEN: VPN ═══ -->
-    
-    <!-- ═══ SCREEN: AUTH ═══ -->
-    <div id="screenAuth" class="screen">
-      <!-- Logo & Header -->
-      <div class="logo-anim">
-        <div class="ring" style="--ring-opacity:.15;"></div>
-        <div class="ring" style="--ring-opacity:.25;"></div>
-        <div class="ring" style="--ring-opacity:.35;"></div>
-        <div class="logo-core">
-          <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-            <g transform="translate(0,1024) scale(0.1,-0.1)">
-              <path d="M3033 7920 c-212 -22 -363 -95 -495 -240 -73 -79 -117 -161 -150 -276 -29 -103 -31 -305 -4 -434 54 -255 174 -534 386 -895 48 -82 100 -170 114 -195 57 -98 95 -179 122 -260 23 -73 28 -102 28 -200 0 -104 -3 -124 -32 -209 -32 -92 -84 -197 -149 -298 -18 -29 -33 -54 -33 -56 0 -2 -31 -56 -68 -118 -233 -387 -382 -727 -449 -1024 -24 -104 -24 -369 0 -455 72 -260 273 -452 555 -527 87 -23 115 -26 277 -26 164 -1 193 2 333 31 341 71 733 234 1167 483 224 129 350 210 580 375 402 289 582 443 985 840 315 310 347 334 453 334 129 0 207 -72 367 -340 213 -357 353 -774 320 -950 -22 -117 -80 -161 -221 -168 -104 -5 -185 7 -340 53 -265 78 -526 201 -772 362 -85 56 -132 82 -140 76 -7 -5 -52 -41 -102 -80 -105 -82 -448 -329 -467 -336 -16 -5 -16 -5 57 -54 260 -174 631 -360 955 -481 166 -61 203 -73 355 -111 197 -49 257 -56 465 -56 214 0 258 8 395 67 97 43 169 94 246 175 111 118 169 245 190 417 17 141 -6 336 -62 531 -34 116 -137 361 -219 520 -79 154 -96 183 -288 509 -61 104 -126 228 -144 275 -31 82 -32 93 -33 226 0 197 12 228 250 633 6 10 43 73 84 141 162 271 279 555 327 790 22 109 25 144 22 266 -4 121 -8 152 -33 224 -78 228 -251 382 -498 441 -170 41 -376 37 -657 -11 -247 -43 -676 -193 -985 -346 -91 -45 -395 -217 -395 -223 0 -3 56 -43 124 -89 68 -46 188 -132 267 -191 l144 -107 50 32 c268 171 612 316 895 375 125 27 292 32 363 11 57 -17 101 -63 118 -123 42 -155 -74 -531 -259 -843 -109 -184 -196 -291 -266 -327 -30 -16 -60 -22 -111 -22 -61 -1 -77 3 -126 31 -56 33 -82 55 -374 321 -747 679 -1516 1161 -2230 1397 -340 113 -652 160 -892 135z m369 -575 c108 -17 147 -26 322 -81 320 -100 663 -275 1071 -547 392 -262 846 -639 1000 -830 238 -295 263 -543 86 -845 -107 -184 -362 -435 -736 -728 -712 -557 -1562 -980 -1981 -987 -82 -2 -96 1 -149 28 -137 70 -146 207 -35 528 84 245 240 551 369 724 89 121 155 164 251 164 107 1 129 -15 400 -291 135 -137 286 -284 335 -326 50 -43 93 -81 96 -86 5 -8 106 57 194 125 117 90 295 241 293 247 -2 4 -52 50 -113 102 -149 129 -358 347 -423 440 -118 172 -167 335 -145 487 36 246 208 472 605 792 l97 78 -92 74 c-51 40 -163 122 -249 181 l-157 106 -58 -46 c-108 -88 -217 -188 -410 -376 -200 -195 -252 -233 -338 -245 -92 -12 -174 33 -265 147 -130 161 -314 542 -370 765 -42 164 -27 311 37 367 54 49 183 60 365 33z"/>
-            </g>
-          </svg>
+<section class="hero">
+  <div class="container">
+    <div class="hero-grid">
+      <div>
+        <div class="hero-tag">
+          <div class="dot"></div>
+          Работает прямо сейчас
         </div>
-      </div>
-      <div class="app-name">SvoyVPN</div>
-      <div class="app-tagline">Быстрый и надёжный, потому что Свой</div>
-
-      <!-- Auth Card -->
-      <div class="auth-card">
-        <div class="tabs">
-          <button class="tab-btn active" id="tabTg">Telegram</button>
-          <button class="tab-btn" id="tabEmail">Email</button>
+        <h1>
+          <span class="line">Приватная сеть</span>
+          <span class="line">для <span>интернета</span></span>
+        </h1>
+        <p class="hero-lead">
+          Bypass-трафик для YouTube, TikTok и ChatGPT.<br>
+          Все устройства, eSIM для путешествий.<br>
+          Тариф Free навсегда бесплатно, Plus от 149₽/мес.
+        </p>
+        <div class="hero-actions">
+          <a href="/app.html#home" class="btn btn-primary">Открыть дашборд</a>
+          <a href="https://t.me/SvoyVPN_bot" target="_blank" rel="noopener" class="btn btn-secondary">Открыть в Telegram</a>
         </div>
-
-        <!-- Telegram Panel -->
-        <div id="panelTg" class="panel active">
-          <button class="tg-btn" id="btnTgLogin">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.02 9.52c-.15.658-.54.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.462c.537-.194 1.006.131.883.702z"/>
-            </svg>
-            Войти через Telegram
-          </button>
-          <div id="pollingBox" class="polling">
-            <div class="polling-text">Ожидаем подтверждения от бота<span class="dots"></span></div>
+        <div class="stats">
+          <div class="stat-card reveal">
+            <div class="stat-number" data-count="50000" data-suffix="к+">50к+</div>
+            <div class="stat-label">Пользователей в сети SvoyVPN</div>
           </div>
-          <div id="tgError" class="error-msg"></div>
-          <div class="tg-hint">Вы будете перенаправлены в Telegram. После нажатия «Старт» в боте вход произойдёт автоматически.</div>
-        </div>
-
-        <!-- Email Panel -->
-        <div id="panelEmail" class="panel">
-          <div class="sub-tabs">
-            <div id="subTabLogin" class="sub-tab active">Вход</div>
-            <div id="subTabRegister" class="sub-tab">Регистрация</div>
-          </div>
-          
-          <!-- Login Form -->
-          <div id="webLoginForm">
-            <div id="loginError" class="error-msg"></div>
-            <div class="input-group">
-              <label class="input-label">Email</label>
-              <input class="input-field" type="email" id="loginUsr" name="loginUsr" placeholder="you@example.com" value="" autocomplete="off"/>
-            </div>
-            <div class="input-group">
-              <label class="input-label">Пароль</label>
-              <input class="input-field" type="password" id="loginKey" name="loginKey" placeholder="••••••••" value="" autocomplete="new-password"/>
-            </div>
-            <div style="text-align:right;margin-bottom:16px;">
-              <a href="javascript:void(0)" id="btnShowReset" style="color:#8e9db0;font-size:13px;text-decoration:none;">Забыли пароль?</a>
-            </div>
-            <button class="auth-btn" id="btnLoginSubmit">Войти в аккаунт</button>
-          </div>
-
-          <!-- Reset Password Form -->
-          <div id="webResetForm" style="display:none;">
-            <div id="resetError" class="error-msg"></div>
-            <div id="resetSuccess" class="success-msg"></div>
-            <div id="resetStep1">
-              <div class="input-group">
-                <label class="input-label">Email</label>
-                <input class="input-field" type="email" id="resetEmail" placeholder="you@example.com"/>
-              </div>
-              <button class="auth-btn" id="btnResetSendOtp">Получить код</button>
-            </div>
-            <div id="resetStep2" style="display:none;">
-              <p style="font-size:13px;color:#8e9db0;margin-bottom:14px;text-align:center;">Введите код из письма и новый пароль</p>
-              <div class="input-group">
-                <label class="input-label">Код из письма</label>
-                <input class="input-field" type="text" id="resetOtp" placeholder="123456" maxlength="6" inputmode="numeric"/>
-              </div>
-              <div class="input-group">
-                <label class="input-label">Новый пароль</label>
-                <input class="input-field" type="password" id="resetNewPass" placeholder="••••••••"/>
-              </div>
-              <button class="auth-btn" id="btnResetSubmit">Сменить пароль</button>
-            </div>
-            <button id="btnResetBack" style="width:100%;padding:12px;background:none;border:none;color:#8e9db0;font-size:13px;cursor:pointer;margin-top:8px;">← Вернуться ко входу</button>
-          </div>
-
-          <!-- Register Form -->
-          <div id="webRegisterForm" style="display:none;">
-            <div id="registerError" class="error-msg"></div>
-            <div id="registerSuccess" class="success-msg"></div>
-            <div id="regStep1">
-              <div class="input-group">
-                <label class="input-label">Email</label>
-                <input class="input-field" type="email" id="regUsr" name="regUsr" placeholder="you@example.com" value="" autocomplete="off"/>
-              </div>
-              <div class="input-group">
-                <label class="input-label">Пароль (минимум 6 символов)</label>
-                <input class="input-field" type="password" id="regKey1" name="regKey1" placeholder="••••••••" value="" autocomplete="new-password"/>
-              </div>
-              <div class="input-group">
-                <label class="input-label">Повторите пароль</label>
-                <input class="input-field" type="password" id="regKey2" name="regKey2" placeholder="••••••••" value="" autocomplete="new-password"/>
-              </div>
-              <button class="auth-btn" id="btnRegSendOtp">Получить код на email</button>
-            </div>
-            <div id="regStep2" style="display:none;">
-              <p style="font-size:13px;color:#8e9db0;margin-bottom:14px;text-align:center;">Введите 6-значный код,<br>отправленный на вашу почту</p>
-              <div class="input-group">
-                <label class="input-label">Код подтверждения</label>
-                <input class="input-field" type="text" id="regOtp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code"/>
-              </div>
-              <button class="auth-btn" id="btnRegSubmit">Подтвердить и войти</button>
-              <button id="btnRegBack" style="width:100%;padding:12px;background:none;border:none;color:#8e9db0;font-size:13px;cursor:pointer;margin-top:8px;">← Изменить email</button>
-            </div>
+          <div class="stat-card reveal" style="transition-delay:.12s">
+            <div class="stat-number" data-count="99.9" data-suffix="%">99.9%</div>
+            <div class="stat-label">Uptime серверов и стабильная маршрутизация</div>
           </div>
         </div>
       </div>
-    </div>
-<div id="screenVpn" class="screen">
-      <div class="screen-content vpn-screen-layout">
-
-        <!-- Animated logo -->
-        <div class="vpn-screen__top">
-          <div class="logo-anim">
-            <div class="ring" style="--ring-opacity:.15;"></div>
-            <div class="ring" style="--ring-opacity:.25;"></div>
-            <div class="ring" style="--ring-opacity:.35;"></div>
-            <div class="logo-core">
-              <svg viewBox="0 0 1024 1024" fill="currentColor" style="width:75px;height:75px;">
-                <use href="#svoy-logo-path" />
-              </svg>
-            </div>
-          </div>
-
-          <div class="gap-8"></div>
-          <p class="title text-center">SvoyVPN</p>
-          <p class="body text-muted text-center" style="margin-top:4px;">Быстрый и надёжный, потому что Свой</p>
-          <p id="vpnStatus" style="display:none;"></p>
-
-          <div class="gap-10"></div>
-          <div class="product-switch" role="tablist" aria-label="Продукт">
-            <button type="button" class="product-switch__btn product-switch__btn--active" data-product="vpn" id="btnProductVpn" aria-selected="true">VPN</button>
-            <button type="button" class="product-switch__btn" data-product="esim" id="btnProductEsim" aria-selected="false">eSIM</button>
-          </div>
+      <div class="hero-visual">
+        <div id="globe-mount" class="globe-mount" aria-label="Интерактивная карта серверов SvoyVPN">
+          <div class="globe-loading" id="globe-loading">Загрузка сети…</div>
         </div>
-
-        <div class="vpn-screen__mid">
-          <!-- Десктоп (≥1024px): карта на главной VPN; моб. — скрыто в CSS -->
-          <div class="vpn-desktop-map-block">
-            <div class="vpn-desktop-map-block__toolbar">
-              <p class="section-title vpn-desktop-map-block__title" style="display:flex;align-items:center;gap:6px; margin:0;">
-                <svg style="width:16px;height:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <path
-                    d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-                </svg>
-                Доступные сервера
-              </p>
-            </div>
-            <div id="serverMapWrap" class="server-map-wrap" style="display: none;">
-              <div id="mapContainer" class="map-container">
-                <!-- SVG and pins go here -->
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="vpn-screen__bottom">
-          <div id="subBlockBox" class="vpn-screen__sub-box">
-            <!-- Loaded by JS -->
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- ═══ SCREEN: eSIM ═══ -->
-    <div id="screenEsim" class="screen">
-      <div class="screen-content vpn-screen-layout">
-
-        <div class="vpn-screen__top">
-          <div class="logo-anim">
-            <div class="ring" style="--ring-opacity:.15;"></div>
-            <div class="ring" style="--ring-opacity:.25;"></div>
-            <div class="ring" style="--ring-opacity:.35;"></div>
-            <div class="logo-core">
-              <svg viewBox="0 0 1024 1024" fill="currentColor" style="width:75px;height:75px;">
-                <use href="#svoy-logo-path" />
-              </svg>
-            </div>
-          </div>
-
-          <div class="gap-8"></div>
-          <div class="text-center" style="margin-top:6px;">
-            <span class="esim-title-with-beta title">
-              <span class="esim-title-with-beta__text">Svoy eSIM</span>
-              <span class="esim-beta-corner" aria-hidden="true">beta</span>
-            </span>
-          </div>
-          <p class="body text-muted text-center" style="margin-top:6px;">Тариф по стране — оплата как у подписки (Stars, карта, Crypto Pay)</p>
-          <p id="esimModeHint" class="caption text-muted text-center" style="margin-top:8px;opacity:0.85;"></p>
-
-          <div class="gap-10"></div>
-          <div class="product-switch" role="tablist" aria-label="Продукт">
-            <button type="button" class="product-switch__btn" data-product="vpn" aria-selected="false">VPN</button>
-            <button type="button" class="product-switch__btn product-switch__btn--active" data-product="esim" aria-selected="true">eSIM</button>
-          </div>
-        </div>
-
-        <div class="vpn-screen__mid esim-screen__mid-stack">
-          <div class="esim-screen__form">
-            <label class="esim-label" for="esimCountry">Страна / регион</label>
-            <select id="esimCountry" class="esim-select">
-              <option value="">Загрузка…</option>
-            </select>
-
-            <div class="gap-12"></div>
-            <p class="section-title" style="margin:0 0 8px 0;">Тарифы</p>
-            <div id="esimPackages" class="esim-packages">
-              <div class="esim-packages-placeholder text-muted body">Выберите страну</div>
-            </div>
-
-            <div class="gap-16"></div>
-            <button type="button" id="btnEsimBuy" class="btn-primary" style="width:100%;" disabled>Оплатить</button>
-
-            <div id="esimResult" class="esim-result" style="display:none;">
-              <p class="section-title" style="margin-top:20px;">Ваш eSIM</p>
-              <div class="esim-qr-wrap">
-                <img id="esimQrImg" alt="QR eSIM" class="esim-qr-img" />
-              </div>
-              <p class="caption text-muted" style="margin-top:8px;">Код активации</p>
-              <div class="esim-code-row">
-                <code id="esimAcCode" class="esim-ac"></code>
-                <button type="button" id="btnEsimCopyAc" class="btn-secondary esim-copy-btn">Копировать</button>
-              </div>
-              <p class="caption text-muted" style="margin-top:12px;">SMDP+ адрес</p>
-              <code id="esimSmdpCode" class="esim-ac esim-ac--sm"></code>
-            </div>
-          </div>
-
-          <div id="esimBetaGate" class="esim-beta-gate" hidden>
-            <div class="esim-beta-gate__backdrop" aria-hidden="true"></div>
-            <div class="esim-beta-gate__panel">
-              <p class="esim-beta-gate__lead body" style="margin:0;line-height:1.45;">
-                eSIM позволяет пользоваться <strong>зарубежным интернетом</strong> без необходимости включать VPN и
-                зависеть от ограничений в стране.
-              </p>
-              <p class="esim-beta-gate__hint esim-beta-gate__hint--need-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;">
-                Хотите попробовать — <strong>свяжите аккаунт с почтой</strong> и укажите email ниже. Заявку рассматривает администратор;
-                после одобрения придёт письмо на этот адрес.
-              </p>
-              <p class="esim-beta-gate__hint esim-beta-gate__hint--has-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;" hidden>
-                Укажите email для уведомления. Заявку рассматривает администратор; после одобрения мы пришлём письмо на этот адрес.
-              </p>
-              <button type="button" class="btn-secondary esim-beta-gate__link-email" style="width:100%;margin-top:14px;">
-                Привязать почту
-              </button>
-              <label class="esim-label" for="esimBetaEmailMain" style="margin-top:16px;">Email для уведомления</label>
-              <input type="email" id="esimBetaEmailMain" class="esim-select esim-beta-email-input" placeholder="name@example.com"
-                autocomplete="email" inputmode="email" />
-              <button type="button" class="btn-primary esim-beta-notify-btn" style="width:100%;margin-top:12px;">
-                Отправить заявку
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══ SCREEN: МОИ eSIM ═══ -->
-    <div id="screenEsimMine" class="screen">
-      <div class="screen-content esim-mine-screen esim-mine-screen--stack"
-        style="display:flex;flex-direction:column;align-items:center;width:100%;max-width:420px;margin:0 auto;box-sizing:border-box;position:relative;">
-        <div class="esim-mine-screen__inner" style="width:100%;">
-          <p class="title text-center" style="margin:0;">Мои eSIM</p>
-          <p class="body text-muted text-center" style="margin-top:8px;">Купленные тарифы, QR и коды активации</p>
-          <div class="gap-12"></div>
-          <div id="esimMineList" class="esim-mine-list" style="width:100%;"></div>
-        </div>
-        <div id="esimBetaGateMine" class="esim-beta-gate esim-beta-gate--mine" hidden>
-          <div class="esim-beta-gate__backdrop" aria-hidden="true"></div>
-          <div class="esim-beta-gate__panel">
-            <p class="esim-beta-gate__lead body" style="margin:0;line-height:1.45;">
-              eSIM позволяет пользоваться <strong>зарубежным интернетом</strong> без необходимости включать VPN и
-              зависеть от ограничений в стране.
-            </p>
-            <p class="esim-beta-gate__hint esim-beta-gate__hint--need-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;">
-              Хотите попробовать — <strong>свяжите аккаунт с почтой</strong> и укажите email ниже. Заявку рассматривает администратор;
-              после одобрения придёт письмо на этот адрес.
-            </p>
-            <p class="esim-beta-gate__hint esim-beta-gate__hint--has-mail caption text-muted" style="margin:12px 0 0;line-height:1.4;" hidden>
-              Укажите email для уведомления. Заявку рассматривает администратор; после одобрения мы пришлём письмо на этот адрес.
-            </p>
-            <button type="button" class="btn-secondary esim-beta-gate__link-email" style="width:100%;margin-top:14px;">
-              Привязать почту
-            </button>
-            <label class="esim-label" for="esimBetaEmailMine" style="margin-top:16px;">Email для уведомления</label>
-            <input type="email" id="esimBetaEmailMine" class="esim-select esim-beta-email-input" placeholder="name@example.com"
-              autocomplete="email" inputmode="email" />
-            <button type="button" class="btn-primary esim-beta-notify-btn" style="width:100%;margin-top:12px;">
-              Отправить заявку
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══ SCREEN: SETUP ═══ -->
-    <div id="screenSetup" class="screen">
-      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
-
-        <!-- Animated logo (Setup / Gear) -->
-        <div class="logo-anim">
-          <div class="ring" style="--ring-opacity:.15;"></div>
-          <div class="ring" style="--ring-opacity:.25;"></div>
-          <div class="ring" style="--ring-opacity:.35;"></div>
-          <div class="logo-core" style="color: #fff;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" style="width:44px; height:44px; fill:none!important;">
-              <circle cx="12" cy="12" r="3" style="fill:none!important;" />
-              <path class="gear-teeth"
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
-                style="fill:none!important;" />
-            </svg>
-          </div>
-        </div>
-        <div class="gap-8"></div>
-
-        <!-- ── Onboarding Carousel ── -->
-        <div class="ob-carousel" id="obCarousel" style="width:100%;">
-
-          <!-- Progress dots -->
-          <div class="ob-dots" id="obDots">
-            <div class="ob-dot active" id="obDot0"></div>
-            <div class="ob-dot" id="obDot1"></div>
-            <div class="ob-dot" id="obDot2"></div>
-            <div class="ob-dot" id="obDot3"></div>
-            <div class="ob-dot" id="obDot4"></div>
-            <div class="ob-dot" id="obDot5"></div>
-          </div>
-
-          <!-- Slides track -->
-          <div class="ob-track" id="obTrack">
-
-            <!-- ── SLIDE 0: Subscription Check ── -->
-            <div class="ob-slide" id="obSlide0">
-              <div class="ob-slide-inner">
-                <p class="ob-title" style="margin-top:20px;">Активация подписки</p>
-                <p class="ob-desc">Выполните это действие, чтобы получить доступ к серверам и продолжить настройку.</p>
-
-                <div id="obSubCheckBlock" style="margin-bottom:16px;">
-                  <!-- Dynamically populated in JS -->
-                </div>
-              </div>
-            </div>
-
-            <!-- ── SLIDE 1: Choose device ── -->
-            <div class="ob-slide" id="obSlide1">
-              <div class="ob-slide-inner">
-                <p class="ob-title" style="margin-top:20px;">Устройство</p>
-                <p class="ob-desc">Укажите ваше устройство — на чем будем смотреть?</p>
-                <div class="ob-device-grid">
-                  <!-- iPhone -->
-                  <div class="ob-device-card" data-device="apple">
-                    <div class="ob-check"><svg viewBox="0 0 24 24">
-                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                      </svg></div>
-                    <svg viewBox="0 0 24 24">
-                      <path
-                        d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.4c1.3.07 2.17.73 2.96.75 1.13-.24 2.22-.93 3.45-.84 1.24.1 2.18.65 2.79 1.56-3.02 1.8-2.26 5.78.67 6.94-.67 1.58-1.54 3.15-1.87 4.47zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-                    </svg>
-                    <span>iPhone</span>
-                  </div>
-                  <!-- Android -->
-                  <div class="ob-device-card" data-device="android">
-                    <div class="ob-check"><svg viewBox="0 0 24 24">
-                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                      </svg></div>
-                    <svg viewBox="0 0 24 24">
-                      <path
-                        d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4483-.9993.9993-.9993c.5511 0 .9993.4483.9993.9993.0001.5511-.4482.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4483-.9993.9993-.9993c.5511 0 .9993.4483.9993.9993 0 .5511-.4483.9997-.9993.9997m11.4046-6.0197l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.2439 13.8533 7.8508 12 7.8508s-3.5902.3931-5.1367 1.0989L4.841 5.4362a.4161.4161 0 00-.5677-.1521.4157.4157 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3435-4.1021-2.6892-7.5743-6.1185-9.4393" />
-                    </svg>
-                    <span>Android</span>
-                  </div>
-                  <!-- Windows -->
-                  <div class="ob-device-card" data-device="windows">
-                    <div class="ob-check"><svg viewBox="0 0 24 24">
-                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                      </svg></div>
-                    <svg viewBox="0 0 24 24">
-                      <path
-                        d="M3 12V6.75l6-1.32v6.18H3zm17 0V2l-9 1.98V12h9zm-17 1h6v6.06L3 17.73V13zm17 0h-9v8.04L20 22V13z" />
-                    </svg>
-                    <span>Windows</span>
-                  </div>
-                  <!-- Mac -->
-                  <div class="ob-device-card" data-device="mac">
-                    <div class="ob-check"><svg viewBox="0 0 24 24">
-                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                      </svg></div>
-                    <svg viewBox="0 0 24 24">
-                      <path
-                        d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z" />
-                    </svg>
-                    <span>macOS</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- ── SLIDE 2: Download app (content injected by JS) ── -->
-            <div class="ob-slide" id="obSlide2">
-              <div class="ob-slide-inner" id="obDownloadContent">
-                <!-- populated dynamically -->
-              </div>
-            </div>
-
-            <!-- ── SLIDE 3: Connect (content injected by JS) ── -->
-            <div class="ob-slide" id="obSlide3">
-              <div class="ob-slide-inner" id="obConnectContent">
-                <!-- populated dynamically -->
-              </div>
-            </div>
-
-            <!-- ── SLIDE 4: Support -->
-            <div class="ob-slide" id="obSlide4">
-              <div class="ob-slide-inner">
-                <p class="ob-title" style="margin-top:20px;">Поддержка</p>
-                <p class="ob-desc">Если возникли вопросы или что-то не получается — мы всегда на связи.</p>
-
-                <div class="ob-app-list">
-                  <a href="https://t.me/SvoyVPN_support" id="obSupportLink" class="ob-app-item" target="_blank"
-                    rel="noopener">
-                    <div class="ob-app-icon" style="background:rgba(58,168,252,.12);">
-                      <svg viewBox="0 0 24 24" style="fill:var(--accent_text_color,#3aa8fc);width:24px;height:24px;">
-                        <path
-                          d="M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7l4 4 4-4h3c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14h-3.83L15 18.17 12.83 16H3V4h18v12z" />
-                      </svg>
-                    </div>
-                    <div class="ob-app-info">
-                      <p class="ob-app-name">Написать в поддержку</p>
-                      <p class="ob-app-store" id="obSupportHandle">@SvoyVPN_support</p>
-                    </div>
-                    <span class="ob-app-arrow">›</span>
-                  </a>
-
-                  <a href="https://t.me/SvoyVPN_channel" class="ob-app-item" target="_blank" rel="noopener">
-                    <div class="ob-app-icon" style="background:rgba(52,199,89,.12);">
-                      <svg viewBox="0 0 24 24" style="fill:#34c759;width:24px;height:24px;">
-                        <path
-                          d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5z" />
-                      </svg>
-                    </div>
-                    <div class="ob-app-info">
-                      <p class="ob-app-name">Наш канал</p>
-                      <p class="ob-app-store">Новости и обновления</p>
-                    </div>
-                    <span class="ob-app-arrow">›</span>
-                  </a>
-                </div>
-              </div>
-            </div>
-
-            <!-- ── SLIDE 5: Update subscription ── -->
-            <div class="ob-slide" id="obSlide5">
-              <div class="ob-slide-inner">
-                <p class="ob-title" style="margin-top:20px;">Обновление серверов</p>
-                <p class="ob-desc">Если мы добавили новые серверы или что-то не работает, нужно обновить серверы в
-                  приложении.</p>
-                <div class="ob-app-list">
-                  <div class="ob-app-item" style="cursor:default;">
-                    <div class="ob-app-icon" style="background:rgba(58,168,252,.12);">
-                      <svg viewBox="0 0 24 24" style="fill:var(--accent_text_color,#3aa8fc);width:24px;height:24px;">
-                        <path
-                          d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
-                      </svg>
-                    </div>
-                    <div class="ob-app-info">
-                      <p class="ob-app-name">Зайдите в приложение</p>
-                      <p class="ob-app-store">Свайпните вниз или нажмите «Update»</p>
-                    </div>
-                  </div>
-                  <div class="ob-app-item" style="cursor:default;">
-                    <div class="ob-app-icon" style="background:rgba(52,199,89,.12);">
-                      <svg viewBox="0 0 24 24" style="fill:#34c759;width:24px;height:24px;">
-                        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-                      </svg>
-                    </div>
-                    <div class="ob-app-info">
-                      <p class="ob-app-name">Готово</p>
-                      <p class="ob-app-store">Серверы подгружены и снова работают</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          </div><!-- /ob-track -->
-
-          <!-- Action buttons -->
-          <div class="ob-actions">
-            <div class="ob-action-row" id="obActionRow">
-              <button class="ob-btn-copied" id="obBtnCopied">✓ Скопировано</button>
-              <button class="ob-btn-next" id="obBtnNext">Скопировать ссылку</button>
-            </div>
-            <button class="ob-btn-back" id="obBtnBack" style="display:none;">← Назад</button>
-          </div>
-
-        </div><!-- /ob-carousel -->
-
-      </div>
-    </div>
-
-    <!-- ═══ SCREEN: PROFILE ═══ -->
-    <div id="screenProfile" class="screen">
-      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
-
-        <!-- Animated logo with Avatar acting as the core -->
-        <div class="logo-anim">
-          <div class="ring" style="--ring-opacity:.15;"></div>
-          <div class="ring" style="--ring-opacity:.25;"></div>
-          <div class="ring" style="--ring-opacity:.35;"></div>
-          <div id="avatar" class="logo-core avatar"
-            style="width:88px;height:88px;margin:0;font-size:44px;padding:0;overflow:hidden;">?</div>
-        </div>
-
-        <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top: 8px;">
-          <p id="profileName" class="title text-center">Пользователь</p>
-          <div id="profileBadge" class="status-seal" style="display:none;">
-            <svg viewBox="0 0 24 24" class="seal-svg">
-              <!-- Rounded, soft 10-point scalloped seal -->
-              <path class="seal-bg"
-                d="M10.8,3.3C11.5,2.4,12.5,2.4,13.2,3.3L14.7,5C15,5.4,15.6,5.6,16.1,5.5L18.1,5C19.2,4.8,20.1,5.6,19.9,6.7L19.4,8.7C19.3,9.2,19.5,9.8,20,10.1L21.7,11.3C22.6,12,22.6,13,21.7,13.7L20,14.9C19.5,15.2,19.3,15.8,19.4,16.3L19.9,18.3C20.1,19.4,19.2,20.2,18.1,20L16.1,19.5C15.6,19.4,15,19.6,14.7,20L13.2,21.7C12.5,22.6,11.5,22.6,10.8,21.7L9.3,20C9,19.6,8.4,19.4,7.9,19.5L5.9,20C4.8,20.2,3.9,19.4,4.1,18.3L4.6,16.3C4.7,15.8,4.5,15.2,4,14.9L2.3,13.7C1.4,13,1.4,12,2.3,11.3L4,10.1C4.5,9.8,4.7,9.2,4.6,8.7L4.1,6.7C3.9,5.6,4.8,4.8,5.9,5L7.9,5.5C8.4,5.6,9,5.4,9.3,5L10.8,3.3Z"
-                fill="var(--accent_text_color, #3aa8fc)" />
-              <!-- Even smaller focused checkmark -->
-              <path class="seal-check" d="M10.5 14L8 11.5L7.2 12.3L10.5 15.6L16.8 9.3L16 8.5L10.5 14Z" fill="white" />
-            </svg>
-            <span id="profileBadgeText" class="seal-text"></span>
-          </div>
-        </div>
-        <p id="profileStatus" class="body text-muted text-center" style="margin-top:4px; display:none;">—</p>
-
-        <div id="profileAuthLinkBox" class="profile-auth-slot" style="display:none" aria-live="polite"></div>
-
-        <!-- Сервера: моб. / узкая ширина — карусель; на ПК блок скрыт в desktop-pc.css -->
-        <div id="profileServersBlock" class="profile-servers-block">
-          <div class="profile-servers-block__head">
-            <p class="section-title profile-servers-block__title" style="display:flex;align-items:center;gap:6px;margin:0;">
-              <svg style="width:16px;height:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path
-                  d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-              </svg>
-              Доступные сервера
-            </p>
-          </div>
-          <div class="server-carousel" id="serverCarouselShell">
-            <div id="serversWrapProfile" class="server-carousel__track">
-              <div class="server-card server-card--loading text-muted body">Загрузка…</div>
-            </div>
-          </div>
-          <p class="server-carousel__hint caption text-muted">Свайпните в сторону, чтобы листать сервера</p>
-        </div>
-
-        <div class="link-list profile-link-list-below-auth">
-
-          <div class="link-card" id="btnChannel">
-            <div class="link-icon">
-              <!-- Telegram Logo -->
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path
-                  d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.888-.666 3.463-1.509 5.773-2.506 6.93-2.99 3.332-1.396 4.024-1.636 4.475-1.643z" />
-              </svg>
-            </div>
-            <div class="link-content">
-              <span class="link-name">Канал</span>
-              <span class="link-subtext">Все новости и обновления</span>
-            </div>
-            <span class="link-arrow">›</span>
-          </div>
-          <div class="link-card" id="btnSupport">
-            <div class="link-icon">
-              <!-- Support headset icon -->
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path
-                  d="M12 2c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z" />
-              </svg>
-            </div>
-            <div class="link-content">
-              <span class="link-name">Поддержка</span>
-              <span class="link-subtext">Что то не так? Напиши мы поможем</span>
-            </div>
-            <span class="link-arrow">›</span>
-          </div>
-
-          <!-- Android Logout Button (hidden by default) -->
-          <div class="link-card" id="btnLogout" style="display:none; color:#ff453a;">
-            <div class="link-icon" style="background:rgba(255,69,58,0.1); color:#ff453a;">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-              </svg>
-            </div>
-            <div class="link-content">
-              <span class="link-name">Выйти из аккаунта</span>
-              <span class="link-subtext">Сменить пользователя или перезайти</span>
-            </div>
-          </div>
-
-        </div>
-
-      </div>
-    </div>
-
-    <!-- ═══ SCREEN: REFERRAL (внутри .app — иначе body overflow:hidden обрезает экран) ═══ -->
-    <div id="screenReferral" class="screen">
-      <div class="screen-content" style="display:flex;flex-direction:column;align-items:center;">
-
-        <div class="logo-anim">
-          <div class="ring" style="--ring-opacity:.15;"></div>
-          <div class="ring" style="--ring-opacity:.25;"></div>
-          <div class="ring" style="--ring-opacity:.35;"></div>
-          <div class="logo-core" style="color: #fff;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" style="width:44px;height:44px;fill:none!important;" aria-hidden="true">
-              <use href="#referral"></use>
-            </svg>
-          </div>
-        </div>
-
-        <div class="gap-8"></div>
-        <p class="title-s text-center">Приглашайте друзей —<br>получайте бонусные дни</p>
-        <div class="gap-8"></div>
-        <p id="refDesc" class="body text-muted text-center" style="padding:0 8px;">Загрузка…</p>
-
-        <div class="gap-12"></div>
-
-        <div class="card referral-card">
-          <p class="caption text-muted referral-card__label">Ваша реферальная ссылка</p>
-          <p id="refLinkText" class="body referral-card__link">—</p>
-          <div class="referral-card__stats">
+        <span class="globe-hint">Клик по узлу · перетащите для вращения</span>
+        <div id="globe-panel" class="globe-panel" hidden>
+          <div class="globe-panel-head">
             <div>
-              <p class="caption text-muted">Приглашено</p>
-              <p id="refCount" class="subtitle">—</p>
+              <h3 data-g-name>Франкфурт</h3>
+              <div class="globe-panel-region" data-g-region>EU-Central</div>
             </div>
-            <div>
-              <p class="caption text-muted">Бонусных дней</p>
-              <p id="refBonus" class="subtitle">—</p>
-            </div>
+            <button type="button" class="globe-panel-close" data-g-close aria-label="Закрыть">×</button>
+          </div>
+          <div class="globe-stats">
+            <div class="globe-stat"><b data-g-latency>16 ms</b><span>Задержка</span></div>
+            <div class="globe-stat"><b data-g-uptime>99.98%</b><span>Uptime</span></div>
+            <div class="globe-stat"><b data-g-load>31%</b><span>Нагрузка</span></div>
           </div>
         </div>
-
-        <div class="gap-12"></div>
-
-        <button id="btnCopyRef" class="btn-primary">Скопировать ссылку</button>
-        <div class="gap-8"></div>
-        <button id="btnShareRef" class="btn-share">Поделиться</button>
-
       </div>
     </div>
+  </div>
+</section>
 
-    <!-- ═══ TAB BAR ═══ -->
-    <nav id="tabBar" class="tab-bar">
-      <button type="button" class="tab active" data-home-tab="1" data-screen="screenVpn">
-        <svg class="tab-icon tab-icon-vpn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
-          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-1" />
-          <ellipse cx="12" cy="12" rx="10" ry="4" class="orbit orbit-2" />
+<section class="section" id="features">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label">Возможности</div>
+      <div class="section-title">Всё что нужно<br>в одном VPN</div>
+    </div>
+    <div class="cards">
+
+      <!-- 01 Приватность — замок + поток битов -->
+      <div class="card reveal" style="transition-delay:0s">
+        <div class="card-illo-glow" style="background:rgba(0,255,133,.18)"></div>
+        <svg class="card-illustration" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- shield outline -->
+          <path d="M80 18 L120 34 L120 78 C120 104 80 126 80 126 C80 126 40 104 40 78 L40 34 Z" stroke="#00ff85" stroke-width="1.5" fill="rgba(0,255,133,.05)"/>
+          <!-- lock body -->
+          <rect x="64" y="74" width="32" height="24" rx="6" fill="rgba(0,255,133,.18)" stroke="#00ff85" stroke-width="1.2"/>
+          <!-- lock shackle -->
+          <path d="M70 74 L70 66 C70 59 90 59 90 66 L90 74" stroke="#00ff85" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <!-- keyhole -->
+          <circle cx="80" cy="83" r="3" fill="#00ff85"/>
+          <rect x="78.5" y="83" width="3" height="6" rx="1" fill="#00ff85"/>
+          <!-- bit stream dots -->
+          <g opacity=".4">
+            <circle cx="28" cy="50" r="2" fill="#00ff85"><animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" begin="0s"/></circle>
+            <circle cx="36" cy="50" r="2" fill="#00ff85"><animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" begin=".3s"/></circle>
+            <circle cx="44" cy="50" r="2" fill="#00ff85"><animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" begin=".6s"/></circle>
+            <circle cx="116" cy="110" r="2" fill="#00ff85"><animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" begin=".2s"/></circle>
+            <circle cx="124" cy="110" r="2" fill="#00ff85"><animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" begin=".5s"/></circle>
+            <circle cx="132" cy="110" r="2" fill="#00ff85"><animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" begin=".8s"/></circle>
+          </g>
         </svg>
-        <span class="tab-label">Главная</span>
-      </button>
-      <button type="button" class="tab tab--vpn-only" data-screen="screenSetup">
-        <svg class="tab-icon tab-icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3" />
-          <path class="gear-teeth"
-            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        <div class="card-number">01</div>
+        <div class="card-title">Приватность</div>
+        <div class="card-text">Трафик зашифрован по Xray. Никаких логов и слежки за активностью.</div>
+      </div>
+
+      <!-- 02 Bypass-трафик — стрелка сквозь стену с иконками сервисов -->
+      <div class="card reveal" style="transition-delay:.1s">
+        <div class="card-illo-glow" style="background:rgba(59,130,246,.2)"></div>
+        <svg class="card-illustration" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- wall blocks -->
+          <rect x="68" y="20" width="20" height="16" rx="3" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.15)" stroke-width="1"/>
+          <rect x="68" y="42" width="20" height="16" rx="3" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.15)" stroke-width="1"/>
+          <rect x="68" y="64" width="20" height="16" rx="3" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.15)" stroke-width="1"/>
+          <rect x="68" y="104" width="20" height="16" rx="3" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.15)" stroke-width="1"/>
+          <rect x="68" y="126" width="20" height="16" rx="3" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.15)" stroke-width="1"/>
+          <!-- arrow through gap -->
+          <path d="M20 80 L60 80" stroke="#00ff85" stroke-width="2" stroke-linecap="round">
+            <animate attributeName="stroke-dashoffset" from="40" to="0" dur="1.2s" repeatCount="indefinite"/>
+            <animate attributeName="stroke-dasharray" values="0 40;40 0" dur="1.2s" repeatCount="indefinite"/>
+          </path>
+          <path d="M88 80 L136 80" stroke="#00ff85" stroke-width="2" stroke-linecap="round">
+            <animate attributeName="stroke-dashoffset" from="50" to="0" dur="1.2s" begin=".3s" repeatCount="indefinite"/>
+            <animate attributeName="stroke-dasharray" values="0 50;50 0" dur="1.2s" begin=".3s" repeatCount="indefinite"/>
+          </path>
+          <path d="M128 72 L136 80 L128 88" stroke="#00ff85" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- YT play icon -->
+          <rect x="102" y="40" width="32" height="22" rx="6" fill="rgba(255,40,40,.3)" stroke="rgba(255,80,80,.5)" stroke-width="1"/>
+          <path d="M116 47 L124 51 L116 55 Z" fill="#fff" opacity=".8"/>
+          <!-- chat bubble -->
+          <rect x="102" y="95" width="32" height="22" rx="6" fill="rgba(16,163,127,.25)" stroke="rgba(16,163,127,.5)" stroke-width="1"/>
+          <text x="108" y="110" font-size="10" fill="rgba(255,255,255,.7)" font-family="sans-serif">AI</text>
         </svg>
-        <span class="tab-label">Подключиться</span>
-      </button>
-      <button type="button" class="tab tab--esim-only" data-screen="screenEsimMine">
-        <svg class="tab-icon tab-icon-esim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-          <path d="M9 6h6M9 10h6M9 14h4" />
+        <div class="card-number">02</div>
+        <div class="card-title">Bypass-трафик</div>
+        <div class="card-text">YouTube, TikTok, ChatGPT работают без ограничений. Free 5 ГБ, Plus 50 ГБ в месяц.</div>
+      </div>
+
+      <!-- 03 Все устройства — телефон + ноут -->
+      <div class="card reveal" style="transition-delay:.2s">
+        <div class="card-illo-glow" style="background:rgba(168,85,247,.18)"></div>
+        <svg class="card-illustration" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- laptop body -->
+          <rect x="28" y="55" width="72" height="46" rx="5" fill="rgba(255,255,255,.05)" stroke="rgba(255,255,255,.2)" stroke-width="1.2"/>
+          <!-- laptop screen content -->
+          <rect x="34" y="61" width="60" height="34" rx="3" fill="rgba(0,255,133,.07)"/>
+          <path d="M38 70 h22" stroke="#00ff85" stroke-width="1" opacity=".6"/>
+          <path d="M38 75 h16" stroke="#00ff85" stroke-width="1" opacity=".4"/>
+          <path d="M38 80 h20" stroke="#00ff85" stroke-width="1" opacity=".4"/>
+          <!-- laptop base -->
+          <path d="M20 101 L108 101 L112 107 L16 107 Z" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
+          <!-- phone -->
+          <rect x="114" y="50" width="26" height="48" rx="6" fill="rgba(255,255,255,.05)" stroke="rgba(168,85,247,.5)" stroke-width="1.2"/>
+          <rect x="118" y="56" width="18" height="32" rx="2" fill="rgba(168,85,247,.1)"/>
+          <circle cx="127" cy="93" r="2.5" fill="rgba(255,255,255,.2)"/>
+          <!-- wifi signal on phone -->
+          <path d="M122 72 Q127 67 132 72" stroke="#a855f7" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+          <path d="M124 75 Q127 72 130 75" stroke="#a855f7" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+          <circle cx="127" cy="77.5" r="1.2" fill="#a855f7"/>
+          <!-- connection dots -->
+          <circle cx="100" cy="75" r="3" fill="rgba(0,255,133,.6)">
+            <animate attributeName="r" values="2;4;2" dur="2s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values=".6;1;.6" dur="2s" repeatCount="indefinite"/>
+          </circle>
         </svg>
-        <span class="tab-label">Мои eSIM</span>
-      </button>
-      <button type="button" class="tab tab--vpn-only" data-screen="screenReferral">
-        <svg class="tab-icon tab-icon-gift" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 12 20 22 4 22 4 12"></polyline>
-          <rect x="2" y="7" width="20" height="5"></rect>
-          <line x1="12" y1="22" x2="12" y2="7"></line>
-          <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path>
-          <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
+        <div class="card-number">03</div>
+        <div class="card-title">Все устройства</div>
+        <div class="card-text">iPhone, Android, Windows, macOS. Plus — без лимита на количество подключений.</div>
+      </div>
+
+      <!-- 04 Серверы — стойка + пинг-линии -->
+      <div class="card reveal" style="transition-delay:.3s">
+        <div class="card-illo-glow" style="background:rgba(0,255,133,.15)"></div>
+        <svg class="card-illustration" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- server rack units -->
+          <rect x="46" y="28" width="68" height="16" rx="4" fill="rgba(0,255,133,.08)" stroke="rgba(0,255,133,.3)" stroke-width="1"/>
+          <circle cx="104" cy="36" r="3" fill="#00ff85"><animate attributeName="opacity" values="1;.2;1" dur="1.4s" repeatCount="indefinite"/></circle>
+          <rect x="52" y="32" width="28" height="8" rx="2" fill="rgba(255,255,255,.06)"/>
+
+          <rect x="46" y="50" width="68" height="16" rx="4" fill="rgba(0,255,133,.08)" stroke="rgba(0,255,133,.3)" stroke-width="1"/>
+          <circle cx="104" cy="58" r="3" fill="#00ff85"><animate attributeName="opacity" values="1;.2;1" dur="1.4s" begin=".4s" repeatCount="indefinite"/></circle>
+          <rect x="52" y="54" width="22" height="8" rx="2" fill="rgba(255,255,255,.06)"/>
+
+          <rect x="46" y="72" width="68" height="16" rx="4" fill="rgba(0,255,133,.08)" stroke="rgba(0,255,133,.3)" stroke-width="1"/>
+          <circle cx="104" cy="80" r="3" fill="#00ff85"><animate attributeName="opacity" values="1;.2;1" dur="1.4s" begin=".8s" repeatCount="indefinite"/></circle>
+          <rect x="52" y="76" width="34" height="8" rx="2" fill="rgba(255,255,255,.06)"/>
+
+          <!-- rack frame -->
+          <rect x="44" y="26" width="72" height="64" rx="5" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+
+          <!-- ping labels -->
+          <text x="46" y="108" font-size="8" fill="rgba(0,255,133,.6)" font-family="monospace">FRA 16ms</text>
+          <text x="46" y="120" font-size="8" fill="rgba(0,255,133,.45)" font-family="monospace">AMS 14ms</text>
+          <text x="46" y="132" font-size="8" fill="rgba(0,255,133,.35)" font-family="monospace">SGP 42ms</text>
         </svg>
-        <span class="tab-label">Подарки</span>
-      </button>
-      <button type="button" class="tab" data-screen="screenProfile">
-        <span class="tab-icon-clip" aria-hidden="true">
-          <svg class="tab-icon tab-icon-profile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="8" r="4" class="profile-head" />
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" class="profile-body" />
-          </svg>
-          <span id="profileServersHintDot" class="tab-hint-dot" hidden></span>
-        </span>
-        <span class="tab-label">Профиль</span>
-      </button>
+        <div class="card-number">04</div>
+        <div class="card-title">Серверы</div>
+        <div class="card-text">Быстрые ноды в Европе и Азии с низкой задержкой и приоритетом для Plus.</div>
+      </div>
+
+      <!-- 05 eSIM — мини-симкарта + QR -->
+      <div class="card reveal" style="transition-delay:.4s">
+        <div class="card-illo-glow" style="background:rgba(0,255,133,.15)"></div>
+        <svg class="card-illustration" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- SIM card shape -->
+          <path d="M42 30 L82 30 L96 44 L96 110 L42 110 Z" fill="rgba(0,255,133,.06)" stroke="rgba(0,255,133,.35)" stroke-width="1.2"/>
+          <!-- cut corner line -->
+          <path d="M82 30 L82 44 L96 44" stroke="rgba(0,255,133,.2)" stroke-width="1" fill="none"/>
+          <!-- chip on SIM -->
+          <rect x="52" y="50" width="26" height="20" rx="3" fill="rgba(184,137,28,.45)" stroke="rgba(240,200,80,.5)" stroke-width="1"/>
+          <line x1="55" y1="55" x2="55" y2="65" stroke="rgba(240,200,80,.4)" stroke-width="1"/>
+          <line x1="59" y1="55" x2="59" y2="65" stroke="rgba(240,200,80,.4)" stroke-width="1"/>
+          <line x1="63" y1="55" x2="63" y2="65" stroke="rgba(240,200,80,.4)" stroke-width="1"/>
+          <line x1="67" y1="55" x2="67" y2="65" stroke="rgba(240,200,80,.4)" stroke-width="1"/>
+          <line x1="71" y1="55" x2="71" y2="65" stroke="rgba(240,200,80,.4)" stroke-width="1"/>
+          <!-- eSIM text on card -->
+          <text x="50" y="94" font-size="7" fill="rgba(0,255,133,.5)" font-family="monospace" letter-spacing="1">eSIM</text>
+          <text x="50" y="104" font-size="6" fill="rgba(255,255,255,.2)" font-family="monospace">5G</text>
+          <!-- QR code schematic -->
+          <rect x="104" y="38" width="38" height="38" rx="4" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
+          <rect x="108" y="42" width="12" height="12" rx="2" fill="rgba(0,255,133,.25)" stroke="rgba(0,255,133,.4)" stroke-width=".8"/>
+          <rect x="124" y="42" width="12" height="12" rx="2" fill="rgba(0,255,133,.25)" stroke="rgba(0,255,133,.4)" stroke-width=".8"/>
+          <rect x="108" y="58" width="12" height="12" rx="2" fill="rgba(0,255,133,.25)" stroke="rgba(0,255,133,.4)" stroke-width=".8"/>
+          <rect x="124" y="56" width="5" height="5" rx="1" fill="rgba(0,255,133,.35)"/>
+          <rect x="131" y="56" width="5" height="5" rx="1" fill="rgba(0,255,133,.35)"/>
+          <rect x="124" y="63" width="5" height="5" rx="1" fill="rgba(0,255,133,.35)"/>
+          <!-- scan beam on QR -->
+          <line x1="104" y1="57" x2="142" y2="57" stroke="rgba(0,255,133,.6)" stroke-width="1">
+            <animate attributeName="y1" values="42;76;42" dur="2s" repeatCount="indefinite"/>
+            <animate attributeName="y2" values="42;76;42" dur="2s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values=".8;.2;.8" dur="2s" repeatCount="indefinite"/>
+          </line>
+          <!-- signal bars -->
+          <rect x="106" y="95" width="5" height="5"  rx="1" fill="rgba(0,255,133,.7)"><animate attributeName="opacity" values=".4;1;.4" dur="1.6s" repeatCount="indefinite" begin="0s"/></rect>
+          <rect x="113" y="91" width="5" height="9"  rx="1" fill="rgba(0,255,133,.7)"><animate attributeName="opacity" values=".4;1;.4" dur="1.6s" repeatCount="indefinite" begin=".2s"/></rect>
+          <rect x="120" y="87" width="5" height="13" rx="1" fill="rgba(0,255,133,.7)"><animate attributeName="opacity" values=".4;1;.4" dur="1.6s" repeatCount="indefinite" begin=".4s"/></rect>
+          <rect x="127" y="83" width="5" height="17" rx="1" fill="rgba(0,255,133,.7)"><animate attributeName="opacity" values=".4;1;.4" dur="1.6s" repeatCount="indefinite" begin=".6s"/></rect>
+        </svg>
+        <div class="card-number">05</div>
+        <div class="card-title">eSIM</div>
+        <div class="card-text">Зарубежный интернет без VPN. QR-код сразу после оплаты.</div>
+        <span class="card-badge">new</span>
+      </div>
+
+      <!-- 06 Рефералы — цепочка людей + подарок -->
+      <div class="card reveal" style="transition-delay:.5s">
+        <div class="card-illo-glow" style="background:rgba(251,191,36,.15)"></div>
+        <svg class="card-illustration" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- person 1 -->
+          <circle cx="40" cy="55" r="10" fill="rgba(0,255,133,.15)" stroke="rgba(0,255,133,.4)" stroke-width="1.2"/>
+          <path d="M24 90 C24 74 56 74 56 90" fill="rgba(0,255,133,.08)" stroke="rgba(0,255,133,.3)" stroke-width="1.2"/>
+          <!-- person 2 -->
+          <circle cx="80" cy="48" r="12" fill="rgba(0,255,133,.2)" stroke="rgba(0,255,133,.5)" stroke-width="1.5"/>
+          <path d="M62 88 C62 70 98 70 98 88" fill="rgba(0,255,133,.1)" stroke="rgba(0,255,133,.35)" stroke-width="1.2"/>
+          <!-- person 3 -->
+          <circle cx="122" cy="55" r="10" fill="rgba(0,255,133,.15)" stroke="rgba(0,255,133,.4)" stroke-width="1.2"/>
+          <path d="M106 90 C106 74 138 74 138 90" fill="rgba(0,255,133,.08)" stroke="rgba(0,255,133,.3)" stroke-width="1.2"/>
+          <!-- connection lines -->
+          <path d="M52 60 Q66 52 68 55" stroke="rgba(0,255,133,.4)" stroke-width="1" stroke-dasharray="3 2"/>
+          <path d="M92 60 Q106 52 110 55" stroke="rgba(0,255,133,.4)" stroke-width="1" stroke-dasharray="3 2"/>
+          <!-- gift box -->
+          <rect x="62" y="102" width="36" height="30" rx="4" fill="rgba(251,191,36,.12)" stroke="rgba(251,191,36,.4)" stroke-width="1.2"/>
+          <path d="M62 114 L98 114" stroke="rgba(251,191,36,.4)" stroke-width="1"/>
+          <path d="M80 102 L80 132" stroke="rgba(251,191,36,.4)" stroke-width="1"/>
+          <!-- ribbon bow -->
+          <path d="M74 102 C70 96 68 92 72 92 C76 92 78 98 80 102 C82 98 84 92 88 92 C92 92 90 96 86 102" fill="none" stroke="rgba(251,191,36,.5)" stroke-width="1.2"/>
+          <!-- bonus badge -->
+          <circle cx="80" cy="118" r="8" fill="rgba(251,191,36,.2)" stroke="rgba(251,191,36,.4)" stroke-width="1">
+            <animate attributeName="r" values="6;9;6" dur="2.2s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values=".8;1;.8" dur="2.2s" repeatCount="indefinite"/>
+          </circle>
+          <text x="76" y="121" font-size="8" fill="rgba(251,191,36,.9)" font-family="sans-serif" font-weight="bold">+</text>
+        </svg>
+        <div class="card-number">06</div>
+        <div class="card-title">Рефералы</div>
+        <div class="card-text">Приглашай друзей — получай бонусные дни подписки за каждого.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="section" id="pricing">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label">Тарифы</div>
+      <div class="section-title">Начни бесплатно,<br>расширь когда нужно</div>
+    </div>
+    <div class="yr-row">
+      <button type="button" class="tog" id="yr" aria-label="Годовая оплата"></button>
+      <span>Годовая оплата — <strong id="yr-hint" style="color:var(--accent)">экономия 44%</strong></span>
+    </div>
+    <div class="price-grid">
+
+      <!-- FREE tag -->
+      <div class="price-wrap">
+      <div class="price-reveal">→ Открыть дашборд</div>
+      <div class="price-card tag-free reveal" data-href="/app.html#home" style="transition-delay:.05s">
+        <!-- top half -->
+        <div class="tag-half tag-half-top">
+          <div class="tag-hole"></div>
+          <div class="tag-tier">Тариф · Free</div>
+          <div class="tag-price-row">
+            <span class="tag-amount">0</span>
+            <span class="tag-rub">₽</span>
+          </div>
+          <div class="tag-sub">Навсегда бесплатно</div>
+          <div class="tag-save-wrap"></div>
+        </div>
+        <!-- tear zone -->
+        <div class="tag-tear-zone">
+          <div class="tag-tear"></div>
+          <div class="tear-hint"><span class="scissors">✂</span> свайпни</div>
+        </div>
+        <!-- bottom half -->
+        <div class="tag-half tag-half-bottom">
+          <ul class="plist">
+            <li><span class="pcheck pcheck-y">✓</span>5 ГБ bypass в месяц</li>
+            <li><span class="pcheck pcheck-y">✓</span>1 безлимитный VPN-сервер</li>
+            <li><span class="pcheck pcheck-y">✓</span>1 устройство</li>
+            <li class="dim"><span class="pcheck pcheck-n">—</span>Приоритетные серверы</li>
+            <li class="dim"><span class="pcheck pcheck-n">—</span>Безлимит устройств</li>
+          </ul>
+          <a href="/app.html#home" class="btn btn-secondary" style="width:100%">Начать бесплатно</a>
+          <div class="tag-barcode"></div>
+          <div class="tag-code">8970100·FREE·SVY</div>
+        </div>
+      </div>
+
+      </div><!-- /price-wrap free -->
+
+      <!-- PLUS tag -->
+      <div class="price-wrap">
+      <div class="price-reveal">→ Открыть дашборд</div>
+      <div class="price-card tag-plus reveal" data-href="/app.html#home" style="transition-delay:.18s">
+        <!-- top half -->
+        <div class="tag-half tag-half-top">
+          <div class="tag-hole"></div>
+          <div class="tag-stamp">Реко-<br>мендуем</div>
+          <div class="tag-tier">Тариф · Plus</div>
+          <div class="tag-price-row">
+            <span class="tag-amount" id="pp">149</span>
+            <span class="tag-rub">₽</span>
+            <span class="tag-period" id="ps">/мес</span>
+          </div>
+          <div class="tag-sub">Ежемесячная оплата</div>
+          <div class="tag-save-wrap"><div class="tag-save" id="pv">999₽/год — экономия 790₽</div></div>
+        </div>
+        <!-- tear zone -->
+        <div class="tag-tear-zone">
+          <div class="tag-tear"></div>
+          <div class="tear-hint"><span class="scissors">✂</span> свайпни</div>
+        </div>
+        <!-- bottom half -->
+        <div class="tag-half tag-half-bottom">
+          <ul class="plist">
+            <li><span class="pcheck pcheck-y">✓</span><strong>50 ГБ</strong> bypass в месяц</li>
+            <li><span class="pcheck pcheck-y">✓</span>YouTube, TikTok, ChatGPT</li>
+            <li><span class="pcheck pcheck-y">✓</span>Приоритетные серверы</li>
+            <li><span class="pcheck pcheck-y">✓</span>Безлимит устройств</li>
+            <li><span class="pcheck pcheck-y">✓</span>Докупка GB пакетами</li>
+          </ul>
+          <a href="/app.html#home" class="btn btn-accent" style="width:100%">Подключить Plus</a>
+          <div class="tag-barcode"></div>
+          <div class="tag-code">8970100·PLUS·SVY</div>
+          <p style="text-align:center;margin-top:10px;font-size:11px;color:rgba(0,255,133,.35)">Stars · Карта · Crypto Pay</p>
+        </div>
+      </div>
+      </div><!-- /price-wrap plus -->
+
+    </div>
+  </div>
+</section>
+
+<section class="section" id="esim">
+  <div class="container">
+    <div class="esim-grid">
+      <div class="reveal-left">
+        <div class="section-label">eSIM</div>
+        <div class="section-title" style="font-size:clamp(2rem,4vw,3.5rem);margin-bottom:24px">Зарубежный интернет<br>без VPN</div>
+        <p style="color:var(--text-soft);line-height:1.8;max-width:480px;margin-bottom:28px">
+          Виртуальная SIM для путешествий. Интернет за рубежом без роуминга. Оплата картой, Stars или Crypto.
+        </p>
+        <ul class="plist" style="margin-bottom:32px">
+          <li><span class="pcheck pcheck-y">✓</span>Мгновенная активация — QR после оплаты</li>
+          <li><span class="pcheck pcheck-y">✓</span>Десятки стран и регионов</li>
+          <li><span class="pcheck pcheck-y">✓</span>Работает с VPN-подпиской</li>
+        </ul>
+        <a href="/app.html#esim" class="btn btn-primary">Тарифы eSIM</a>
+      </div>
+      <div class="esim-visual reveal-right">
+        <div class="sim-wrap" id="sim-wrap">
+          <div class="sim-glow"></div>
+          <div class="sim-ghost"></div>
+          <div class="sim-card" id="sim-card">
+
+            <!-- holographic layer -->
+            <div class="sim-holo" id="sim-holo"></div>
+
+            <!-- circuit SVG -->
+            <svg class="sim-circuit" viewBox="0 0 140 190" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20 20 h60 v30 h30 v80 h-20 v30 h-50" stroke="#00ff85" stroke-width="1"/>
+              <path d="M80 10 v50 h30" stroke="#00ff85" stroke-width="1"/>
+              <path d="M110 90 h20 v40 h-10" stroke="#00ff85" stroke-width="1"/>
+              <circle cx="20" cy="20" r="3" fill="#00ff85"/>
+              <circle cx="80" cy="50" r="2" fill="#00ff85"/>
+              <circle cx="110" cy="90" r="2" fill="#00ff85"/>
+              <circle cx="100" cy="170" r="2" fill="#00ff85"/>
+            </svg>
+
+            <!-- chip -->
+            <div class="sim-chip">
+              <div class="sim-contacts">
+                <span></span><span></span>
+                <span></span><span></span>
+                <span></span><span></span>
+                <span></span><span></span>
+              </div>
+              <div class="sim-scan"></div>
+            </div>
+
+            <!-- brand -->
+            <div class="sim-brand-block">
+              <div class="sim-logo-text">Svoy<span>VPN</span></div>
+              <div class="sim-type-badge">eSIM</div>
+            </div>
+
+            <!-- middle stripe -->
+            <div class="sim-stripe"></div>
+
+            <!-- bottom left -->
+            <div class="sim-footer-label">
+              <div class="sim-nano">nano SIM · 5G</div>
+              <div class="sim-iccid">8970100 2100 0001</div>
+            </div>
+
+            <!-- signal bars -->
+            <div class="sim-signal">
+              <span></span><span></span><span></span><span></span>
+            </div>
+
+            <!-- cut corner overlay -->
+            <div class="sim-notch"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="howto">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label">Как начать</div>
+      <div class="section-title">Три шага<br>до подключения</div>
+    </div>
+    <div class="steps">
+      <div class="step-card reveal" style="transition-delay:0s">
+        <div class="step-n">1</div>
+        <h3>Дашборд или бот</h3>
+        <p>Зайди на сайт или @SvoyVPN_bot. Регистрация через Telegram или email — 30 секунд.</p>
+      </div>
+      <div class="step-card reveal" style="transition-delay:.15s">
+        <div class="step-n">2</div>
+        <h3>Выбери тариф</h3>
+        <p>Free бесплатно навсегда. Plus — 50 ГБ bypass и безлимит устройств за 149₽/мес.</p>
+      </div>
+      <div class="step-card reveal" style="transition-delay:.3s">
+        <div class="step-n">3</div>
+        <h3>Подключи Happ</h3>
+        <p>Скачай приложение, вставь ключ. <a href="/app.html#setup" style="color:var(--accent);text-decoration:none;">Пошаговая инструкция в дашборде →</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div class="footer-box reveal">
+      <h2>Будущее<br>приватного доступа</h2>
+      <p>
+        Для тех, кому нужны скорость, приватность и стабильный bypass.
+        Free навсегда без карты и скрытых условий.
+      </p>
+      <div class="footer-actions">
+        <a href="/app.html#home" class="btn btn-primary">Открыть дашборд</a>
+        <a href="https://t.me/SvoyVPN_bot" target="_blank" rel="noopener" class="btn btn-secondary">Telegram</a>
+      </div>
+    </div>
+    <nav class="foot-nav" aria-label="Ссылки">
+      <a href="https://t.me/SvoyVPN_channel" target="_blank" rel="noopener">Канал</a>
+      <a href="https://t.me/SvoyVPN_support" target="_blank" rel="noopener">Поддержка</a>
+      <a href="/app.html#home">Дашборд</a>
     </nav>
-
+    <p class="foot-copy">© 2024 SvoyVPN</p>
   </div>
+</footer>
 
-  <!-- ═══ MODAL: LINK EMAIL (Telegram) ═══ -->
-  <div id="modalLinkEmail" class="modal">
-    <div class="modal-backdrop" onclick="hideModal('modalLinkEmail')"></div>
-    <div class="modal-content modal-link-email">
-      <div class="modal-link-email__head">
-        <p class="title-s modal-link-email__title">Привязка почты</p>
-        <button type="button" class="modal-link-email__close" onclick="hideModal('modalLinkEmail')"
-          aria-label="Закрыть">✕</button>
-      </div>
-      <div id="linkEmailStep1">
-        <p class="modal-link-email__hint">Код придёт в Telegram и на указанный email. Если почта уже есть в системе —
-          пароль не нужен (вход останется по текущему паролю).</p>
-        <div class="modal-link-email__fields">
-          <div class="modal-link-email__group">
-            <label class="modal-link-email__label" for="linkEmailAddr">Email</label>
-            <input type="email" id="linkEmailAddr" class="link-email-input" placeholder="name@example.com"
-              autocomplete="email" />
-          </div>
-          <div class="modal-link-email__group">
-            <label class="modal-link-email__label" for="linkEmailPass">Пароль <span
-                class="modal-link-email__label-hint">(только для новой почты, мин. 6 символов)</span></label>
-            <input type="password" id="linkEmailPass" class="link-email-input"
-              placeholder="Оставьте пустым, если почта уже зарегистрирована" autocomplete="new-password" />
-          </div>
-        </div>
-        <button type="button" id="btnLinkEmailSend" class="btn-primary modal-link-email__submit">Получить код</button>
-      </div>
-      <div id="linkEmailMergeStep" class="link-email-merge-step" style="display:none;">
-        <div class="link-email-merge-anim" aria-hidden="true">
-          <div class="link-email-merge-orb link-email-merge-orb--tg"></div>
-          <div class="link-email-merge-orb link-email-merge-orb--mail"></div>
-          <div class="link-email-merge-bridge"></div>
-        </div>
-        <p class="modal-link-email__hint link-email-merge-lead">Эта почта уже есть в SvoyVPN (вход только по email).</p>
-        <p class="link-email-merge-text">Объединить её с вашим <b>Telegram</b>? Подписка, баланс и ключи с почты
-          <span id="linkEmailMergeMasked" class="link-email-merge-masked">…</span> перейдут в этот Telegram-аккаунт.</p>
-        <p class="link-email-merge-note">Это одноразовое действие: после подтверждения вход по старому «только почта» сольётся с текущим профилем.</p>
-        <button type="button" id="btnLinkEmailMergeConfirm" class="btn-primary modal-link-email__submit">Да, объединить и получить код</button>
-        <button type="button" id="btnLinkEmailMergeCancel" class="btn-secondary modal-link-email__submit link-email-merge-back">Назад</button>
-      </div>
-      <div id="linkEmailStep2" style="display:none;">
-        <p class="modal-link-email__hint">Введите код из Telegram или из письма.</p>
-        <div class="modal-link-email__group">
-          <label class="modal-link-email__label" for="linkEmailOtp">Код подтверждения</label>
-          <input type="text" id="linkEmailOtp" class="link-email-input link-email-input--otp" inputmode="numeric"
-            placeholder="••••••" maxlength="8" autocomplete="one-time-code" />
-        </div>
-        <button type="button" id="btnLinkEmailConfirm" class="btn-primary modal-link-email__submit">Подтвердить</button>
-      </div>
-    </div>
-  </div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import { initGlobe } from './need/globe.js?v=5';
+const mount = document.getElementById('globe-mount');
+const loading = document.getElementById('globe-loading');
+if (mount) {
+  initGlobe(mount).then(() => {
+    if (loading) loading.style.display = 'none';
+  }).catch((err) => {
+    console.error('Globe init failed', err);
+    if (loading) loading.textContent = 'Карта недоступна';
+  });
+}
+</script>
+<script>
+/* ── pricing toggle ── */
+const yr=document.getElementById('yr'),pp=document.getElementById('pp'),ps=document.getElementById('ps'),pv=document.getElementById('pv');
+let on=false;
+yr.onclick=()=>{
+  on=!on;yr.classList.toggle('on',on);
+  if(on){
+    pp.textContent='83';
+    ps.textContent='/мес';
+    pv.classList.add('show');
+  } else {
+    pp.textContent='149';
+    ps.textContent='/мес';
+    pv.classList.remove('show');
+  }
+};
 
-  <!-- ═══ MODAL: LINK TELEGRAM (веб-вход по почте) ═══ -->
-  <div id="modalLinkTg" class="modal">
-    <div class="modal-backdrop" onclick="hideModal('modalLinkTg')"></div>
-    <div class="modal-content" style="padding-top:14px;text-align:center;">
-      <p class="title-s" style="margin:0 0 8px;">Привязка Telegram</p>
-      <p class="body text-muted" style="font-size:13px;line-height:1.4;margin:0 0 16px;">Откройте бота и нажмите Start. Это окно можно закрыть после успеха.</p>
-      <a id="linkTgOpenBtn" href="#" target="_blank" rel="noopener" class="btn-primary" style="display:inline-block;text-decoration:none;padding:14px 24px;">Открыть бота</a>
-    </div>
-  </div>
+/* ── SIM card 3-D tilt + holographic shimmer ── */
+(function(){
+  const wrap = document.getElementById('sim-wrap');
+  const card = document.getElementById('sim-card');
+  const holo = document.getElementById('sim-holo');
+  if (!wrap || !card) return;
 
-  <!-- ═══ MODAL: PLAN ═══ -->
-  <div id="modalPlan" class="modal">
-    <div class="modal-backdrop" onclick="hideModal('modalPlan')"></div>
-    <div class="modal-content" style="display:flex;flex-direction:column; padding-top: 14px;">
+  const MAX_TILT = 18; // degrees
+  let bounds, cx, cy, raf;
+  let currentRX = 0, currentRY = 0;
+  let targetRX  = 0, targetRY  = 0;
 
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
-        <div id="planModalHeader" style="display:flex; flex-direction:row; align-items:center; gap:8px;">
-          <p class="title-s" style="margin:0;">Выберите тариф</p>
-        </div>
-        <button onclick="hideModal('modalPlan')" aria-label="Закрыть"
-          style="background:var(--section_bg_color, #f7f9fb); border:none; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:var(--subtitle_text_color, #8e8e93); cursor:pointer; -webkit-tap-highlight-color:transparent; flex-shrink:0;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-      <div class="gap-12"></div>
-      <div id="tariffsWrap" class="tariff-grid"></div>
+  function lerp(a, b, t){ return a + (b - a) * t; }
 
-      <p class="section-title">Способ оплаты</p>
-      <div id="pmWrap" class="pm-list"></div>
+  function onMove(e) {
+    if (!bounds) bounds = wrap.getBoundingClientRect();
+    const px = (e.touches ? e.touches[0].clientX : e.clientX);
+    const py = (e.touches ? e.touches[0].clientY : e.clientY);
+    const rx = ((py - bounds.top  - bounds.height/2) / (bounds.height/2));
+    const ry = ((px - bounds.left - bounds.width /2) / (bounds.width /2));
+    targetRX = -rx * MAX_TILT;
+    targetRY =  ry * MAX_TILT;
 
-      <div id="deviceCountBox" class="card" style="display:none;padding:14px;margin-top:10px;">
-        <p class="section-title" style="margin:0 0 8px;">Устройств в подписке: <span id="deviceCountValue">1</span></p>
-        <input id="deviceCountRange" type="range" min="1" max="5" value="1" style="width:100%;" />
-        <p id="deviceCountHint" class="body text-muted" style="margin:8px 0 0;font-size:12px;"></p>
-      </div>
+    /* holographic angle follows mouse */
+    const angle = Math.atan2(py - (bounds.top + bounds.height/2),
+                             px - (bounds.left + bounds.width/2)) * 180/Math.PI;
+    holo.style.background = `conic-gradient(from ${angle}deg at 50% 50%,
+      transparent 0deg,
+      rgba(0,255,133,.1) 40deg,
+      rgba(56,189,248,.09) 90deg,
+      rgba(168,85,247,.08) 140deg,
+      transparent 200deg,
+      rgba(0,255,133,.05) 300deg,
+      transparent 360deg)`;
+    holo.style.opacity = '1';
+  }
 
-      <div class="pay-row">
-        <div>
-          <p class="total-label">Итого</p>
-          <p id="totalPrice" class="total-price">—</p>
-        </div>
-        <button id="btnPay" class="btn-primary" disabled>Оплатить</button>
-      </div>
+  function onLeave() {
+    targetRX = 0; targetRY = 0;
+    holo.style.opacity = '0';
+    bounds = null;
+  }
 
-    </div>
-  </div>
+  function animate() {
+    raf = requestAnimationFrame(animate);
+    currentRX = lerp(currentRX, targetRX, 0.08);
+    currentRY = lerp(currentRY, targetRY, 0.08);
+    card.style.transform =
+      `rotateX(${currentRX}deg) rotateY(${currentRY}deg)`;
+  }
 
-  <!-- ═══ MODAL: eSIM PAY ═══ -->
-  <div id="modalEsimPay" class="modal">
-    <div class="modal-backdrop" onclick="hideModal('modalEsimPay')"></div>
-    <div class="modal-content" style="display:flex;flex-direction:column; padding-top: 14px;">
+  wrap.addEventListener('mousemove', onMove);
+  wrap.addEventListener('mouseleave', onLeave);
+  wrap.addEventListener('touchmove', onMove, {passive:true});
+  wrap.addEventListener('touchend', onLeave);
+  wrap.addEventListener('mouseenter', () => { bounds = wrap.getBoundingClientRect(); });
 
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
-        <p class="title-s" style="margin:0;">Оплата eSIM</p>
-        <button onclick="hideModal('modalEsimPay')" aria-label="Закрыть"
-          style="background:var(--section_bg_color, #f7f9fb); border:none; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:var(--subtitle_text_color, #8e8e93); cursor:pointer; -webkit-tap-highlight-color:transparent; flex-shrink:0;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-      <p class="body text-muted" style="font-size:13px;line-height:1.4;margin:0 0 12px;">Выберите способ оплаты и подтвердите покупку.</p>
+  animate();
+})();
+</script>
 
-      <p class="section-title">Способ оплаты</p>
-      <div id="esimPmWrap" class="pm-list"></div>
+<script>
+/* ═══════════════════════════════════════════════════════════
+   LANDING INTERACTIONS
+═══════════════════════════════════════════════════════════ */
+(function () {
+  /* отключаем автовосстановление скролла браузером */
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.scrollTo({ top: 0, behavior: 'instant' });
 
-      <div class="pay-row">
-        <div>
-          <p class="total-label">Итого</p>
-          <p id="esimTotalPrice" class="total-price">—</p>
-        </div>
-        <button id="btnPayEsim" class="btn-primary" disabled>Оплатить</button>
-      </div>
+  /* плавный скролл только по якорным ссылкам */
+  document.querySelectorAll('a[href^="#"]').forEach((a) => {
+    a.addEventListener('click', (e) => {
+      const id = a.getAttribute('href').slice(1);
+      const target = document.getElementById(id);
+      if (!target) return;
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+  /* ── 1. Scroll progress bar ─────────────────────────── */
+  const bar = document.getElementById('scroll-bar');
+  function updateBar() {
+    const h = document.documentElement;
+    const pct = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+    if (bar) bar.style.width = pct + '%';
+  }
+  window.addEventListener('scroll', updateBar, { passive: true });
 
-    </div>
-  </div>
+  /* ── 2. Cursor spotlight (desktop only) ─────────────── */
+  const glow = document.getElementById('cursor-glow');
+  if (glow && matchMedia('(hover:hover)').matches) {
+    let cx = 0, cy = 0, tx = 0, ty = 0;
+    document.addEventListener('mousemove', (e) => {
+      tx = e.clientX; ty = e.clientY;
+      glow.style.opacity = '1';
+    });
+    document.addEventListener('mouseleave', () => { glow.style.opacity = '0'; });
+    (function animGlow() {
+      cx += (tx - cx) * 0.1;
+      cy += (ty - cy) * 0.1;
+      glow.style.left = cx + 'px';
+      glow.style.top  = cy + 'px';
+      requestAnimationFrame(animGlow);
+    })();
+  }
 
-  <!-- Success Overlay -->
-  <div id="successOverlay" class="success-overlay" style="display:none;">
-    <div class="success-card">
-      <div class="success-icon-wrap">
-        <svg class="success-checkmark" viewBox="0 0 52 52">
-          <circle class="success-checkmark__circle" cx="26" cy="26" r="25" fill="none" />
-          <path class="success-checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
-        </svg>
-      </div>
-      <p class="title-s text-center">Оплата успешна!</p>
-      <p class="body text-center text-muted" style="margin-top: 8px;">Ваша подписка активирована.<br>Детальный чек
-        отправлен вам в бот.</p>
-      <div class="gap-16"></div>
-      <button onclick="hideSuccessOverlay()" class="btn-primary"
-        style="width: auto; padding: 12px 32px;">Отлично</button>
-    </div>
-    <div id="confetti-container"></div>
-  </div>
+  /* ── 3. Scroll reveal (IntersectionObserver) ─────────── */
+  const revealEls = document.querySelectorAll('.reveal, .reveal-left, .reveal-right');
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  revealEls.forEach((el) => io.observe(el));
 
-  <!-- Toast -->
-  <div id="toast" class="toast"></div>
+  /* ── 4. Stat counters ────────────────────────────────── */
+  function animateCounter(el) {
+    const target = parseFloat(el.dataset.count);
+    const suffix = el.dataset.suffix || '';
+    const isFloat = target % 1 !== 0;
+    const dur = 1400;
+    const start = performance.now();
+    const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 
-  <div id="spriteHost" style="display:none;"></div>
+    (function step(now) {
+      const t = Math.min((now - start) / dur, 1);
+      const val = target * easeOut(t);
+      if (target >= 1000) {
+        el.textContent = Math.round(val / 1000) + suffix;
+      } else {
+        el.textContent = (isFloat ? val.toFixed(1) : Math.round(val)) + suffix;
+      }
+      if (t < 1) requestAnimationFrame(step);
+    })(start);
+  }
 
+  const counterIo = new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (e.isIntersecting) {
+        animateCounter(e.target);
+        counterIo.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.5 });
+  document.querySelectorAll('[data-count]').forEach((el) => counterIo.observe(el));
+
+  /* ── 5. Button: mouse-position glow + magnetic pull ─── */
+  document.querySelectorAll('.btn').forEach((btn) => {
+    btn.addEventListener('mousemove', (e) => {
+      const r = btn.getBoundingClientRect();
+      const x = ((e.clientX - r.left) / r.width  * 100).toFixed(1);
+      const y = ((e.clientY - r.top)  / r.height * 100).toFixed(1);
+      btn.style.setProperty('--mx', x + '%');
+      btn.style.setProperty('--my', y + '%');
+      // subtle magnetic pull
+      const dx = (e.clientX - r.left - r.width  / 2) * 0.18;
+      const dy = (e.clientY - r.top  - r.height / 2) * 0.18;
+      btn.style.transform = `translate(${dx}px,${dy}px) translateY(-3px)`;
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.transform = '';
+    });
+  });
+
+  /* ── 6. Card click ripple ────────────────────────────── */
+  document.querySelectorAll('.card, .price-card, .step-card, .stat-card').forEach((card) => {
+    card.addEventListener('pointerdown', (e) => {
+      const r  = card.getBoundingClientRect();
+      const rp = document.createElement('span');
+      rp.className = 'card-ripple';
+      const size = Math.max(r.width, r.height) * 0.6;
+      rp.style.cssText = `
+        width:${size}px;height:${size}px;
+        left:${e.clientX - r.left - size/2}px;
+        top:${e.clientY - r.top  - size/2}px;
+      `;
+      card.appendChild(rp);
+      rp.addEventListener('animationend', () => rp.remove());
+    });
+  });
+
+  /* ── 7. Nav: shrink + active link highlight on scroll ── */
+  const nav = document.querySelector('.site-nav');
+  const navLinks = document.querySelectorAll('.nav-links a');
+  const sections = document.querySelectorAll('section[id]');
+
+  function onScroll() {
+    // shrink nav
+    if (nav) nav.style.background =
+      window.scrollY > 60 ? 'rgba(5,5,5,.85)' : 'rgba(5,5,5,.5)';
+
+    // active nav link
+    let current = '';
+    sections.forEach((s) => {
+      if (window.scrollY >= s.offsetTop - 140) current = s.id;
+    });
+    navLinks.forEach((a) => {
+      const href = a.getAttribute('href');
+      a.style.color = href === '#' + current ? '#fff' : '';
+    });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  /* ── 8. Hero parallax (subtle) ───────────────────────── */
+  const heroGrid = document.querySelector('.hero-grid');
+  window.addEventListener('scroll', () => {
+    if (!heroGrid) return;
+    const y = window.scrollY;
+    heroGrid.style.transform = `translateY(${y * 0.06}px)`;
+  }, { passive: true });
+
+  /* ── 9. Sticker-peel on price cards ─────────────────────── */
+  document.querySelectorAll('.price-card').forEach((card) => {
+    const wrap    = card.closest('.price-wrap');
+    const topHalf = card.querySelector('.tag-half-top');
+    const botHalf = card.querySelector('.tag-half-bottom');
+    const href    = card.dataset.href || '/app.html';
+    if (!topHalf || !botHalf) return;
+
+    const SNAP   = 'transform .5s cubic-bezier(.34,1.28,.64,1), opacity .4s';
+    const FLY    = 'transform .38s cubic-bezier(.4,0,.8,.6), opacity .32s';
+    let startX = 0, startY = 0, isDrag = false, isScrolling = null, hintTimer;
+
+    /* ---- idle sticker-lift hint ---- */
+    function playHint() {
+      if (isDrag) return;
+      card.classList.add('tear-playing');
+      setTimeout(() => card.classList.remove('tear-playing'), 1300);
+    }
+    const delay = card.classList.contains('tag-plus') ? 2600 : 900;
+    setTimeout(() => { playHint(); hintTimer = setInterval(playHint, 5200); }, delay);
+
+    /* ---- drag logic ---- */
+    function applyDrag(dx) {
+      const progress = Math.min(dx / card.offsetWidth, 1);
+      const rot = dx * 0.04;
+      const liftY = -dx * 0.06;
+      topHalf.style.transition = 'none';
+      topHalf.style.transform  = `translateX(${dx}px) rotate(${rot}deg) translateY(${liftY}px)`;
+      topHalf.style.opacity    = String(Math.max(0, 1 - progress * 1.4));
+      botHalf.style.transition = 'none';
+      botHalf.style.transform  = `translateY(${dx * 0.18}px)`;
+      botHalf.style.opacity    = String(Math.max(0, 1 - progress * 1.2));
+      if (wrap) wrap.classList.toggle('peeling', progress > 0.08);
+    }
+
+    function snapBack() {
+      isDrag = false; isScrolling = null;
+      topHalf.style.transition = SNAP;
+      botHalf.style.transition = SNAP;
+      topHalf.style.transform  = '';
+      topHalf.style.opacity    = '';
+      botHalf.style.transform  = '';
+      botHalf.style.opacity    = '';
+      if (wrap) wrap.classList.remove('peeling');
+    }
+
+    function flyOff() {
+      clearInterval(hintTimer);
+      isDrag = false;
+      if (wrap) wrap.classList.add('peeling');
+      const w = card.offsetWidth;
+      topHalf.style.transition = FLY;
+      botHalf.style.transition = FLY;
+      topHalf.style.transform  = `translateX(${w * 1.6}px) rotate(22deg) translateY(-40px)`;
+      topHalf.style.opacity    = '0';
+      botHalf.style.transform  = `translateY(70px)`;
+      botHalf.style.opacity    = '0';
+      setTimeout(() => { window.location.href = href; }, 380);
+    }
+
+    card.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('a,button')) return;
+      isDrag = true; isScrolling = null;
+      startX = e.clientX; startY = e.clientY;
+      card.classList.remove('tear-playing');
+      card.setPointerCapture(e.pointerId);
+    });
+
+    card.addEventListener('pointermove', (e) => {
+      if (!isDrag) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      /* first significant move decides axis */
+      if (isScrolling === null && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+        isScrolling = Math.abs(dy) > Math.abs(dx);
+      }
+      /* if vertical scroll – release drag and let browser scroll */
+      if (isScrolling) { snapBack(); return; }
+      if (dx > 0) applyDrag(dx);
+    });
+
+    card.addEventListener('pointerup', (e) => {
+      if (!isDrag) return;
+      const dx = Math.max(0, e.clientX - startX);
+      if (!isScrolling && dx > card.offsetWidth * 0.42) flyOff();
+      else snapBack();
+    });
+
+    card.addEventListener('pointercancel', snapBack);
+  });
+
+  /* ── 10. Smooth appear of hero elements on load ────────── */
+  const heroItems = [
+    document.querySelector('.hero-tag'),
+    document.querySelector('.hero h1'),
+    document.querySelector('.hero-lead'),
+    document.querySelector('.hero-actions'),
+    document.querySelector('.stats'),
+    document.querySelector('.hero-visual'),
+  ];
+  heroItems.forEach((el, i) => {
+    if (!el) return;
+    el.style.opacity = '0';
+    el.style.transform = i < 5 ? 'translateY(24px)' : 'translateX(24px)';
+    el.style.transition = 'opacity .8s cubic-bezier(.16,1,.3,1), transform .8s cubic-bezier(.16,1,.3,1)';
+    el.style.transitionDelay = (i * 0.1 + 0.1) + 's';
+    requestAnimationFrame(() => {
+      el.style.opacity = '1';
+      el.style.transform = 'none';
+    });
+  });
+
+})();
+</script>
 </body>
-
 </html>

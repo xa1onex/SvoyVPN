@@ -1,0 +1,884 @@
+/*
+ * SvoyVPN Dashboard — complete redesign v4
+ * Design system: #050505 bg · #00ff85 accent · glass cards · pill btns
+ */
+
+/* ═══════════════════════════════════════════════════════════
+   TOKENS
+═══════════════════════════════════════════════════════════ */
+:root {
+  --svoy-bg:          #050505;
+  --svoy-surface:     #0e0e0e;
+  --svoy-surface-2:   #161616;
+  --svoy-surface-3:   #1c1c1c;
+  --svoy-text:        #f0f0f0;
+  --svoy-text-soft:   #8a8a8a;
+  --svoy-text-muted:  #555;
+  --svoy-accent:      #00ff85;
+  --svoy-accent-dim:  rgba(0, 255, 133, 0.12);
+  --svoy-blue:        #3b82f6;
+  --svoy-border:      rgba(255, 255, 255, 0.07);
+  --svoy-border-soft: rgba(255, 255, 255, 0.04);
+  --svoy-ease:        cubic-bezier(0.16, 1, 0.3, 1);
+  --svoy-r:           20px;
+  --svoy-r-sm:        14px;
+  --svoy-r-lg:        28px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DARK THEME TOKENS (override app_v124.css vars)
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] {
+  --bg_color:               #050505;
+  --section_bg_color:       #0e0e0e;
+  --secondary_bg_color:     #161616;
+  --separator_color:        rgba(255, 255, 255, 0.07);
+  --text_color:             #f0f0f0;
+  --title_color:            #ffffff;
+  --subtitle_text_color:    #8a8a8a;
+  --hint_color:             #555;
+  --link_color:             #00ff85;
+  --accent_text_color:      #00ff85;
+  --button_color:           #00ff85;
+  --button_text_color:      #000000;
+  --destructive_text_color: #ff453a;
+}
+
+html[data-theme="light"] {
+  --bg_color:               #f2f2f4;
+  --section_bg_color:       #ffffff;
+  --secondary_bg_color:     #e8e8ea;
+  --separator_color:        rgba(0, 0, 0, 0.07);
+  --text_color:             #0a0a0a;
+  --title_color:            #000000;
+  --subtitle_text_color:    #6b6b70;
+  --accent_text_color:      #00b86e;
+  --button_color:           #00b86e;
+  --button_text_color:      #000000;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GLOBAL BASE
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] body {
+  background: var(--svoy-bg) !important;
+  color: var(--svoy-text) !important;
+}
+
+html[data-theme="dark"] .app {
+  background: var(--svoy-bg) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AMBIENT BG BLOBS (desktop)
+═══════════════════════════════════════════════════════════ */
+.dash-bg { display: none; }
+
+@media (min-width: 1024px) {
+  .dash-bg {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .dash-bg .glow {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(130px);
+    opacity: 0.09;
+  }
+  .dash-bg .glow-1 { width: 700px; height: 700px; background: var(--svoy-accent); top: -220px; left: -200px; }
+  .dash-bg .glow-2 { width: 600px; height: 600px; background: var(--svoy-blue);   bottom: -200px; right: -150px; }
+  .dash-bg .grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 70% 60% at 25% 15%, black 40%, transparent 80%);
+  }
+
+  .web-header, .app { position: relative; z-index: 1; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SHELL LAYOUT
+═══════════════════════════════════════════════════════════ */
+@media (min-width: 1024px) {
+  body.dash-body {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    background: var(--svoy-bg) !important;
+    overflow: hidden;
+  }
+  .app {
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto !important;
+    background: transparent !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   WEB HEADER (desktop only)
+═══════════════════════════════════════════════════════════ */
+.web-header { display: none; }
+
+@media (min-width: 1024px) {
+  .web-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 clamp(16px, 3%, 32px);
+    height: 64px;
+    flex-shrink: 0;
+    background: rgba(5,5,5,0.7);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-bottom: 1px solid var(--svoy-border);
+    z-index: 1300;
+  }
+
+  .web-header-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    color: var(--svoy-text);
+    text-decoration: none;
+    transition: opacity 0.3s;
+  }
+  .web-header-logo:hover { opacity: 0.8; }
+  .web-header-logo span { color: var(--svoy-accent); }
+
+  .web-header-logo-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    background: var(--svoy-accent);
+    border-radius: 8px;
+    color: #000;
+    flex-shrink: 0;
+  }
+  .web-header-logo-icon svg { width: 18px; height: 18px; }
+
+  .web-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .web-header-back {
+    height: 38px;
+    padding: 0 18px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--svoy-text);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--svoy-border);
+    background: rgba(255,255,255,0.03);
+    transition: 0.35s var(--svoy-ease);
+  }
+  .web-header-back:hover {
+    border-color: rgba(255,255,255,0.13);
+    transform: translateY(-1px);
+  }
+
+  .web-header-tg {
+    height: 38px;
+    padding: 0 18px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #000;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: #fff;
+    transition: 0.35s var(--svoy-ease);
+  }
+  .web-header-tg:hover { transform: translateY(-1px); opacity: 0.9; }
+  .web-header-tg svg { width: 14px; height: 14px; fill: currentColor; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SIDEBAR (desktop tab bar)
+═══════════════════════════════════════════════════════════ */
+@media (min-width: 1024px) {
+  .app {
+    flex-direction: row !important;
+    overflow: hidden !important;
+  }
+
+  #tabBar.tab-bar {
+    order: -1 !important;
+    width: 210px !important;
+    min-width: 210px !important;
+    flex-shrink: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    flex-wrap: nowrap !important;
+    padding: 20px 10px 32px !important;
+    gap: 2px !important;
+    background: rgba(10,10,10,0.9) !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    border-right: 1px solid var(--svoy-border) !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    border-radius: 0 !important;
+    position: sticky !important;
+    top: 0 !important;
+  }
+
+  /* Sidebar nav group label */
+  #tabBar.tab-bar::before {
+    content: 'Навигация';
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--svoy-text-muted);
+    padding: 0 14px;
+    margin-bottom: 10px;
+  }
+
+  #tabBar.tab-bar .tab {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    flex: none !important;
+    width: 100% !important;
+    height: 42px !important;
+    padding: 0 14px !important;
+    gap: 10px !important;
+    border-radius: 12px !important;
+    background: transparent !important;
+    color: var(--svoy-text-soft) !important;
+    box-shadow: none !important;
+    transform: none !important;
+    transition: background 0.3s var(--svoy-ease), color 0.3s !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+  }
+
+  #tabBar.tab-bar .tab:hover {
+    background: rgba(255,255,255,0.05) !important;
+    color: var(--svoy-text) !important;
+  }
+
+  #tabBar.tab-bar .tab.active {
+    background: var(--svoy-accent-dim) !important;
+    color: var(--svoy-accent) !important;
+  }
+
+  #tabBar.tab-bar .tab-icon {
+    width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+    flex-shrink: 0 !important;
+  }
+
+  #tabBar.tab-bar .tab-label {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    letter-spacing: -0.01em !important;
+  }
+
+  .screen {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+  }
+
+  #screenAuth.active {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
+
+  .screen-content {
+    width: 100% !important;
+    max-width: 700px !important;
+    margin: 0 auto !important;
+    padding: 32px 28px 48px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE TAB BAR
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .tab-bar {
+  background: rgba(5,5,5,0.95) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border-top: 1px solid var(--svoy-border) !important;
+}
+
+html[data-theme="dark"] .tab-bar .tab.active {
+  color: var(--svoy-accent) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCREEN PAGE HEADERS  (titles inside screens)
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .screen .title,
+html[data-theme="dark"] .screen .title-s {
+  color: #fff !important;
+  letter-spacing: -0.03em !important;
+}
+
+html[data-theme="dark"] .screen .body.text-muted,
+html[data-theme="dark"] .screen .text-muted {
+  color: var(--svoy-text-soft) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOGO ANIM / RINGS
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .logo-core {
+  background: var(--svoy-accent) !important;
+  color: #000 !important;
+  box-shadow: 0 0 48px rgba(0,255,133,0.2) !important;
+}
+
+html[data-theme="dark"] .ring {
+  border-color: var(--svoy-accent) !important;
+}
+
+html[data-theme="dark"] .logo-core.avatar {
+  background: var(--svoy-surface-2) !important;
+  color: var(--svoy-accent) !important;
+  box-shadow: none !important;
+  border: 1px solid var(--svoy-border) !important;
+}
+
+.orbit { stroke: var(--svoy-accent) !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   PRODUCT SWITCH VPN / eSIM
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .product-switch {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: 999px !important;
+  padding: 4px !important;
+}
+
+html[data-theme="dark"] .product-switch__btn {
+  border-radius: 999px !important;
+  color: var(--svoy-text-soft) !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+}
+
+html[data-theme="dark"] .product-switch__btn--active {
+  background: var(--svoy-accent) !important;
+  color: #000 !important;
+  font-weight: 600 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CARDS (glass)
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .link-card,
+html[data-theme="dark"] .referral-card,
+html[data-theme="dark"] .esim-mine-card,
+html[data-theme="dark"] .sub-status-hero,
+html[data-theme="dark"] .server-card,
+html[data-theme="dark"] .ob-device-card {
+  background: linear-gradient(160deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02)) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: var(--svoy-r) !important;
+  box-shadow: none !important;
+  transition: border-color 0.3s, transform 0.3s var(--svoy-ease) !important;
+}
+
+html[data-theme="dark"] .card:hover,
+html[data-theme="dark"] .link-card:active {
+  border-color: rgba(255,255,255,0.12) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* eSIM mine card — SIM-style glow */
+html[data-theme="dark"] .esim-mine-card {
+  border-radius: var(--svoy-r-lg) !important;
+  border-color: rgba(0,255,133,0.15) !important;
+}
+
+/* referral card accent border */
+html[data-theme="dark"] .referral-card {
+  border-color: rgba(0,255,133,0.12) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SECTION TITLE
+═══════════════════════════════════════════════════════════ */
+.section-title {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: var(--svoy-text-soft) !important;
+  margin-bottom: 10px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════════════════════════ */
+.btn-primary {
+  border-radius: 999px !important;
+  font-weight: 600 !important;
+  background: #fff !important;
+  color: #000 !important;
+  transition: transform 0.35s var(--svoy-ease), opacity 0.3s, box-shadow 0.35s !important;
+  letter-spacing: -0.01em !important;
+}
+
+.btn-primary:hover,
+.btn-primary:active {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 24px rgba(255,255,255,0.08) !important;
+}
+
+.btn-primary--accent {
+  background: var(--svoy-accent) !important;
+  color: #000 !important;
+  box-shadow: 0 0 24px rgba(0,255,133,0.15) !important;
+}
+
+html[data-theme="dark"] .btn-secondary {
+  border-radius: 999px !important;
+  font-weight: 500 !important;
+  background: rgba(255,255,255,0.04) !important;
+  color: var(--svoy-text) !important;
+  border: 1px solid var(--svoy-border) !important;
+  transition: 0.3s !important;
+}
+
+html[data-theme="dark"] .btn-secondary:hover {
+  background: rgba(255,255,255,0.07) !important;
+  border-color: rgba(255,255,255,0.12) !important;
+}
+
+html[data-theme="dark"] .btn-share {
+  border-radius: 999px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SETUP SCREEN — instruction steps
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .setup-step,
+html[data-theme="dark"] .ob-step {
+  background: rgba(255,255,255,0.035) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: var(--svoy-r) !important;
+}
+
+/* Step number badge */
+html[data-theme="dark"] .step-num,
+html[data-theme="dark"] .ob-step-num {
+  background: var(--svoy-accent-dim) !important;
+  color: var(--svoy-accent) !important;
+  border-radius: 8px !important;
+  font-weight: 700 !important;
+}
+
+/* Platform selector pills */
+html[data-theme="dark"] .platform-tab,
+html[data-theme="dark"] .ob-platform-tab {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: 999px !important;
+  color: var(--svoy-text-soft) !important;
+  transition: 0.25s !important;
+}
+
+html[data-theme="dark"] .platform-tab.active,
+html[data-theme="dark"] .ob-platform-tab.active {
+  background: var(--svoy-accent-dim) !important;
+  border-color: rgba(0,255,133,0.3) !important;
+  color: var(--svoy-accent) !important;
+}
+
+/* eSIM screen */
+html[data-theme="dark"] .esim-label {
+  color: var(--svoy-text-soft) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+}
+
+html[data-theme="dark"] .esim-select,
+html[data-theme="dark"] .esim-beta-email-input {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid var(--svoy-border) !important;
+  color: var(--svoy-text) !important;
+  border-radius: var(--svoy-r-sm) !important;
+  transition: border-color 0.25s !important;
+}
+
+html[data-theme="dark"] .esim-select:focus,
+html[data-theme="dark"] .esim-beta-email-input:focus {
+  border-color: rgba(0,255,133,0.3) !important;
+  outline: none !important;
+}
+
+/* eSIM package cards */
+html[data-theme="dark"] .esim-package,
+html[data-theme="dark"] .esim-package-item {
+  background: rgba(255,255,255,0.035) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: var(--svoy-r) !important;
+  transition: border-color 0.25s, background 0.25s !important;
+}
+
+html[data-theme="dark"] .esim-package.selected,
+html[data-theme="dark"] .esim-package-item.selected {
+  border-color: rgba(0,255,133,0.35) !important;
+  background: rgba(0,255,133,0.06) !important;
+}
+
+/* eSIM QR */
+html[data-theme="dark"] .esim-qr-wrap {
+  background: #fff !important;
+  border-radius: var(--svoy-r-sm) !important;
+  padding: 12px !important;
+}
+
+/* eSIM activation code */
+html[data-theme="dark"] .esim-ac {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: 10px !important;
+  color: var(--svoy-text) !important;
+  font-family: 'SF Mono', 'Fira Code', monospace !important;
+  font-size: 11px !important;
+  padding: 10px 14px !important;
+  word-break: break-all !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MODALS
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .modal-backdrop {
+  background: rgba(0,0,0,0.75) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+}
+
+html[data-theme="dark"] .modal-content {
+  background: var(--svoy-surface) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: var(--svoy-r-lg) !important;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 60px rgba(0,255,133,0.04) !important;
+}
+
+/* Tariff & payment cards inside modals */
+html[data-theme="dark"] .tariff-card,
+html[data-theme="dark"] .pm-item {
+  background: rgba(255,255,255,0.03) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: 16px !important;
+  transition: border-color 0.25s, background 0.25s !important;
+}
+
+html[data-theme="dark"] .tariff-card.active,
+html[data-theme="dark"] .pm-item.active {
+  border-color: rgba(0,255,133,0.35) !important;
+  background: rgba(0,255,133,0.06) !important;
+}
+
+html[data-theme="dark"] .pay-row {
+  border-top-color: var(--svoy-border) !important;
+}
+
+html[data-theme="dark"] .total-price {
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INPUTS & AUTH
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .input-field,
+html[data-theme="dark"] .link-email-input {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid var(--svoy-border) !important;
+  color: var(--svoy-text) !important;
+  border-radius: var(--svoy-r-sm) !important;
+  transition: border-color 0.25s !important;
+}
+
+html[data-theme="dark"] .input-field:focus,
+html[data-theme="dark"] .link-email-input:focus {
+  border-color: rgba(0,255,133,0.3) !important;
+  outline: none !important;
+}
+
+/* Auth screen */
+html[data-theme="dark"] #screenAuth {
+  background: var(--svoy-bg) !important;
+}
+
+html[data-theme="dark"] #screenAuth .auth-card {
+  background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: var(--svoy-r-lg) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] #screenAuth .tabs {
+  background: rgba(255,255,255,0.04) !important;
+  border-radius: 14px !important;
+}
+
+html[data-theme="dark"] #screenAuth .tab-btn.active,
+html[data-theme="dark"] #screenAuth .tg-btn,
+html[data-theme="dark"] #screenAuth .auth-btn {
+  background: var(--svoy-accent) !important;
+  color: #000 !important;
+  border-radius: 999px !important;
+  font-weight: 600 !important;
+}
+
+html[data-theme="dark"] #screenAuth .logo-core {
+  background: var(--svoy-accent) !important;
+  color: #000 !important;
+}
+
+html[data-theme="dark"] #screenAuth .logo-anim .ring {
+  border-color: var(--svoy-accent) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COPY FIELD, TOAST, SUCCESS
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .copy-field {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: var(--svoy-r-sm) !important;
+}
+
+html[data-theme="dark"] .copy-field input {
+  color: var(--svoy-text) !important;
+  font-family: 'SF Mono', 'Fira Code', monospace !important;
+  font-size: 12px !important;
+}
+
+html[data-theme="dark"] .toast {
+  background: var(--svoy-surface-2) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: 16px !important;
+  color: var(--svoy-text) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+
+html[data-theme="dark"] .success-overlay {
+  background: rgba(0,0,0,0.85) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+
+html[data-theme="dark"] .success-card {
+  background: var(--svoy-surface) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: var(--svoy-r-lg) !important;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 60px rgba(0,255,133,0.06) !important;
+}
+
+html[data-theme="dark"] .success-checkmark__circle { stroke: var(--svoy-accent) !important; }
+html[data-theme="dark"] .success-checkmark__check  { stroke: var(--svoy-accent) !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   SEAL / BADGE
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .seal-bg { fill: var(--svoy-accent) !important; }
+html[data-theme="dark"] .status-seal .seal-text { color: var(--svoy-accent) !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   ONBOARDING
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .ob-btn-next {
+  background: #fff !important;
+  color: #000 !important;
+  border-radius: 999px !important;
+  font-weight: 600 !important;
+}
+
+html[data-theme="dark"] .ob-title {
+  letter-spacing: -0.03em !important;
+  color: #fff !important;
+}
+
+html[data-theme="dark"] .ob-device-card {
+  border-radius: var(--svoy-r) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   eSIM BETA GATE
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .esim-beta-gate__panel {
+  background: var(--svoy-surface) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: var(--svoy-r-lg) !important;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REFERRAL
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .referral-card {
+  background: linear-gradient(160deg, rgba(0,255,133,0.06), rgba(0,255,133,0.02)) !important;
+}
+
+html[data-theme="dark"] #btnCopyRef,
+html[data-theme="dark"] #btnShareRef {
+  width: 100% !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PROFILE
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .profile-row,
+html[data-theme="dark"] .profile-block {
+  background: rgba(255,255,255,0.035) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: var(--svoy-r) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VPN STATUS BADGE
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] #vpnStatus {
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  letter-spacing: 0 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SUBSCRIPTION BLOCK
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .sub-status-hero {
+  background: linear-gradient(160deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02)) !important;
+  border-radius: var(--svoy-r-lg) !important;
+}
+
+html[data-theme="dark"] .sub-plan-badge {
+  background: var(--svoy-accent-dim) !important;
+  color: var(--svoy-accent) !important;
+  border-radius: 999px !important;
+  font-weight: 700 !important;
+  font-size: 11px !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+}
+
+html[data-theme="dark"] .bypass-bar__track {
+  background: rgba(255,255,255,0.06) !important;
+  border-radius: 999px !important;
+}
+
+html[data-theme="dark"] .bypass-bar__fill {
+  background: var(--svoy-accent) !important;
+  border-radius: 999px !important;
+  box-shadow: 0 0 12px rgba(0,255,133,0.3) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SERVER CARDS
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .server-card {
+  border-radius: var(--svoy-r) !important;
+}
+
+html[data-theme="dark"] .server-card.active,
+html[data-theme="dark"] .server-card--selected {
+  border-color: rgba(0,255,133,0.3) !important;
+  background: rgba(0,255,133,0.05) !important;
+}
+
+html[data-theme="dark"] .server-ping-dot {
+  background: var(--svoy-accent) !important;
+  box-shadow: 0 0 6px rgba(0,255,133,0.5) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MAP BLOCK (desktop main screen)
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] .vpn-desktop-map-block {
+  background: rgba(255,255,255,0.03) !important;
+  border: 1px solid var(--svoy-border) !important;
+  border-radius: var(--svoy-r-lg) !important;
+  overflow: hidden !important;
+}
+
+html[data-theme="dark"] .vpn-desktop-map-block__title {
+  color: var(--svoy-text-soft) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCROLLBAR (webkit)
+═══════════════════════════════════════════════════════════ */
+html[data-theme="dark"] ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+html[data-theme="dark"] ::-webkit-scrollbar-track { background: transparent; }
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 999px;
+}
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DESKTOP OVERRIDES
+═══════════════════════════════════════════════════════════ */
+@media (min-width: 1024px) {
+  html[data-theme="dark"] .app { background: transparent !important; }
+  html[data-theme="dark"] .tab-bar .tab.active { color: var(--svoy-accent) !important; }
+
+  /* On desktop — screens scroll internally */
+  .screen .screen-content {
+    overflow-y: auto;
+    height: 100%;
+    max-height: 100%;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.1) transparent;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE — polish
+═══════════════════════════════════════════════════════════ */
+@media (max-width: 1023px) {
+  html[data-theme="dark"] .modal-content {
+    border-radius: var(--svoy-r-lg) var(--svoy-r-lg) 0 0 !important;
+  }
+}
