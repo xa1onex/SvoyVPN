@@ -36,13 +36,21 @@ from .database import (
     merge_vpn_user_into,
     generate_subscription_token,
 )
-from .subscriptions import ensure_user_keys_for_server_ids, get_user_subscription_url
+from .subscriptions import (
+    SQL_VPN_KEY_NOT_EXPIRED,
+    ensure_user_has_subscription,
+    ensure_user_keys_for_server_ids,
+    fetch_subscription_keys,
+    get_user_subscription_url,
+)
 from .plans import get_subscription_plans, get_renewal_plans
 from .traffic import (
     user_traffic_snapshot,
+    user_bypass_traffic_snapshot,
     blocked_traffic_vless,
     get_tg_relay_server_id,
     get_user_tg_relay_vless_line,
+    ensure_user_tg_relay_vless_line,
     subscription_relay_hint_vless,
     apply_subscription_anchor_on_payment,
     is_free_server_label,
@@ -51,8 +59,13 @@ from .traffic import (
 )
 from . import esim_service
 from .esim_invoice_payload import encode_esim_blob
-from .device_fingerprint import compute_subscription_device_fingerprint
-from .profile_generator import build_happ_bundle_json_for_keys
+from .device_fingerprint import analyze_subscription_client
+from .profile_generator import (
+    build_happ_bundle_json_for_keys,
+    happ_bypass_limit_notice_lines,
+    happ_device_limit_bundle_json,
+    happ_device_limit_notice_lines,
+)
 from .config_encryption import (
     encrypt_profile,
     sanitize_profile_for_display,
@@ -73,6 +86,22 @@ mimetypes.add_type("image/x-icon", ".ico")
 mimetypes.add_type("image/svg+xml", ".svg")
 mimetypes.add_type("image/webp", ".webp")
 mimetypes.add_type("application/wasm", ".wasm")
+
+
+def _bypass_api_payload(snap: dict[str, Any]) -> dict[str, Any]:
+    """Bypass-трафик для /api/user (web-dash, Android)."""
+    return {
+        "bypassUsedBytes": snap["bypassUsedBytes"],
+        "bypassLimitBytes": snap["bypassLimitBytes"],
+        "bypassUsedGb": snap["bypassUsedGb"],
+        "bypassLimitGb": snap["bypassLimitGb"],
+        "bypassRemainingGb": snap["bypassRemainingGb"],
+        "bypassBonusGb": snap["bypassBonusGb"],
+        "bypassExceeded": snap["bypassExceeded"],
+        "bypassPercentUsed": snap["bypassPercentUsed"],
+        "periodStart": snap["periodStart"],
+        "periodEndExclusive": snap["periodEndExclusive"],
+    }
 
 
 class BadStatusLineFilter(logging.Filter):
@@ -345,6 +374,23 @@ class WebhookServer:
             headers["hide-settings"] = "1"
         return headers
 
+    @staticmethod
+    def _device_limit_exceeded(data: dict) -> bool:
+        device_limit = int(data.get("device_limit") or 0)
+        device_count = int(data.get("device_count") or 0)
+        return device_limit > 0 and device_count > device_limit
+
+    async def _build_happ_device_limit_bundle_text(self, data: dict) -> str:
+        bot_h = (self.bot_public_username or "SvoyVPN_robot").lstrip("@")
+        async with get_connection() as conn:
+            tg_line = await ensure_user_tg_relay_vless_line(conn, data["user_id"])
+        return happ_device_limit_bundle_json(
+            int(data.get("device_count") or 0),
+            int(data.get("device_limit") or 0),
+            bot_h,
+            tg_relay_vless_line=str(tg_line) if tg_line else None,
+        )
+
     async def handle_subscription(self, request: web_request.Request) -> web.Response:
         """
         Subscription endpoint: возвращает список VLESS-ссылок по subscription_token.
@@ -391,56 +437,38 @@ class WebhookServer:
                 
                 user_id = user_row["user_id"]
                 
-                # Логируем запрос (User-Agent и IP)
-                user_agent = request.headers.get("User-Agent", "Unknown")
-                ip_address = request.headers.get("X-Forwarded-For", request.remote or "Unknown")
-                if "," in ip_address:
-                    ip_address = ip_address.split(",")[0].strip()
-                hint_keys = (
-                    "Sec-CH-UA-Mobile",
-                    "Sec-CH-UA-Platform",
-                    "Sec-CH-UA-Platform-Version",
-                    "Sec-CH-UA-Model",
-                    "Sec-CH-UA-Full-Version-List",
+                # Логируем запрос (Happ: X-Device-Model, X-Hwid, …)
+                client_info = analyze_subscription_client(request.headers)
+                await log_subscription_usage(
+                    user_id,
+                    client_info.user_agent,
+                    client_info.ip_address,
+                    client_info.fingerprint,
+                    device_model=client_info.display_name,
+                    device_hwid=client_info.device_hwid,
                 )
-                client_hints = {
-                    k: v.strip()
-                    for k in hint_keys
-                    if (v := request.headers.get(k))
-                }
-                device_fp = compute_subscription_device_fingerprint(
-                    user_agent,
-                    client_hint_headers=client_hints or None,
-                )
-                await log_subscription_usage(user_id, user_agent, ip_address, device_fp)
 
-                # Проверяем активность подписки
-                is_active = await conn.fetchval('''
-                    SELECT CASE
-                        WHEN pay_subscribed = TRUE
-                         AND subscription_end IS NOT NULL
-                         AND DATE(subscription_end) >= CURRENT_DATE
-                        THEN TRUE ELSE FALSE END
-                    FROM users WHERE user_id = $1
-                ''', user_id)
+                # Проверяем активность подписки и загружаем ключи
+                keys, user_tier, is_active, expire_ts = await fetch_subscription_keys(
+                    conn, user_id
+                )
 
                 # Проверка лимита устройств
                 if is_active:
                     from .database import count_active_devices
                     device_count, device_limit = await count_active_devices(conn, user_id, hours=6)
                     if device_count > device_limit and device_limit > 0:
-                        bot_h = (self.bot_public_username or "SvoyVPN_bot").lstrip("@")
-                        parts = [
-                            f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
-                            f"?security=tls&type=tcp"
-                            f"#{quote(f'⚠️ Лимит устройств ({device_count}/{device_limit})')}",
-                            f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
-                            f"?security=tls&type=tcp"
-                            f"#{quote(f'📴 Сбросить в TG: @{bot_h}')}",
-                        ]
-                        tg_line = await get_user_tg_relay_vless_line(conn, user_id)
+                        bot_h = (self.bot_public_username or "SvoyVPN_robot").lstrip("@")
+                        parts = happ_device_limit_notice_lines(
+                            device_count, device_limit, bot_h
+                        )
+                        tg_line = await ensure_user_tg_relay_vless_line(conn, user_id)
                         if tg_line:
-                            parts.append(tg_line)
+                            from .happ_catalog import tg_relay_presentation
+                            from .happ_text_notice import vless_link_title_only
+
+                            tr, _ = tg_relay_presentation()
+                            parts.append(vless_link_title_only(tg_line, title=tr))
                         return web.Response(
                             text="\n".join(parts),
                             content_type="text/plain",
@@ -451,60 +479,64 @@ class WebhookServer:
                             },
                         )
 
-                # Получаем ключи и информацию о сервере для сортировки
-                keys_data = await conn.fetch('''
-                    SELECT DISTINCT ON (k.server_id) 
-                        k.vless_link, k.server_id, s.display_order, s.id as sid, s.name as server_name
-                    FROM vpn_keys k
-                    INNER JOIN servers s ON k.server_id = s.id
-                    WHERE k.user_id = $1 
-                      AND k.is_active = TRUE
-                      AND s.is_active = TRUE
-                      AND COALESCE(s.exclude_from_subscription, FALSE) = FALSE
-                      AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
-                    ORDER BY k.server_id, k.id ASC
-                ''', user_id)
-                
-                # Сортируем ключи по display_order, затем по id сервера
-                keys = sorted(keys_data, key=lambda x: (x.get('display_order', 100), x.get('sid', 0)))
-                
-                # Формируем expire timestamp
-                subscription_end = user_row.get("subscription_end")
-                expire_ts = 0
-                if subscription_end and is_active:
-                    try:
-                        if isinstance(subscription_end, str):
-                            dt = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
-                        else:
-                            dt = subscription_end
-                        expire_ts = int(dt.replace(hour=23, minute=59, second=59).timestamp())
-                    except:
-                        pass
-                
                 # ✅ Проверяем наличие новых серверов без ключей и создаём их автоматически
                 if is_active:
-                    # Проверяем, есть ли активные серверы без ключей
-                    servers_without_keys = await conn.fetch('''
-                        SELECT s.id
-                        FROM servers s
-                        WHERE (
-                            s.is_active = TRUE
-                            OR s.id IS NOT DISTINCT FROM (
-                                SELECT tg_relay_server_id
-                                FROM traffic_settings
-                                ORDER BY id DESC
-                                LIMIT 1
+                    from .plans import FREE_TIER_ID
+
+                    if user_tier == FREE_TIER_ID:
+                        from .free_tier_servers import get_free_tier_allowed_server_ids
+
+                        allowed_list = list(
+                            await get_free_tier_allowed_server_ids(conn, user_id)
+                        )
+                        if allowed_list:
+                            servers_without_keys = await conn.fetch(
+                                """
+                                SELECT s.id
+                                FROM servers s
+                                WHERE s.id = ANY($2::bigint[])
+                                  AND s.is_active = TRUE
+                                  AND NOT EXISTS (
+                                      SELECT 1 FROM vpn_keys k
+                                      WHERE k.server_id = s.id
+                                        AND k.user_id = $1
+                                        AND k.is_active = TRUE
+                                        AND (
+                                            k.expires_at IS NULL
+                                            OR DATE(k.expires_at) >= CURRENT_DATE
+                                        )
+                                  )
+                                """,
+                                user_id,
+                                allowed_list,
                             )
-                          )
-                          AND NOT EXISTS (
-                              SELECT 1 FROM vpn_keys k
-                              WHERE k.server_id = s.id
-                                AND k.user_id = $1
-                                AND k.is_active = TRUE
-                                AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)
-                          )
-                    ''', user_id)
-                    
+                        else:
+                            servers_without_keys = []
+                    else:
+                        servers_without_keys = await conn.fetch(
+                            f"""
+                            SELECT s.id
+                            FROM servers s
+                            WHERE (
+                                s.is_active = TRUE
+                                OR s.id IS NOT DISTINCT FROM (
+                                    SELECT tg_relay_server_id
+                                    FROM traffic_settings
+                                    ORDER BY id DESC
+                                    LIMIT 1
+                                )
+                              )
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM vpn_keys k
+                                  WHERE k.server_id = s.id
+                                    AND k.user_id = $1
+                                    AND k.is_active = TRUE
+                                    AND {SQL_VPN_KEY_NOT_EXPIRED}
+                              )
+                            """,
+                            user_id,
+                        )
+
                     if servers_without_keys:
                         missing_ids = [int(r["id"]) for r in servers_without_keys]
                         logger.info(
@@ -617,22 +649,20 @@ class WebhookServer:
 
                     # Add bypass exhausted notice if applicable
                     if bypass_blocked and bypass_limit_bytes > 0:
-                        used_gb = bypass_used_bytes / (1024**3)
-                        lim_gb = bypass_limit_bytes / (1024**3)
-                        lim_s = f"{lim_gb:.0f}" if abs(lim_gb - round(lim_gb)) < 1e-6 else f"{lim_gb:.1f}"
-                        bp_fake = "vless://33333333-3333-3333-3333-333333333333@0.0.0.0:1?type=tcp&security=none&flow=none#"
-                        bp_name = quote(
-                            f"⚠️ Лимит исчерпан({used_gb:.1f}/{lim_s} ГБ)",
-                            safe="",
-                        )
-                        body_parts.append(f"{bp_fake}{bp_name}")
                         bot_h = (cta_name or "SvoyVPN_robot").lstrip("@")
-                        bp_cta = quote(f"📈 Увеличить @{bot_h}", safe="")
-                        body_parts.append(f"{bp_fake}{bp_cta}")
+                        body_parts.extend(
+                            happ_bypass_limit_notice_lines(
+                                bypass_used_bytes, bypass_limit_bytes, bot_h
+                            )
+                        )
 
-                    tg_line = await get_user_tg_relay_vless_line(conn, user_id)
-                    if tg_line:
-                        body_parts.append(tg_line)
+                    tg_line = await ensure_user_tg_relay_vless_line(conn, user_id)
+                    if tg_line and (traffic_blocked or bypass_blocked):
+                        from .happ_catalog import tg_relay_presentation
+                        from .happ_text_notice import vless_link_title_only
+
+                        tr, _ = tg_relay_presentation()
+                        body_parts.append(vless_link_title_only(tg_line, title=tr))
                     else:
                         relay_sid = await get_tg_relay_server_id(conn)
                         if relay_sid is not None:
@@ -673,8 +703,8 @@ class WebhookServer:
                 
                 # Формируем объявление (одной строкой для заголовка HTTP)
                 announce_text = (
-                    "При проблемах с интернетом используйте Автовыбор. "
-                    "Если что-то не работает — обновите профиль."
+                    "При проблемах с интернетом используйте сервера с 🆓. "
+                    "Если что-то не работает — обновите профиль, через 🔄"
                 )
 
                 # Use bypass stats for subscription-userinfo if bypass is tracked
@@ -726,44 +756,58 @@ class WebhookServer:
             if isinstance(data, web.Response):
                 return data
 
-            device_count = data.get("device_count", 0)
-            device_limit = data.get("device_limit", 5)
-            device_exceeded = device_limit > 0 and device_count > device_limit
-
-            if device_exceeded:
-                bot_h = (self.bot_public_username or "SvoyVPN_bot").lstrip("@")
-                parts = [
-                    f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
-                    f"?security=tls&type=tcp"
-                    f"#{quote(f'⚠️ Лимит устройств ({device_count}/{device_limit})')}",
-                    f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
-                    f"?security=tls&type=tcp"
-                    f"#{quote(f'📴 Сбросить в TG: @{bot_h}')}",
-                ]
+            if self._device_limit_exceeded(data):
+                bundle_txt = await self._build_happ_device_limit_bundle_text(data)
+                announce_text = (
+                    "При проблемах с интернетом используйте сервера с 🆓. "
+                    "Если что-то не работает — обновите профиль, через 🔄"
+                )
+                headers = {
+                    **self._happ_provider_headers(),
+                    "Cache-Control": "no-store, no-transform",
+                    "Content-Disposition": 'attachment; filename="SvoyVPN"',
+                    "profile-title": "Svoy VPN",
+                    "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
+                    "Profile-Update-Interval": "1",
+                    "announce": announce_text,
+                }
+                fmt = request.query.get("format", "").lower()
+                if fmt == "crypt5":
+                    encrypted = encrypt_profile(bundle_txt, data["token"])
+                    return web.Response(
+                        text=encrypted,
+                        content_type="application/octet-stream",
+                        charset="utf-8",
+                        headers={
+                            **headers,
+                            "X-Crypt-Version": "5",
+                            "X-Protected-Profile": "1",
+                        },
+                    )
                 return web.Response(
-                    text="\n".join(parts),
-                    content_type="text/plain",
+                    text=bundle_txt,
+                    content_type="application/json",
                     charset="utf-8",
-                    headers={
-                        **self._happ_provider_headers(),
-                        "profile-title": "Svoy VPN",
-                        "Subscription-Userinfo": "upload=0; download=0; total=0; expire=0",
-                        "Profile-Update-Interval": "1",
-                    },
+                    headers=headers,
                 )
 
             bot_h = (self.bot_public_username or "SvoyVPN_robot").lstrip("@")
+            async with get_connection() as conn:
+                tg_line = None
+                if data.get("bypass_exceeded"):
+                    tg_line = await ensure_user_tg_relay_vless_line(conn, data["user_id"])
             bundle_json = build_happ_bundle_json_for_keys(
                 data["keys"],
                 bypass_exceeded=data.get("bypass_exceeded", False),
                 used_bytes=data.get("used_bytes", 0),
                 limit_bytes=data.get("total_bytes", 0),
                 bot_username=bot_h,
+                tg_relay_vless_line=str(tg_line) if tg_line else None,
             )
 
             announce_text = (
-                "При проблемах с интернетом используйте Автовыбор. "
-                "Если что-то не работает — обновите профиль."
+                    "При проблемах с интернетом используйте сервера с 🆓. "
+                    "Если что-то не работает — обновите профиль, через 🔄"
             )
 
             headers = {
@@ -894,68 +938,24 @@ class WebhookServer:
 
             user_id = user_row["user_id"]
 
-            user_agent = request.headers.get("User-Agent", "Unknown")
-            ip_address = request.headers.get("X-Forwarded-For", request.remote or "Unknown")
-            if "," in ip_address:
-                ip_address = ip_address.split(",")[0].strip()
-            hint_keys = (
-                "Sec-CH-UA-Mobile",
-                "Sec-CH-UA-Platform",
-                "Sec-CH-UA-Platform-Version",
-                "Sec-CH-UA-Model",
-                "Sec-CH-UA-Full-Version-List",
-            )
-            client_hints = {
-                k: v.strip()
-                for k in hint_keys
-                if (v := request.headers.get(k))
-            }
-            device_fp = compute_subscription_device_fingerprint(
-                user_agent, client_hint_headers=client_hints or None
-            )
-            await log_subscription_usage(user_id, user_agent, ip_address, device_fp)
-
-            is_active = await conn.fetchval(
-                "SELECT CASE WHEN pay_subscribed = TRUE "
-                "AND subscription_end IS NOT NULL "
-                "AND DATE(subscription_end) >= CURRENT_DATE "
-                "THEN TRUE ELSE FALSE END "
-                "FROM users WHERE user_id = $1",
+            client_info = analyze_subscription_client(request.headers)
+            await log_subscription_usage(
                 user_id,
+                client_info.user_agent,
+                client_info.ip_address,
+                client_info.fingerprint,
+                device_model=client_info.display_name,
+                device_hwid=client_info.device_hwid,
+            )
+
+            keys, user_tier, is_active, expire_ts = await fetch_subscription_keys(
+                conn, user_id
             )
 
             device_count, device_limit = 0, 5
             if is_active:
                 from .database import count_active_devices
                 device_count, device_limit = await count_active_devices(conn, user_id, hours=6)
-
-            keys_data = await conn.fetch(
-                "SELECT DISTINCT ON (k.server_id) "
-                "k.vless_link, k.server_id, s.display_order, s.id as sid, "
-                "s.name as server_name, s.is_bypass "
-                "FROM vpn_keys k "
-                "INNER JOIN servers s ON k.server_id = s.id "
-                "WHERE k.user_id = $1 AND k.is_active = TRUE "
-                "AND s.is_active = TRUE "
-                "AND COALESCE(s.exclude_from_subscription, FALSE) = FALSE "
-                "AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE) "
-                "ORDER BY k.server_id, k.id ASC",
-                user_id,
-            )
-            keys = sorted(keys_data, key=lambda x: (x.get("display_order", 100), x.get("sid", 0)))
-
-            subscription_end = user_row.get("subscription_end")
-            expire_ts = 0
-            if subscription_end and is_active:
-                try:
-                    if isinstance(subscription_end, str):
-                        from datetime import datetime
-                        dt = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
-                    else:
-                        dt = subscription_end
-                    expire_ts = int(dt.replace(hour=23, minute=59, second=59).timestamp())
-                except Exception:
-                    pass
 
             used_bytes = 0
             total_bytes = 0
@@ -975,17 +975,49 @@ class WebhookServer:
                         bypass_exceeded = True
 
             if is_active:
-                servers_without_keys = await conn.fetch(
-                    "SELECT s.id FROM servers s "
-                    "WHERE s.is_active = TRUE "
-                    "AND NOT EXISTS ("
-                    "  SELECT 1 FROM vpn_keys k "
-                    "  WHERE k.server_id = s.id AND k.user_id = $1 "
-                    "  AND k.is_active = TRUE "
-                    "  AND (k.expires_at IS NULL OR DATE(k.expires_at) >= CURRENT_DATE)"
-                    ")",
-                    user_id,
-                )
+                from .plans import FREE_TIER_ID
+
+                if user_tier == FREE_TIER_ID:
+                    from .free_tier_servers import get_free_tier_allowed_server_ids
+
+                    allowed_list = list(
+                        await get_free_tier_allowed_server_ids(conn, user_id)
+                    )
+                    if allowed_list:
+                        servers_without_keys = await conn.fetch(
+                            """
+                            SELECT s.id FROM servers s
+                            WHERE s.id = ANY($2::bigint[])
+                              AND s.is_active = TRUE
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM vpn_keys k
+                                  WHERE k.server_id = s.id AND k.user_id = $1
+                                    AND k.is_active = TRUE
+                                    AND (
+                                        k.expires_at IS NULL
+                                        OR DATE(k.expires_at) >= CURRENT_DATE
+                                    )
+                              )
+                            """,
+                            user_id,
+                            allowed_list,
+                        )
+                    else:
+                        servers_without_keys = []
+                else:
+                    servers_without_keys = await conn.fetch(
+                        f"""
+                        SELECT s.id FROM servers s
+                        WHERE s.is_active = TRUE
+                        AND NOT EXISTS (
+                          SELECT 1 FROM vpn_keys k
+                          WHERE k.server_id = s.id AND k.user_id = $1
+                          AND k.is_active = TRUE
+                          AND {SQL_VPN_KEY_NOT_EXPIRED}
+                        )
+                        """,
+                        user_id,
+                    )
                 if servers_without_keys:
                     missing_ids = [int(r["id"]) for r in servers_without_keys]
 
@@ -1032,18 +1064,79 @@ class WebhookServer:
             if isinstance(data, web.Response):
                 return data
 
+            if self._device_limit_exceeded(data):
+                bundle_txt = await self._build_happ_device_limit_bundle_text(data)
+                announce_text = (
+                    "При проблемах с интернетом используйте сервера с 🆓. "
+                    "Если что-то не работает — обновите профиль, через 🔄"
+                )
+                common_headers = {
+                    "Cache-Control": "no-store, no-transform",
+                    "profile-title": "Svoy VPN",
+                    "profile-update-interval": "1",
+                    "support-url": "https://t.me/majorka_wy",
+                    "profile-web-page-url": "https://t.me/SvoyVPN_robot",
+                    "announce": announce_text,
+                    "subscription-userinfo": "upload=0; download=0; total=0; expire=0",
+                    **self._happ_provider_headers(),
+                }
+                if fmt == "sanitized":
+                    configs = json.loads(bundle_txt)
+                    safe = [sanitize_profile_for_display(c) for c in configs]
+                    return web.json_response(
+                        safe,
+                        dumps=lambda o: json.dumps(o, ensure_ascii=False, indent=2),
+                        headers={**common_headers, "X-Preview-Mode": "sanitized"},
+                    )
+                if fmt == "json":
+                    export_secret = os.getenv("SVOYVPN_PROFILE_EXPORT_SECRET", "").strip()
+                    if not export_secret or request.headers.get("X-Svoy-Export-Key") != export_secret:
+                        return web.json_response(
+                            {
+                                "error": "raw_json_disabled",
+                                "detail": "Установите SVOYVPN_PROFILE_EXPORT_SECRET и передайте X-Svoy-Export-Key",
+                            },
+                            status=403,
+                        )
+                    return web.Response(
+                        text=bundle_txt,
+                        content_type="application/json",
+                        charset="utf-8",
+                        headers={
+                            **common_headers,
+                            "Content-Disposition": 'attachment; filename="SvoyVPN-bundle.json"',
+                            "X-Export-Warning": "contains-secrets",
+                        },
+                    )
+                encrypted = encrypt_profile(bundle_txt, data["token"])
+                return web.Response(
+                    text=encrypted,
+                    content_type="application/octet-stream",
+                    headers={
+                        **common_headers,
+                        "Content-Disposition": 'attachment; filename="SvoyVPN.crypt5"',
+                        "X-Crypt-Version": "5",
+                        "X-Protected-Profile": "1",
+                    },
+                )
+
             bot_h = (self.bot_public_username or "SvoyVPN_robot").lstrip("@")
+            async with get_connection() as conn:
+                tg_line = None
+                if data.get("bypass_exceeded"):
+                    tg_line = await ensure_user_tg_relay_vless_line(conn, data["user_id"])
             bundle_json = build_happ_bundle_json_for_keys(
                 data["keys"],
                 bypass_exceeded=data.get("bypass_exceeded", False),
                 used_bytes=data.get("used_bytes", 0),
                 limit_bytes=data.get("total_bytes", 0),
                 bot_username=bot_h,
+                tg_relay_vless_line=str(tg_line) if tg_line else None,
             )
 
             announce_text = (
-                "При проблемах с интернетом используйте Автовыбор. "
-                "Если что-то не работает — обновите профиль."
+                    "При проблемах с интернетом используйте сервера с 🆓. "
+                    "Если что-то не работает — обновите профиль, через 🔄"
             )
 
             common_headers = {
@@ -1121,13 +1214,38 @@ class WebhookServer:
             if isinstance(data, web.Response):
                 return data
 
+            if self._device_limit_exceeded(data):
+                bundle_txt = await self._build_happ_device_limit_bundle_text(data)
+                encrypted = encrypt_profile(bundle_txt, data["token"])
+                return web.Response(
+                    text=encrypted,
+                    content_type="application/octet-stream",
+                    headers={
+                        "Cache-Control": "no-store, no-transform",
+                        "Content-Disposition": 'attachment; filename="SvoyVPN.crypt5"',
+                        "X-Crypt-Version": "5",
+                        "X-Protected-Profile": "1",
+                        "profile-title": "Svoy VPN",
+                        "profile-update-interval": "1",
+                        "support-url": "https://t.me/majorka_wy",
+                        "profile-web-page-url": "https://t.me/SvoyVPN_robot",
+                        "subscription-userinfo": "upload=0; download=0; total=0; expire=0",
+                        **self._happ_provider_headers(),
+                    },
+                )
+
             bot_h = (self.bot_public_username or "SvoyVPN_robot").lstrip("@")
+            async with get_connection() as conn:
+                tg_line = None
+                if data.get("bypass_exceeded"):
+                    tg_line = await ensure_user_tg_relay_vless_line(conn, data["user_id"])
             bundle_json = build_happ_bundle_json_for_keys(
                 data["keys"],
                 bypass_exceeded=data.get("bypass_exceeded", False),
                 used_bytes=data.get("used_bytes", 0),
                 limit_bytes=data.get("total_bytes", 0),
                 bot_username=bot_h,
+                tg_relay_vless_line=str(tg_line) if tg_line else None,
             )
             encrypted = encrypt_profile(bundle_json, data["token"])
 
@@ -1287,6 +1405,14 @@ class WebhookServer:
                         )
                 else:
                     logger.warning(f"YooKassa payment not succeeded: payment_id={payment_id}, status={status}, paid={paid}")
+            elif event == "payment.canceled":
+                payment_id = payment_obj.get("id")
+                metadata = payment_obj.get("metadata") or {}
+                if payment_id and self.bot:
+                    from .autopay_grace import handle_autopay_payment_failed
+                    await handle_autopay_payment_failed(
+                        payment_id, payment_obj, metadata, self.bot
+                    )
             else:
                 logger.info(f"YooKassa webhook event '{event}' ignored")
             
@@ -1633,9 +1759,10 @@ class WebhookServer:
                         logger.warning(f"Could not fetch profile photo for user {user_id}: {ex}", exc_info=True)
 
                 # Trial logic
+                from .trial_usage import user_eligible_for_trial_offer
                 trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
                 trial_days = trial_settings['days'] if trial_settings and trial_settings['days'] else 0
-                trial_available = (user['trial_used'] is False) and (trial_days > 0) and (not is_active)
+                trial_available = await user_eligible_for_trial_offer(conn, user_id)
 
                 # Admin check
                 is_admin = user_id in self.admin_ids
@@ -1648,6 +1775,7 @@ class WebhookServer:
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
                 # Не блокируем загрузку миниаппа сетевыми таймаутами XUI.
                 traffic = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
+                bypass = await user_bypass_traffic_snapshot(conn, user_id)
 
                 return web.json_response({
                     "user": {
@@ -1683,6 +1811,7 @@ class WebhookServer:
                             "trafficEnforced": traffic["trafficEnforced"],
                             "trafficExceeded": traffic["trafficExceeded"],
                         },
+                        "bypass": _bypass_api_payload(bypass),
                     },
                     "referral": referral,
                 })
@@ -1716,30 +1845,17 @@ class WebhookServer:
                 return web.json_response({"error": "User ID not found"}, status=400)
                 
             async with get_connection() as conn:
-                user_trial_used = await conn.fetchval("SELECT trial_used FROM users WHERE user_id = $1", user_id)
-                if user_trial_used:
-                    return web.json_response({"error": "Trial already used"}, status=400)
-                
-                trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
-                trial_days = trial_settings['days'] if trial_settings else 0
-                
-                if trial_days <= 0:
+                from .trial_usage import user_eligible_for_trial_offer
+                if not await user_eligible_for_trial_offer(conn, user_id):
                     return web.json_response({"error": "Trial not available"}, status=400)
-                
-                await conn.execute('''
-                    UPDATE users SET 
-                        trial_used = TRUE,
-                        pay_subscribed = TRUE,
-                        subscription_end = CASE 
-                            WHEN subscription_end IS NULL OR subscription_end < CURRENT_DATE 
-                            THEN CURRENT_DATE + ($1 || ' days')::INTERVAL
-                            ELSE subscription_end + ($1 || ' days')::INTERVAL
-                        END
-                    WHERE user_id = $2
-                ''', str(trial_days), user_id)
-                await apply_subscription_anchor_on_payment(conn, user_id)
-            
-            return web.json_response({"status": "ok", "days": trial_days})
+
+            return web.json_response(
+                {
+                    "error": "Trial requires 1₽ payment",
+                    "message": "Используйте кнопку «Plus за 1₽» в боте",
+                },
+                status=402,
+            )
             
         except Exception as e:
             logger.error(f"Error in api_activate_trial: {e}", exc_info=True)
@@ -1762,46 +1878,26 @@ class WebhookServer:
                 except Exception:
                     pass  # fallback to normal prices
             
-            from .plans import get_user_tariffs, get_subscription_plans
+            from .plans import get_user_tariffs, get_tier_plans
             
-            # Получаем актуальные тарифы для пользователя, учитывая все скидки
-            current_tariffs, is_renew, show_discount = await get_user_tariffs(user_id)
-            
-            # Предварительно загружаем базовые планы для расчета выгоды (зачеркнутых цен)
-            regular_plans = await get_subscription_plans()
-            
-            tariffs = []
-            
-            # Получаем текущую базовую цену за 1 месяц (для расчета выгоды оптом)
-            m1_reg = regular_plans.get('1_month', {})
-            m1_rub = m1_reg.get('price_rub', 19900) / 100.0
-            m1_stars = m1_reg.get('price_stars', 199)
+            current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
+            all_tier = await get_tier_plans()
+            m1 = all_tier.get("plus_1m") or {}
+            m1_rub = m1.get("price_rub", 14900) / 100.0
+            m1_stars = m1.get("price_stars", 149)
 
+            tariffs = []
             for plan_id, plan_data in current_tariffs.items():
-                months = plan_data.get('duration', 1)
-                price_rub = plan_data.get('price_rub', 0) / 100.0
-                price_stars = plan_data.get('price_stars', 0)
-                
+                months = plan_data.get("duration", 1)
+                price_rub = plan_data.get("price_rub", 0) / 100.0
+                price_stars = plan_data.get("price_stars", 0)
                 old_price = None
                 old_price_stars = None
-                
-                base_id = plan_id.replace("_renew", "")
-                base_plan = regular_plans.get(base_id)
-                if base_plan:
-                    base_rub = base_plan.get('price_rub', 0) / 100.0
-                    base_stars = base_plan.get('price_stars', 0)
-                    if price_rub < base_rub:
-                        old_price = base_rub
-                    if price_stars < base_stars:
-                        old_price_stars = base_stars
-                
-                # Логика "Оптом дешевле" для всех планов
-                if months > 1:
-                    if not old_price and price_rub < (m1_rub * months):
-                        old_price = m1_rub * months
-                    if not old_price_stars and price_stars < (m1_stars * months):
-                        old_price_stars = m1_stars * months
-                
+                if months > 1 and price_rub < (m1_rub * months):
+                    old_price = m1_rub * months
+                if months > 1 and price_stars < (m1_stars * months):
+                    old_price_stars = m1_stars * months
+
                 tariffs.append({
                     "id": plan_id,
                     "months": months,
@@ -1826,10 +1922,10 @@ class WebhookServer:
     async def api_get_payment_methods(self, request: web_request.Request) -> web.Response:
         """API: Получить способы оплаты"""
         try:
-            from .plans import PAYMENT_METHODS
+            from .plans import SUBSCRIPTION_PAYMENT_METHODS
             
             methods = []
-            for method_id, method_data in PAYMENT_METHODS.items():
+            for method_id, method_data in SUBSCRIPTION_PAYMENT_METHODS.items():
                 icon_map = {
                     "stars": "⭐",
                     "yookassa": "💳",
@@ -1900,7 +1996,12 @@ class WebhookServer:
             
             # Создаем платеж в зависимости от способа оплаты
             if payment_method == 'stars':
-                # Оплата через Telegram Stars
+                if is_tier_plan:
+                    return web.json_response(
+                        {"error": "Оплата подписки Stars недоступна"},
+                        status=400,
+                    )
+                # Legacy subscription Stars (deprecated)
                 price_stars = int(plan_data.get('price_stars', 0))
                 
                 try:
@@ -3279,6 +3380,13 @@ class WebhookServer:
                     email, pw_hash, fake_user_id
                 )
 
+            await ensure_user_has_subscription(
+                fake_user_id,
+                username=email.split('@')[0],
+                first_name=email.split('@')[0],
+                provision_keys=True,
+            )
+
             token = self._generate_jwt(fake_user_id)
             logger.info(f"Email registration confirmed: {email} → user_id={fake_user_id}")
             pack = await self._apply_web_auth_audit_db(request, email, "register")
@@ -3329,6 +3437,12 @@ class WebhookServer:
                         "UPDATE app_accounts SET user_id = $1 WHERE email = $2",
                         fake_user_id, email
                     )
+                await ensure_user_has_subscription(
+                    fake_user_id,
+                    username=email.split('@')[0],
+                    first_name=email.split('@')[0],
+                    provision_keys=True,
+                )
                 user_id = fake_user_id
 
             token = self._generate_jwt(user_id)
@@ -3645,7 +3759,8 @@ class WebhookServer:
 
                 trial_settings = await conn.fetchrow("SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1")
                 trial_days = trial_settings["days"] if trial_settings else 0
-                trial_available = (user["trial_used"] is False) and (trial_days > 0) and (not is_active)
+                from .trial_usage import user_eligible_for_trial_offer
+                trial_available = await user_eligible_for_trial_offer(conn, user_id)
 
                 is_admin = user_id in self.admin_ids
 
@@ -3656,6 +3771,7 @@ class WebhookServer:
                 auth_snap = await self._user_auth_snapshot(conn, user_id)
                 # В JWT-варианте тоже не тянем панель синхронно на каждый запрос.
                 traffic = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
+                bypass = await user_bypass_traffic_snapshot(conn, user_id)
 
                 return web.json_response({
                     "user": {
@@ -3691,6 +3807,7 @@ class WebhookServer:
                             "trafficEnforced": traffic["trafficEnforced"],
                             "trafficExceeded": traffic["trafficExceeded"],
                         },
+                        "bypass": _bypass_api_payload(bypass),
                     },
                     "referral": referral,
                 })

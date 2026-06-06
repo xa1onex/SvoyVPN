@@ -337,6 +337,40 @@ def _fast_server_index(display_names: list[str]) -> int:
     return 0
 
 
+def _navigation_header_config(server_name: str) -> dict[str, Any]:
+    """Заголовок секции в Happ: 0.0.0.0 + VLESS none (виден в списке, не пингуется)."""
+    from .traffic import is_fast_section_header, navigation_header_vless_line
+
+    name = (server_name or "Сервер").strip()
+    nav_uuid = (
+        "00000000-0000-0000-0000-000000000001"
+        if is_fast_section_header(name)
+        else "00000000-0000-0000-0000-000000000002"
+    )
+    link = navigation_header_vless_line(name, uuid=nav_uuid)
+    parsed = parse_vless_link(link)
+    if not parsed:
+        parsed = {
+            "uuid": nav_uuid,
+            "address": "0.0.0.0",
+            "port": 1,
+            "remark": name,
+            "security": "none",
+            "type": "tcp",
+            "flow": "none",
+            "sni": "",
+            "pbk": "",
+            "sid": "",
+            "fp": "chrome",
+            "spx": "",
+            "serviceName": None,
+        }
+    tr, td = presentation_for_server(remark=name, server_name=name, is_bypass=False)
+    cfg = _build_single_server_config(parsed, remarks=tr, description=td)
+    cfg.pop("meta", None)
+    return cfg
+
+
 def _dummy_notice_parsed() -> dict[str, Any]:
     """Заглушка для записей-уведомлений в списке Happ (не подключается)."""
     return {
@@ -356,22 +390,200 @@ def _dummy_notice_parsed() -> dict[str, Any]:
     }
 
 
-def happ_bypass_limit_notice_configs(used_bytes: int, limit_bytes: int, bot_username: str) -> list[dict[str, Any]]:
-    """
-    Две записи в конец подписки Happ: лимит исчерпан + CTA на бота.
-    Текст: «⚠️ Лимит исчерпан(11.2/10 ГБ)» и «📈 Увеличить @…».
-    """
-    used_gb = used_bytes / (1024**3)
-    lim_gb = limit_bytes / (1024**3)
-    lim_s = f"{lim_gb:.0f}" if abs(lim_gb - round(lim_gb)) < 1e-6 else f"{lim_gb:.1f}"
-    r1 = f"⚠️ Лимит исчерпан({used_gb:.1f}/{lim_s} ГБ)"
+def _build_info_notice_config(remarks: str, *, uuid: str | None = None) -> dict[str, Any]:
+    """Информационная запись в Happ: только remarks, без meta.serverDescription."""
+    parsed = {**_dummy_notice_parsed(), "remark": remarks.strip()}
+    if uuid:
+        parsed["uuid"] = uuid
+    cfg = _build_single_server_config(parsed, remarks=remarks, description="")
+    cfg.pop("meta", None)
+    return cfg
+
+
+_HAPP_NOTICE_REMARK_MAX_LEN = 32
+
+
+def _happ_notice_remark(text: str) -> str:
+    """Короткая строка для информационного сервера в Happ."""
+    s = (text or "").strip()
+    if len(s) <= _HAPP_NOTICE_REMARK_MAX_LEN:
+        return s
+    cut = s[:_HAPP_NOTICE_REMARK_MAX_LEN].rstrip()
+    return cut if cut else s[:_HAPP_NOTICE_REMARK_MAX_LEN]
+
+
+def _format_gb_short(value_bytes: int) -> str:
+    gb = int(value_bytes) / (1024**3)
+    if abs(gb - round(gb)) < 0.05:
+        return f"{round(gb):.0f}"
+    return f"{gb:.1f}".rstrip("0").rstrip(".")
+
+
+def _device_limit_remark(text: str) -> str:
+    return _happ_notice_remark(text)
+
+
+def _device_limit_notice_items(
+    device_count: int, device_limit: int, bot_username: str
+) -> list[str]:
+    """Краткая пошаговая инструкция — каждый пункт отдельный сервер."""
     handle = (bot_username or "SvoyVPN_robot").lstrip("@")
-    r2 = f"📈 Увеличить @{handle}"
-    dummy = _dummy_notice_parsed()
+    lim = max(int(device_limit), 1)
     return [
-        _build_single_server_config(dummy, remarks=r1, description="Лимит трафика исчерпан"),
-        _build_single_server_config(dummy, remarks=r2, description="Открой Telegram для увеличения лимита"),
+        _device_limit_remark(f"⚠️ Лимит устройств исчерпан: {device_count}/{lim}"),
+        _device_limit_remark("Чтобы сбросить лимит:"),
+        _device_limit_remark(f"1. Открыть @{handle}"),
+        _device_limit_remark("2. 📱 Устройства"),
+        _device_limit_remark("3. 🔄 Сбросить ненужные сессии"),
+        _device_limit_remark("4. Обновить Happ, через 🔄"),
+        _device_limit_remark("⭐ Кстати, Plus без лимита"),
     ]
+
+
+_DEVICE_LIMIT_NOTICE_UUIDS = tuple(
+    f"44444444-4444-4444-4444-4444444444{i:02d}" for i in range(1, 12)
+)
+
+
+def happ_device_limit_notice_lines(
+    device_count: int, device_limit: int, bot_username: str
+) -> list[str]:
+    """Plain-text vless-строки для Happ /sub при лимите устройств."""
+    from .happ_text_notice import happ_info_notice_vless_uri
+
+    lines: list[str] = []
+    for i, title in enumerate(
+        _device_limit_notice_items(device_count, device_limit, bot_username)
+    ):
+        lines.append(
+            happ_info_notice_vless_uri(
+                title=title,
+                uuid=_DEVICE_LIMIT_NOTICE_UUIDS[i],
+            )
+        )
+    return lines
+
+
+def happ_device_limit_notice_configs(
+    device_count: int, device_limit: int, bot_username: str
+) -> list[dict[str, Any]]:
+    """Happ JSON-бандл при превышении лимита устройств."""
+    return [
+        _build_info_notice_config(title, uuid=_DEVICE_LIMIT_NOTICE_UUIDS[i])
+        for i, title in enumerate(
+            _device_limit_notice_items(device_count, device_limit, bot_username)
+        )
+    ]
+
+
+def happ_device_limit_bundle_json(
+    device_count: int,
+    device_limit: int,
+    bot_username: str,
+    *,
+    tg_relay_vless_line: str | None = None,
+) -> str:
+    """JSON-массив для crypt5 / Happ при лимите устройств + опционально ТГ безлимит."""
+    configs = happ_device_limit_notice_configs(device_count, device_limit, bot_username)
+    if tg_relay_vless_line:
+        parsed = parse_vless_link(tg_relay_vless_line.strip())
+        if parsed and not _is_fake_link(parsed):
+            from .happ_catalog import tg_relay_presentation
+
+            tr, _ = tg_relay_presentation()
+            tg_cfg = _build_single_server_config(parsed, remarks=tr, description="")
+            tg_cfg.pop("meta", None)
+            configs.append(tg_cfg)
+    return json.dumps(configs, ensure_ascii=False)
+
+
+def _bypass_limit_notice_items(
+    used_bytes: int, limit_bytes: int, bot_username: str
+) -> list[str]:
+    """Краткая инструкция при исчерпании bypass-лимита — каждый пункт отдельный сервер."""
+    handle = (bot_username or "SvoyVPN_robot").lstrip("@")
+    used_s = _format_gb_short(used_bytes)
+    lim_s = _format_gb_short(limit_bytes)
+    return [
+        _happ_notice_remark(f"⚠️ Лимит исчерпан: {used_s}/{lim_s} ГБ"),
+        _happ_notice_remark("Чтобы увеличить лимит:"),
+        _happ_notice_remark(f"1. Откройте @{handle}"),
+        _happ_notice_remark("2. 📶 Лимиты"),
+        _happ_notice_remark("3. Выберите нужный пакет"),
+        _happ_notice_remark("⭐ Кстати, Plus — 50 ГБ/мес"),
+    ]
+
+
+def _bypass_limit_notice_uuid(index: int) -> str:
+    return f"33333333-3333-3333-3333-{index:012x}"
+
+
+def happ_bypass_limit_notice_lines(
+    used_bytes: int, limit_bytes: int, bot_username: str
+) -> list[str]:
+    """Plain-text vless-строки для Happ при исчерпании bypass-лимита."""
+    from .happ_text_notice import happ_info_notice_vless_uri
+
+    return [
+        happ_info_notice_vless_uri(
+            title=title,
+            uuid=_bypass_limit_notice_uuid(i),
+        )
+        for i, title in enumerate(
+            _bypass_limit_notice_items(used_bytes, limit_bytes, bot_username),
+            start=1,
+        )
+    ]
+
+
+def happ_bypass_limit_notice_configs(
+    used_bytes: int, limit_bytes: int, bot_username: str
+) -> list[dict[str, Any]]:
+    """Happ JSON-бандл при исчерпании bypass-лимита."""
+    return [
+        _build_info_notice_config(title, uuid=_bypass_limit_notice_uuid(i))
+        for i, title in enumerate(
+            _bypass_limit_notice_items(used_bytes, limit_bytes, bot_username),
+            start=1,
+        )
+    ]
+
+
+def happ_traffic_remaining_config(used_bytes: int, limit_bytes: int) -> dict[str, Any]:
+    """Строка «📊 ЛИМИТ: X / Y GiB» в JSON-подписке Happ."""
+    used_gb = int(used_bytes) / (1024**3)
+    limit_gb = int(limit_bytes) / (1024**3)
+    title = f"📊 ЛИМИТ: {used_gb:.2f} / {limit_gb:.0f} GiB"
+    dummy = {**_dummy_notice_parsed(), "uuid": "22222222-2222-2222-2222-222222222222"}
+    cfg = _build_single_server_config(
+        dummy, remarks=title, description="Использование трафика"
+    )
+    cfg.pop("meta", None)
+    return cfg
+
+
+def _append_bypass_traffic_status_configs(
+    configs: list[dict[str, Any]],
+    *,
+    used_bytes: int,
+    limit_bytes: int,
+    bot_username: str,
+    bypass_exceeded: bool,
+    bypass_notices_added: bool,
+    limit_status_added: bool,
+) -> tuple[bool, bool]:
+    """Лимит bypass: 📊 остаток или ⚠️ исчерпан + CTA."""
+    if limit_bytes <= 0 or limit_status_added:
+        return bypass_notices_added, limit_status_added
+    if bypass_exceeded:
+        if not bypass_notices_added:
+            configs.extend(
+                happ_bypass_limit_notice_configs(used_bytes, limit_bytes, bot_username)
+            )
+            bypass_notices_added = True
+        return bypass_notices_added, True
+    configs.append(happ_traffic_remaining_config(used_bytes, limit_bytes))
+    return bypass_notices_added, True
 
 
 def generate_happ_configs_list(
@@ -379,17 +591,34 @@ def generate_happ_configs_list(
     server_names: list[str] | None = None,
     *,
     server_is_bypass: list[bool] | None = None,
+    bypass_exceeded: bool = False,
+    used_bytes: int = 0,
+    limit_bytes: int = 0,
+    bot_username: str = "SvoyVPN_robot",
 ) -> list[dict[str, Any]]:
     """
     Список Xray JSON для Happ:
-      1) «Быстрые сервера» (один outbound)
+      1) заголовок «Быстрые сервера»
       2) Автовыбор (balancer по всем серверам)
-      3) Остальные серверы по одному
+      3) «Быстрые сервера» (один outbound)
+      4) Остальные серверы по одному
+      5) bypass-секция + лимит / инструкции
     """
+    from .traffic import is_fast_section_header, is_free_header_server
+
     if server_names is None:
         server_names = [""] * len(vless_links)
     if server_is_bypass is None:
         server_is_bypass = [False] * len(vless_links)
+
+    configs: list[dict[str, Any]] = []
+    bypass_nav_names: list[str] = []
+    for i, link in enumerate(vless_links):
+        sname = server_names[i] if i < len(server_names) else ""
+        if is_fast_section_header(sname):
+            configs.append(_navigation_header_config(sname))
+        elif is_free_header_server(sname):
+            bypass_nav_names.append(sname)
 
     real_links: list[tuple[str, dict[str, Any], str, bool, str]] = []
     display_names: list[str] = []
@@ -398,28 +627,88 @@ def generate_happ_configs_list(
         if not parsed or _is_fake_link(parsed):
             continue
         sname = server_names[i] if i < len(server_names) else ""
+        if is_fast_section_header(sname) or is_free_header_server(sname):
+            continue
         is_bp = bool(server_is_bypass[i]) if i < len(server_is_bypass) else False
         remark = parsed.get("remark") or sname or f"Server {i+1}"
         real_links.append((link, parsed, remark, is_bp, sname))
-        display_names.append(remark)
+        if not is_bp:
+            display_names.append(remark)
 
     if not real_links:
-        return []
+        bypass_notices_added = False
+        limit_status_added = False
+        if bypass_nav_names:
+            for nav_name in bypass_nav_names:
+                configs.append(_navigation_header_config(nav_name))
+        _append_bypass_traffic_status_configs(
+            configs,
+            used_bytes=used_bytes,
+            limit_bytes=limit_bytes,
+            bot_username=bot_username,
+            bypass_exceeded=bypass_exceeded,
+            bypass_notices_added=bypass_notices_added,
+            limit_status_added=limit_status_added,
+        )
+        return configs
 
-    idx_fast = _fast_server_index(display_names)
-    fast = real_links[idx_fast]
-    tail = [rl for i, rl in enumerate(real_links) if i != idx_fast]
+    regular = [(rl, p, r, bp, sn) for rl, p, r, bp, sn in real_links if not bp]
+    bypass = [(rl, p, r, bp, sn) for rl, p, r, bp, sn in real_links if bp]
 
-    all_vless = [rl[0] for rl in real_links]
-    fr, fd = presentation_for_server(remark=fast[2], server_name=fast[4], is_bypass=fast[3])
+    if regular:
+        idx_fast = _fast_server_index([r for _, _, r, _, _ in regular])
+        fast = regular[idx_fast]
+        tail = [rl for i, rl in enumerate(regular) if i != idx_fast]
+        all_vless = [rl[0] for rl in regular]
+        fr, fd = presentation_for_server(remark=fast[2], server_name=fast[4], is_bypass=False)
+        configs.extend([
+            generate_xray_profile(all_vless),
+            _build_single_server_config(fast[1], remarks=fr, description=fd),
+        ])
+        for _link, parsed, remark, is_bp, sname in tail:
+            tr, td = presentation_for_server(remark=remark, server_name=sname, is_bypass=False)
+            configs.append(_build_single_server_config(parsed, remarks=tr, description=td))
 
-    configs: list[dict[str, Any]] = [
-        _build_single_server_config(fast[1], remarks=fr, description=fd),
-        generate_xray_profile(all_vless),
-    ]
-    for _link, parsed, remark, is_bp, sname in tail:
-        tr, td = presentation_for_server(remark=remark, server_name=sname, is_bypass=is_bp)
-        configs.append(_build_single_server_config(parsed, remarks=tr, description=td))
+    bypass_notices_added = False
+    bypass_nav_added = False
+    limit_status_added = False
+
+    def _add_bypass_section_header() -> None:
+        nonlocal bypass_nav_added, bypass_notices_added, limit_status_added
+        if bypass_nav_added:
+            return
+        for nav_name in bypass_nav_names:
+            configs.append(_navigation_header_config(nav_name))
+        bypass_nav_added = True
+        bypass_notices_added, limit_status_added = _append_bypass_traffic_status_configs(
+            configs,
+            used_bytes=used_bytes,
+            limit_bytes=limit_bytes,
+            bot_username=bot_username,
+            bypass_exceeded=bypass_exceeded,
+            bypass_notices_added=bypass_notices_added,
+            limit_status_added=limit_status_added,
+        )
+
+    if not bypass_exceeded:
+        for _link, parsed, remark, _is_bp, sname in bypass:
+            if not bypass_nav_added:
+                _add_bypass_section_header()
+            tr, td = presentation_for_server(remark=remark, server_name=sname, is_bypass=True)
+            configs.append(_build_single_server_config(parsed, remarks=tr, description=td))
+    elif bypass_nav_names:
+        _add_bypass_section_header()
+
+    if limit_bytes > 0 and not limit_status_added:
+        _append_bypass_traffic_status_configs(
+            configs,
+            used_bytes=used_bytes,
+            limit_bytes=limit_bytes,
+            bot_username=bot_username,
+            bypass_exceeded=bypass_exceeded,
+            bypass_notices_added=bypass_notices_added,
+            limit_status_added=limit_status_added,
+        )
 
     return configs
 
@@ -431,21 +720,42 @@ def build_happ_bundle_json_for_keys(
     used_bytes: int = 0,
     limit_bytes: int = 0,
     bot_username: str = "SvoyVPN_robot",
+    tg_relay_vless_line: str | None = None,
 ) -> str:
     """Единый JSON-массив профилей Happ (для crypt5). keys — vless_link, server_name, is_bypass."""
+    from .traffic import subscription_row_is_bypass
+
     rows = [k for k in keys if k.get("vless_link")]
     if bypass_exceeded:
-        rows = [k for k in rows if not k.get("is_bypass")]
+        rows = [
+            k
+            for k in rows
+            if not subscription_row_is_bypass(k.get("server_name"), k.get("is_bypass"))
+        ]
     vless_links = [str(k["vless_link"]) for k in rows]
     server_names = [str(k.get("server_name") or "") for k in rows]
-    server_is_bypass = [bool(k.get("is_bypass")) for k in rows]
+    server_is_bypass = [
+        subscription_row_is_bypass(k.get("server_name"), k.get("is_bypass"))
+        for k in rows
+    ]
     configs = generate_happ_configs_list(
-        vless_links, server_names, server_is_bypass=server_is_bypass
+        vless_links,
+        server_names,
+        server_is_bypass=server_is_bypass,
+        bypass_exceeded=bypass_exceeded,
+        used_bytes=used_bytes,
+        limit_bytes=limit_bytes,
+        bot_username=bot_username,
     )
-    if bypass_exceeded and limit_bytes > 0:
-        configs.extend(
-            happ_bypass_limit_notice_configs(used_bytes, limit_bytes, bot_username)
-        )
+    if tg_relay_vless_line and bypass_exceeded:
+        parsed = parse_vless_link(tg_relay_vless_line.strip())
+        if parsed and not _is_fake_link(parsed):
+            from .happ_catalog import tg_relay_presentation
+
+            tr, _ = tg_relay_presentation()
+            tg_cfg = _build_single_server_config(parsed, remarks=tr, description="")
+            tg_cfg.pop("meta", None)
+            configs.append(tg_cfg)
     return json.dumps(configs, ensure_ascii=False)
 
 

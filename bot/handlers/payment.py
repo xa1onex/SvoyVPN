@@ -30,6 +30,28 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
     @dp.pre_checkout_query()
     async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery):
         """Обработка pre-checkout запроса"""
+        payload = pre_checkout_query.invoice_payload or ""
+        from ..plans import is_active_tier_plan, is_legacy_subscription_plan
+
+        if payload.startswith("tier|") or payload.startswith("tier_upgrade|"):
+            await pre_checkout_query.answer(
+                ok=False,
+                error_message="Оплата подписки Stars недоступна. Используйте карту.",
+            )
+            return
+
+        if payload.startswith("stars_"):
+            pl = payload.replace("_miniapp", "")
+            parts = pl.split("_")
+            if len(parts) >= 3:
+                plan_part = "_".join(parts[2:-1] if parts[-1].isdigit() else parts[2:])
+                if is_active_tier_plan(plan_part) or is_legacy_subscription_plan(plan_part):
+                    await pre_checkout_query.answer(
+                        ok=False,
+                        error_message="Оплата подписки Stars недоступна. Используйте карту.",
+                    )
+                    return
+
         await pre_checkout_query.answer(ok=True)
     
     @dp.message(F.successful_payment)
@@ -148,6 +170,15 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
                 method_id = "stars" if message.successful_payment.currency == "XTR" else "yookassa"
             
             # Получаем планы
+            from ..plans import is_active_tier_plan, is_legacy_subscription_plan
+
+            if is_legacy_subscription_plan(plan_id):
+                raise ValueError(f"Legacy plan rejected: {plan_id}")
+
+            if is_active_tier_plan(plan_id):
+                await process_tier_stars_payment(message, bot, plan_id, config, source=source)
+                return
+
             subscription_plans = await get_subscription_plans()
             renewal_plans = await get_renewal_plans()
             

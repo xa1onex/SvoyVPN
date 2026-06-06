@@ -113,11 +113,6 @@ BYPASS_PACKS_DEFAULT = [
 # Порядок тарифов (один платный тариф)
 TIER_ORDER = ["plus"]
 
-
-def tier_plan_uses_yookassa_autopay_binding(plan_id: str) -> bool:
-    """Любой tier-план оплачивается с save_payment_method для автосписания."""
-    return plan_id in TIER_PLANS_BASE
-
 # ---------------------------------------------------------------------------
 # Legacy plans (kept for backward compat with old subscriptions)
 # ---------------------------------------------------------------------------
@@ -192,10 +187,47 @@ RENEWAL_PLANS_BASE = {
     },
 }
 
+# Актуальные планы продажи: только Plus на месяц и на год.
+ACTIVE_TIER_PLAN_IDS = frozenset({"plus_1m", "plus_12m"})
+
+# Старые subscription-планы (1/3/6/12 мес.) — только для истории в payments.
+LEGACY_SUBSCRIPTION_PLAN_IDS = frozenset(
+    list(SUBSCRIPTION_PLANS_BASE.keys()) + list(RENEWAL_PLANS_BASE.keys())
+)
+
+
+def is_active_tier_plan(plan_id: str | None) -> bool:
+    return bool(plan_id) and plan_id in ACTIVE_TIER_PLAN_IDS
+
+
+def is_legacy_subscription_plan(plan_id: str | None) -> bool:
+    """Старые планы подписки (3/6 мес. и т.д.) — больше не продаются."""
+    if not plan_id:
+        return False
+    if plan_id in LEGACY_SUBSCRIPTION_PLAN_IDS:
+        return True
+    base = plan_id.replace("_renew", "")
+    if base in SUBSCRIPTION_PLANS_BASE:
+        return True
+    for legacy_tier in LEGACY_TIER_IDS:
+        if plan_id.startswith(f"{legacy_tier}_"):
+            return True
+    return False
+
+
+def tier_plan_uses_yookassa_autopay_binding(plan_id: str) -> bool:
+    """Tier-план с привязкой карты для автосписания."""
+    return plan_id in ACTIVE_TIER_PLAN_IDS
+
 PAYMENT_METHODS = {
     "stars": {"title": "Telegram Stars", "currency": "XTR"},
     "yookassa": {"title": "ЮKassa", "currency": "RUB"},
     "cryptopay": {"title": "Crypto Pay", "currency": "RUB"},
+}
+
+# Подписка Plus — только карта / crypto (без Stars).
+SUBSCRIPTION_PAYMENT_METHODS = {
+    k: v for k, v in PAYMENT_METHODS.items() if k != "stars"
 }
 
 DEFAULT_MAX_DEVICES = 5
@@ -231,7 +263,7 @@ async def get_tier_plans() -> Dict[str, Dict[str, Any]]:
                             plans[plan_key]['price_stars'] = int(row['price_stars'])
     except Exception as e:
         logger.warning(f"Error loading tier_price_settings: {e}, using defaults")
-    return plans
+    return {k: v for k, v in plans.items() if k in ACTIVE_TIER_PLAN_IDS}
 
 
 async def get_tier_plans_for_tier(tier: str) -> Dict[str, Dict[str, Any]]:
@@ -420,8 +452,8 @@ async def get_renewal_plans() -> Dict[str, Dict[str, Any]]:
 
 async def get_user_tariffs(user_id: int) -> tuple[Dict[str, Dict[str, Any]], bool, bool]:
     """
-    Возвращает актуальный список планов, флаг is_renew, и флаг show_discount.
-    Это единый метод для получения правильных цен для пользователя во всей экосистеме.
+    Актуальные планы для UI и уведомлений: только plus_1m и plus_12m.
+    Возвращает (plans, is_renew, show_discount).
     """
     is_renew = False
     days_remaining = 0
@@ -430,11 +462,11 @@ async def get_user_tariffs(user_id: int) -> tuple[Dict[str, Dict[str, Any]], boo
         row = await conn.fetchrow(
             "SELECT pay_subscribed, subscription_end FROM users WHERE user_id = $1", user_id
         )
-        if row and row['pay_subscribed'] and row['subscription_end']:
-            end_date = row['subscription_end']
+        if row and row["pay_subscribed"] and row["subscription_end"]:
+            end_date = row["subscription_end"]
             if isinstance(end_date, str):
                 end_date = datetime.strptime(end_date.split()[0], "%Y-%m-%d").date()
-            elif hasattr(end_date, 'date'):
+            elif hasattr(end_date, "date"):
                 end_date = end_date.date()
             if end_date >= datetime.now().date():
                 is_renew = True
@@ -443,51 +475,26 @@ async def get_user_tariffs(user_id: int) -> tuple[Dict[str, Dict[str, Any]], boo
     show_discount = False
     async with get_connection() as conn:
         discount_settings = await conn.fetchrow(
-            'SELECT days_threshold, enable_for_all FROM discount_settings ORDER BY id DESC LIMIT 1'
+            "SELECT days_threshold, enable_for_all FROM discount_settings ORDER BY id DESC LIMIT 1"
         )
-        if not discount_settings:
-            show_discount = (days_remaining <= 3) if is_renew else False
-        else:
-            if discount_settings['enable_for_all']:
-                show_discount = True
-            else:
-                threshold = discount_settings['days_threshold']
-                if not threshold or threshold <= 0:
-                    show_discount = False
-                else:
-                    show_discount = (days_remaining <= threshold) if is_renew else False
+        if discount_settings and discount_settings["enable_for_all"]:
+            show_discount = True
+        elif is_renew and discount_settings:
+            threshold = discount_settings["days_threshold"]
+            if threshold and threshold > 0:
+                show_discount = days_remaining <= threshold
 
-    regular_plans = await get_subscription_plans()
-    renewal_plans = await get_renewal_plans()
-
-    if is_renew:
-        active_plans = copy.deepcopy(renewal_plans)
-        if not show_discount:
-            for plan_id, plan_data in active_plans.items():
-                base_id = plan_id.replace('_renew', '')
-                base_plan = regular_plans.get(base_id, {})
-                plan_data['price_rub'] = base_plan.get('price_rub', plan_data['price_rub'])
-                plan_data['price_stars'] = base_plan.get('price_stars', plan_data['price_stars'])
-                plan_data['title'] = plan_data['title'].replace(' 🔥', '')
-    else:
-        active_plans = copy.deepcopy(regular_plans)
-        if show_discount:
-            for plan_id, plan_data in active_plans.items():
-                renew_id = f"{plan_id}_renew"
-                renew_plan = renewal_plans.get(renew_id, {})
-                plan_data['price_rub'] = renew_plan.get('price_rub', plan_data['price_rub'])
-                plan_data['price_stars'] = renew_plan.get('price_stars', plan_data['price_stars'])
-                if '🔥' not in plan_data['title']:
-                    plan_data['title'] = f"{plan_data['title']} 🔥"
-
+    all_plans = await get_tier_plans()
+    active_plans = {
+        pid: copy.deepcopy(pdata)
+        for pid, pdata in all_plans.items()
+        if pid in ACTIVE_TIER_PLAN_IDS
+    }
     return active_plans, is_renew, show_discount
 
 
 async def build_expiry_reminder_markup(user_id: int):
-    """
-    Клавиатура для напоминаний о скором окончании подписки.
-    Plus/legacy — продление Plus и меню тарифов.
-    """
+    """Клавиатура напоминаний: Plus 1 мес / 12 мес по актуальным ценам."""
     from aiogram.types import InlineKeyboardButton
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -496,45 +503,28 @@ async def build_expiry_reminder_markup(user_id: int):
             "SELECT subscription_tier, tier_duration_months FROM users WHERE user_id = $1",
             user_id,
         )
-    tier = (row["subscription_tier"] if row else None) or "legacy"
+
     duration = int((row["tier_duration_months"] if row else None) or 1)
+    plans = await get_tier_plans()
     builder = InlineKeyboardBuilder()
 
-    if tier in ALL_PAID_TIER_IDS:
-        plans = await get_tier_plans()
-        # Обновляем: legacy-пользователи продлеваются как Plus
-        effective_tier = "plus" if tier in LEGACY_TIER_IDS else tier
-        plan_id = f"{effective_tier}_{duration}m" if f"{effective_tier}_{duration}m" in plans else "plus_1m"
-        plan = plans.get(plan_id) or plans.get("plus_1m")
-        tier_name = "Plus"
-        if plan:
-            builder.row(
-                InlineKeyboardButton(
-                    text=(
-                        f"💳 Продлить Plus — "
-                        f"{format_price_both(plan['price_rub'], plan['price_stars'])}"
-                    ),
-                    callback_data=f"tier_pay:{plan_id}",
-                )
-            )
+    preferred = "plus_12m" if duration >= 12 else "plus_1m"
+    for plan_id in (preferred, "plus_1m" if preferred != "plus_1m" else "plus_12m"):
+        plan = plans.get(plan_id)
+        if not plan:
+            continue
         builder.row(
-            InlineKeyboardButton(text="💎 Тарифы", callback_data="open_tiers"),
-            InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
+            InlineKeyboardButton(
+                text=f"💳 {plan['title']} — {format_price_rub(plan['price_rub'])}",
+                callback_data=f"tier_pay:{plan_id}",
+            )
         )
-        return builder, tier_name
 
-    current_tariffs, _, _ = await get_user_tariffs(user_id)
-    for plan_id, plan_data in current_tariffs.items():
-        builder.button(
-            text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
-            callback_data=f"plan:{plan_id}",
-        )
-    builder.adjust(1)
     builder.row(
-        InlineKeyboardButton(text="💎 Тарифы", callback_data="open_tiers"),
+        InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_tiers"),
         InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
     )
-    return builder, None
+    return builder, "Plus"
 
 
 # ---------------------------------------------------------------------------

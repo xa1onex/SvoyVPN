@@ -78,8 +78,8 @@ def setup_scheduler():
     scheduler.add_job(
         run_yookassa_autopay_renewals,
         "cron",
-        hour=10,
-        minute=15,
+        hour=3,
+        minute=0,
         args=[config, bot],
     )
 

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 async def run_yookassa_autopay_renewals(config: AppConfig, bot: Optional[Bot] = None) -> None:
     """За день до окончания подписки создаём платёж по сохранённому payment_method_id.
 
-    Работает для всех tier-планов (lite_1m, standard_1m, pro_1m).
+    Работает только для Plus (plus_1m / plus_12m).
     """
     if not config.yookassa.enabled:
         return
@@ -60,17 +60,18 @@ async def run_yookassa_autopay_renewals(config: AppConfig, bot: Optional[Bot] = 
         sub_end = row["subscription_end"]
         duration_months = int(row.get("tier_duration_months") or 1)
 
-        # Legacy-тарифы (lite/standard/pro) продлеваем как plus_1m
+        # Legacy-тарифы (lite/standard/pro) продлеваем как plus; только 1m или 12m
         from .plans import LEGACY_TIER_IDS
         effective_tier = "plus" if tier in LEGACY_TIER_IDS else tier
+        if effective_tier != "plus":
+            logger.warning("autopay: skip non-plus tier=%s user=%s", tier, user_id)
+            continue
 
-        # Выбираем план на основе сохранённой длительности (1m или 12m)
-        plan_id = f"{effective_tier}_{duration_months}m"
-        plan = plans.get(plan_id) or plans.get(f"{effective_tier}_1m")
+        plan_id = "plus_12m" if duration_months >= 12 else "plus_1m"
+        plan = plans.get(plan_id)
         if not plan:
             logger.warning("autopay: plan %s not found for user=%s", plan_id, user_id)
             continue
-        plan_id = next(k for k, v in plans.items() if v is plan)
 
         price_cents = plan["price_rub"]
 

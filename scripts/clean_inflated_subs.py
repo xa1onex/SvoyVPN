@@ -86,7 +86,7 @@ async def process_inflated_subscriptions():
         builder_template.adjust(1)
         builder_template.row(
             InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"),
-            InlineKeyboardButton(text="🎁 Бесплатно", callback_data="open_invite")
+            InlineKeyboardButton(text="🤑 Заработать", callback_data="open_balance")
         )
 
         processed_count = 0

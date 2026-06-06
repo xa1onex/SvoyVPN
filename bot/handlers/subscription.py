@@ -18,14 +18,14 @@ from ..subscriptions import get_subscription_status, get_user_subscription_url
 from ..plans import get_subscription_plans, get_renewal_plans, format_price_rub, format_price_stars, format_price_both, PAYMENT_METHODS
 from ..config import AppConfig
 from ..yookassa_client import YooKassaClient
+from ..device_fingerprint import (
+    SUBSCRIPTION_DEVICE_COUNTABLE_SQL,
+    format_device_display_name,
+)
 
 logger = logging.getLogger(__name__)
 
-# Выражение «устройство» в SQL (совпадает с count_active_devices в database.py)
-_SUB_DEVICE_FP_SQL = (
-    "COALESCE(device_fingerprint, md5('ua:' || regexp_replace(lower(trim(coalesce(user_agent, ''))), "
-    "'\\s+', ' ', 'g')))"
-)
+_SUB_DEVICE_FILTER_SQL = f"({SUBSCRIPTION_DEVICE_COUNTABLE_SQL.strip()})"
 
 
 async def _build_my_devices_view(conn, user_id: int) -> tuple[str, InlineKeyboardBuilder]:
@@ -33,48 +33,40 @@ async def _build_my_devices_view(conn, user_id: int) -> tuple[str, InlineKeyboar
         "SELECT COALESCE(device_limit, 5) FROM users WHERE user_id = $1", user_id
     ) or 5
     q = f"""
-        SELECT fp,
-               MAX(timestamp) AS last_ts,
-               (array_agg(user_agent ORDER BY timestamp DESC))[1] AS user_agent,
-               (array_agg(ip_address ORDER BY timestamp DESC))[1] AS ip_address
-        FROM (
-            SELECT {_SUB_DEVICE_FP_SQL} AS fp,
-                   timestamp, user_agent, ip_address
-            FROM subscription_usage_logs
-            WHERE user_id = $1 AND timestamp >= NOW() - INTERVAL '6 hours'
-        ) t
-        GROUP BY fp
+        SELECT device_fingerprint AS fp,
+               (array_agg(device_model ORDER BY timestamp DESC NULLS LAST))[1] AS device_model,
+               (array_agg(user_agent ORDER BY timestamp DESC))[1] AS user_agent
+        FROM subscription_usage_logs
+        WHERE user_id = $1
+          AND timestamp >= NOW() - INTERVAL '6 hours'
+          AND device_fingerprint IS NOT NULL
+          AND {_SUB_DEVICE_FILTER_SQL}
+        GROUP BY device_fingerprint
         ORDER BY MAX(timestamp) DESC
     """
     devices = await conn.fetch(q, user_id)
     count = len(devices)
-    text = (
-        f"📱 <b>Активные устройства</b> ({count}/{device_limit})\n\n"
-    )
+    text = f"📱 <b>Подключённые устройства</b> ({count}/{device_limit})\n\n"
     builder = InlineKeyboardBuilder()
     if devices:
         for i, d in enumerate(devices, 1):
-            ua = d["user_agent"] or "Unknown"
-            short = ua.replace("\n", " ")[:36] + ("…" if len(ua) > 36 else "")
-            ip = d["ip_address"] or "—"
-            time_str = d["last_ts"].strftime("%d.%m %H:%M") if d["last_ts"] else ""
-            text += f"{i}. <code>{html.escape(short)}</code>\n   IP: {html.escape(str(ip))} · {time_str}\n"
+            label = (d["device_model"] or "").strip() or format_device_display_name(
+                d["user_agent"] or ""
+            )
+            text += f"{i}. {html.escape(label)}\n"
             fp = d["fp"]
             if fp:
-                label = f"🗑 {i}"
                 builder.row(
                     InlineKeyboardButton(
-                        text=label,
+                        text=f"🗑 {i}",
                         callback_data=f"rm_dev:{fp}",
                     )
                 )
     else:
-        text += "Нет обращений к подписке за последние 6 часов.\n"
+        text += "Нет подключённых устройств.\n"
 
     if count > device_limit:
-        text += f"\n⚠️ <b>Лимит превышен.</b> Удалите лишние строки или сбросьте все сессии."
-
-    text += "\n\n💡 «Сбросить все» отключит все клиенты до следующего обновления подписки."
+        text += f"\n⚠️ Лимит превышен ({count}/{device_limit})."
 
     if count > 0:
         builder.row(InlineKeyboardButton(text="🔄 Сбросить все сессии", callback_data="reset_devices"))
@@ -82,19 +74,11 @@ async def _build_my_devices_view(conn, user_id: int) -> tuple[str, InlineKeyboar
     return text, builder
 
 
-ONBOARDING_APPS = {
-    "apple": [
-        {"id": "happ", "name": "Happ", "url": "https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215"},
-    ],
-    "android": [
-        {"id": "happ", "name": "Happ", "url": "https://play.google.com/store/apps/details?id=com.happproxy"},
-    ],
-    "windows": [
-        {"id": "happ", "name": "Happ", "url": "https://github.com/Happ-proxy/happ-desktop/releases/download/2.4.0/setup-Happ.x64.exe"},
-    ],
-    "mac": [
-        {"id": "happ", "name": "Happ", "url": "https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215"},
-    ],
+_DEVICE_NAMES = {
+    "apple": "iPhone / iPad",
+    "android": "Android",
+    "windows": "Windows",
+    "mac": "macOS",
 }
 
 
@@ -220,129 +204,123 @@ async def should_show_discount(days_remaining: int) -> bool:
 
 async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
     """Настраивает обработчики подписки"""
-    
-    @dp.callback_query(F.data == "get_vpn_link")
-    async def handle_get_vpn_link(callback: CallbackQuery):
-        """Отправляет пользователю выбор устройства"""
+
+    def _device_select_markup() -> InlineKeyboardBuilder:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="📱 iPhone", callback_data="ob_dev_apple"))
+        builder.row(InlineKeyboardButton(text="📱 iPhone / iPad", callback_data="ob_dev_apple"))
         builder.row(InlineKeyboardButton(text="🤖 Android", callback_data="ob_dev_android"))
         builder.row(InlineKeyboardButton(text="💻 Windows", callback_data="ob_dev_windows"))
         builder.row(InlineKeyboardButton(text="🖥 macOS", callback_data="ob_dev_mac"))
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
-        
-        text = (
+        return builder
+
+    def _device_select_text() -> str:
+        return (
             "💻 <b>Выберите ваше устройство</b>\n\n"
             "На чем вы будете использовать VPN? Мы подготовили пошаговую инструкцию для каждой платформы."
         )
-        
+
+    async def _show_device_select(callback: CallbackQuery, *, delete_current: bool = False) -> None:
+        text = _device_select_text()
+        markup = _device_select_markup().as_markup()
+        chat_id = callback.message.chat.id
+
+        if delete_current:
+            try:
+                await callback.message.delete()
+            except TelegramBadRequest:
+                pass
+            await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=markup)
+            return
+
         try:
-            await callback.message.edit_text(
-                text,
-                parse_mode="HTML",
-                reply_markup=builder.as_markup()
-            )
+            await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
         except TelegramBadRequest:
-            await callback.message.answer(
-                text,
-                parse_mode="HTML",
-                reply_markup=builder.as_markup()
-            )
+            if callback.message.photo:
+                try:
+                    await callback.message.delete()
+                except TelegramBadRequest:
+                    pass
+                await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=markup)
+            else:
+                await callback.message.answer(text, parse_mode="HTML", reply_markup=markup)
+
+    async def _send_happ_instruction(callback: CallbackQuery, device: str) -> None:
+        from ..vpn_onboarding import build_happ_instruction_async, device_instruction_photo
+        from ..database import get_device_instruction_photos
+
+        if device not in _DEVICE_NAMES:
+            await callback.answer("❌ Неизвестное устройство")
+            return
+
+        user_id = callback.from_user.id
+        token = await ensure_subscription_token(user_id)
+        text, builder = await build_happ_instruction_async(
+            device, user_id, token=token, config=config
+        )
+        markup = builder.as_markup()
+        chat_id = callback.message.chat.id
+        message_kw = dict(parse_mode="HTML", reply_markup=markup, disable_web_page_preview=True)
+        photo_kw = dict(parse_mode="HTML", reply_markup=markup)
+
+        db_photos = await get_device_instruction_photos(device)
+        local_photo = device_instruction_photo(device)
+
+        try:
+            await callback.message.delete()
+        except TelegramBadRequest:
+            pass
+
+        if db_photos:
+            for file_id in db_photos:
+                try:
+                    await bot.send_photo(chat_id, file_id)
+                except Exception:
+                    continue
+            await bot.send_message(chat_id, text, **message_kw)
+        elif local_photo:
+            if len(text) <= 1020:
+                await bot.send_photo(chat_id, local_photo, caption=text, **photo_kw)
+            else:
+                await bot.send_photo(chat_id, local_photo)
+                await bot.send_message(chat_id, text, **message_kw)
+        else:
+            await bot.send_message(chat_id, text, **message_kw)
+        await callback.answer()
+
+    @dp.callback_query(F.data == "get_vpn_link")
+    async def handle_get_vpn_link(callback: CallbackQuery):
+        """Отправляет пользователю выбор устройства"""
+        await _show_device_select(callback)
+        await callback.answer()
+
+    @dp.callback_query(F.data == "ob_back_devices")
+    async def handle_ob_back_devices(callback: CallbackQuery):
+        """Назад из инструкции — снова выбор устройства"""
+        await _show_device_select(callback, delete_current=True)
         await callback.answer()
 
     @dp.callback_query(F.data.startswith("ob_dev_"))
     async def handle_ob_device(callback: CallbackQuery):
-        """Выбор приложения для конкретного устройства"""
+        """Инструкция Happ для выбранного устройства"""
         device = callback.data.replace("ob_dev_", "")
-
-        apps = ONBOARDING_APPS.get(device, [])
-        
-        builder = InlineKeyboardBuilder()
-        for app in apps:
-            builder.row(InlineKeyboardButton(text=f"🚀 {app['name']}", callback_data=f"ob_app_{device}_{app['id']}"))
-            
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="get_vpn_link"))
-        
-        device_names = {"apple": "iPhone", "android": "Android", "windows": "Windows", "mac": "macOS"}
-        dev_name = device_names.get(device, device)
-        
-        await callback.message.edit_text(
-            f"📱 <b>{dev_name} — Выберите приложение</b>\n\n"
-            "Выберите приложение, которое хотите использовать. Мы рекомендуем <b>Happ</b> для максимальной скорости.",
-            parse_mode="HTML",
-            reply_markup=builder.as_markup()
-        )
-        await callback.answer()
+        await _send_happ_instruction(callback, device)
 
     @dp.callback_query(F.data.startswith("ob_app_"))
-    async def handle_ob_app(callback: CallbackQuery):
-        """Инструкция по установке и кнопка подключения"""
-        # data format: ob_app_{device}_{app_id}
+    async def handle_ob_app_legacy(callback: CallbackQuery):
+        """Старые кнопки выбора приложения → инструкция Happ"""
         parts = callback.data.split("_")
-        device = parts[2]
-        app_id = parts[3]
-        
-        apps = ONBOARDING_APPS.get(device, [])
-        app = next((a for a in apps if a["id"] == app_id), None)
-        if not app:
-            await callback.answer("❌ Ошибка: приложение не сканируется")
+        if len(parts) < 4:
+            await callback.answer()
             return
-            
-        user_id = callback.from_user.id
-        token = await ensure_subscription_token(user_id)
-        
-        # Deep link logic (Mac uses apple path)
-        device_path = "apple" if device == "mac" else device
-        connect_url = f"https://xdoublegroup.online/{device_path}/{app_id}/{token}"
-        
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="📥 1. Скачать приложение", url=app['url']))
-        builder.row(InlineKeyboardButton(text="⚡️ 2. ПОДКЛЮЧИТЬ VPN", url=connect_url))
-        
-        # Кнопка для фото-инструкции, если она есть
-        from ..database import get_device_instruction_photos
-        photos = await get_device_instruction_photos(device)
-        if photos:
-            builder.row(InlineKeyboardButton(text="📸 Посмотреть инструкцию", callback_data=f"ob_photos_{device}"))
-            
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"ob_dev_{device}"))
-        
-        await callback.message.edit_text(
-            f"🚀 <b>Настройка {app['name']}</b>\n\n"
-            f"1️⃣ <b>Скачайте</b> приложение (если еще не установлено).\n\n"
-            f"2️⃣ <b>Нажмите</b> кнопку «ПОДКЛЮЧИТЬ VPN» — приложение откроется само и добавит все нужные сервера.\n\n"
-            f"3️⃣ <b>Запустите</b> VPN в приложении!\n\n"
-            f"<i>* Если ссылка не открывается, убедитесь, что приложение установлено.</i>",
-            parse_mode="HTML",
-            reply_markup=builder.as_markup()
-        )
-        await callback.answer()
+        await _send_happ_instruction(callback, parts[2])
 
     @dp.callback_query(F.data.startswith("ob_photos_"))
-    async def handle_ob_photos(callback: CallbackQuery):
-        """Показ фото-инструкций для устройства"""
+    async def handle_ob_photos_legacy(callback: CallbackQuery):
+        """Старые кнопки «фото-инструкция» → полная инструкция Happ"""
         device = callback.data.replace("ob_photos_", "")
-        from ..database import get_device_instruction_photos
-        photos = await get_device_instruction_photos(device)
-        
-        if not photos:
-            await callback.answer("Инструкции пока нет")
-            return
-            
-        await callback.answer()
-        for photo_id in photos:
-            try:
-                await callback.message.answer_photo(photo_id)
-            except Exception:
-                continue
-        
-        await callback.message.answer(
-            "Выше приведены фото-инструкции для вашего устройства. Если остались вопросы, напишите в поддержку.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="◀️ Назад", callback_data=f"ob_dev_{device}")]
-            ])
-        )
-    
+        await _send_happ_instruction(callback, device)
+
     @dp.callback_query(F.data == "open_premium")
     async def handle_open_premium(callback: CallbackQuery, state: FSMContext):
         """Обработчик кнопки Premium — перенаправляем на новые тарифы"""
@@ -418,13 +396,11 @@ async def get_subscription_info(user_id: int) -> dict:
 
 
 async def build_subscription_message(info: dict, state: FSMContext, config: AppConfig) -> tuple[str, InlineKeyboardBuilder]:
-    """Формирует сообщение и клавиатуру для подписки/продления"""
+    """Формирует сообщение и клавиатуру для подписки/продления (Plus 1 мес / 12 мес)."""
     user_id = info['user_id']
-    from bot.plans import get_user_tariffs, get_subscription_plans, get_renewal_plans, format_price_rub, format_price_stars, format_price_both
+    from bot.plans import get_user_tariffs, format_price_rub
     
-    current_tariffs, is_renew, show_discount = await get_user_tariffs(user_id)
-    regular_plans = await get_subscription_plans()
-    renewal_plans = await get_renewal_plans()
+    current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
     
     builder = InlineKeyboardBuilder()
     
@@ -432,60 +408,29 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
         from ..subscriptions import get_subscription_status_display
         status_line = await get_subscription_status_display(user_id)
         text = f"✅ {status_line}\n\n"
-
-        if show_discount:
-            text += "🎁 <b>Специальное предложение!</b>\n\n"
-            text += "🔥 Успей продлить <b>VPN</b> по специальной цене:\n\n"
-            
-            for plan_id, plan_data in current_tariffs.items():
-                base_id = plan_id.replace('_renew', '')
-                base_plan = regular_plans.get(base_id, {})
-                old_price = format_price_rub(base_plan.get('price_rub', plan_data.get('price_rub', 0)))
-                new_price = format_price_rub(plan_data['price_rub'])
-                text += f"{plan_data['title'].replace(' 🔥', '')} <s>{old_price}</s> - {new_price}\n"
-            text += "\n"
-        else:
-            text += "💡 Вы можете продлить подписку в любое время:\n\n"
-
-        builder.row(InlineKeyboardButton(text="🚀 Подписка (Lite/Standard/Pro)", callback_data="open_tiers"))
-        builder.row(InlineKeyboardButton(text="📶 Увеличить лимит трафика", callback_data="open_traffic_packs"))
+        text += "💡 Продлите Plus в любое время:\n\n"
         for plan_id, plan_data in current_tariffs.items():
-            builder.button(
-                text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
-                callback_data=f"plan:{plan_id}"
-            )
-            
+            text += f"• <b>{plan_data['title']}</b> — {format_price_rub(plan_data['price_rub'])}\n"
+        text += "\n"
     else:
         text = (
             "❌ <b>VPN неактивен</b>\n\n"
-            "Что ты получишь с VPN?\n"
-            "• Быстрый и безопасный VPN\n"
-            "• Обход всех блокировок\n"
-            "• Высокая скорость подключения\n\n"
+            "Оформите <b>Plus</b> — быстрый VPN с обходом блокировок:\n"
+            "• 50 ГБ bypass в месяц\n"
+            "• YouTube / TikTok / AI\n"
+            "• Безлимит устройств\n\n"
         )
-        
-        if show_discount:
-            text += "🎁 <b>Специальное предложение!</b>\n\n"
-            text += "🔥 Получи <b>VPN</b> по специальной цене:\n\n"
-            
-            for plan_id, plan_data in current_tariffs.items():
-                # Т.к. get_user_tariffs уже подставил скидочные цены в current_tariffs для неактивного юзера если show_discount=True
-                # Но мы хотим показать зачеркнутую старую цену
-                base_id = plan_id.replace('_renew', '')
-                base_plan = regular_plans.get(base_id, {})
-                old_price = format_price_rub(base_plan.get('price_rub', plan_data.get('price_rub', 0)))
-                new_price = format_price_rub(plan_data['price_rub'])
-                text += f"{plan_data['title'].replace(' 🔥', '')} <s>{old_price}</s> - {new_price}\n"
-            text += "\n"
-        else:
-            text += "Выберите план подписки:\n"
-
-        # Кнопки со всеми доступными тарифами
         for plan_id, plan_data in current_tariffs.items():
-            builder.button(
-                text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
-                callback_data=f"plan:{plan_id}"
-            )
+            text += f"• <b>{plan_data['title']}</b> — {format_price_rub(plan_data['price_rub'])}\n"
+        text += "\n"
+
+    builder.row(InlineKeyboardButton(text="🚀 Тарифы Plus", callback_data="open_tiers"))
+    builder.row(InlineKeyboardButton(text="📶 Увеличить лимит трафика", callback_data="open_traffic_packs"))
+    for plan_id, plan_data in current_tariffs.items():
+        builder.button(
+            text=f"{plan_data['title']} — {format_price_rub(plan_data['price_rub'])}",
+            callback_data=f"tier_pay:{plan_id}",
+        )
 
     builder.adjust(1)
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
@@ -500,28 +445,21 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_show_subscription_plans(callback: CallbackQuery, state: FSMContext):
         """Показывает планы подписки"""
         user_id = callback.from_user.id
-        from bot.plans import get_user_tariffs
+        from bot.plans import get_user_tariffs, format_price_rub
         current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
         
         text = "💳 <b>Выберите план подписки:</b>\n\n"
         builder = InlineKeyboardBuilder()
         
         for plan_id, plan_data in current_tariffs.items():
-            price_text = format_price_both(plan_data['price_rub'], plan_data['price_stars'])
+            price_text = format_price_rub(plan_data['price_rub'])
             text += f"• <b>{plan_data['title']}</b> - {price_text}\n"
             text += f"  Срок: {plan_data['duration']} месяцев\n"
             text += f"  Трафик: {plan_data.get('traffic_gb', 'Безлимитный')} ГБ\n\n"
         
         action = "buy_renewal" if is_renew else "buy_subscription"
         
-        # Кнопки для оплаты (Stars и YooKassa)
-        for plan_id, plan_data in list(current_tariffs.items())[:2]:  # Показываем первые 2 плана
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"⭐ {plan_data['title']} ({format_price_stars(plan_data['price_stars'])})",
-                    callback_data=f"{action}:{plan_id}:stars"
-                )
-            )
+        for plan_id, plan_data in list(current_tariffs.items())[:2]:
             if config.yookassa.enabled:
                 builder.row(
                     InlineKeyboardButton(
@@ -546,25 +484,17 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_show_renewal_plans(callback: CallbackQuery, state: FSMContext):
         """Показывает планы продления"""
         user_id = callback.from_user.id
-        from bot.plans import get_user_tariffs
+        from bot.plans import get_user_tariffs, format_price_rub
         current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
         
         text = "💳 <b>Продлить подписку:</b>\n\n"
         builder = InlineKeyboardBuilder()
         
         for plan_id, plan_data in current_tariffs.items():
-            price_text = format_price_both(plan_data['price_rub'], plan_data['price_stars'])
-            text += f"• <b>{plan_data['title']}</b> - {price_text}\n"
+            text += f"• <b>{plan_data['title']}</b> - {format_price_rub(plan_data['price_rub'])}\n"
         
-        # Кнопки для оплаты
         action = "buy_renewal" if is_renew else "buy_subscription"
         for plan_id, plan_data in list(current_tariffs.items())[:2]:
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"⭐ {plan_data['title']} ({format_price_stars(plan_data['price_stars'])})",
-                    callback_data=f"{action}:{plan_id}:stars"
-                )
-            )
             if config.yookassa.enabled:
                 builder.row(
                     InlineKeyboardButton(
@@ -591,7 +521,27 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         plan_id = callback.data.split(":")[1]
         user_id = callback.from_user.id
         
-        from bot.plans import get_user_tariffs
+        from bot.plans import get_user_tariffs, is_active_tier_plan, is_legacy_subscription_plan
+
+        if is_legacy_subscription_plan(plan_id):
+            await callback.answer("❌ Этот тариф больше не доступен. Выберите Plus.", show_alert=True)
+            return
+
+        if is_active_tier_plan(plan_id):
+            b = InlineKeyboardBuilder()
+            b.row(InlineKeyboardButton(
+                text="💳 Оплатить Plus",
+                callback_data=f"tier_pay:{plan_id}",
+            ))
+            b.row(InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_tiers"))
+            await callback.message.edit_text(
+                "Тарифы обновились. Доступны только <b>Plus на месяц</b> и <b>Plus на год</b>.",
+                parse_mode="HTML",
+                reply_markup=b.as_markup(),
+            )
+            await callback.answer()
+            return
+        
         current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
         
         if plan_id not in current_tariffs:
@@ -611,15 +561,6 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         
         builder = InlineKeyboardBuilder()
         
-        # Кнопка для оплаты Stars
-        builder.row(
-            InlineKeyboardButton(
-                text=f"⭐ Telegram Stars ({format_price_stars(plan_data['price_stars'])})",
-                callback_data=f"{action}:{plan_id}:stars"
-            )
-        )
-        
-        # Кнопка для оплаты YooKassa (если включена)
         if config.yookassa.enabled:
             builder.row(
                 InlineKeyboardButton(
@@ -663,9 +604,17 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         plan_id = parts[1]
         method_id = parts[2]
         user_id = callback.from_user.id
+
+        from bot.plans import get_user_tariffs, is_active_tier_plan, is_legacy_subscription_plan
+
+        if is_legacy_subscription_plan(plan_id):
+            await callback.answer("❌ Тариф устарел. Используйте Plus.", show_alert=True)
+            return
+        if is_active_tier_plan(plan_id):
+            await callback.answer("Используйте кнопку «Тарифы Plus» для оплаты", show_alert=True)
+            return
         
         # Получаем актуальные планы
-        from bot.plans import get_user_tariffs
         current_tariffs, user_is_renew, _ = await get_user_tariffs(user_id)
         
         # Убедимся, что тариф доступен
@@ -676,6 +625,12 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         plan_data = current_tariffs[plan_id]
         
         # Валидация метода оплаты
+        if method_id == "stars":
+            await callback.answer(
+                "Оплата подписки Stars недоступна. Используйте карту.",
+                show_alert=True,
+            )
+            return
         if method_id not in PAYMENT_METHODS:
             await callback.answer("❌ Неизвестный метод оплаты", show_alert=True)
             return
@@ -1158,6 +1113,14 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_my_devices(callback: CallbackQuery, state: FSMContext):
         """Показать активные устройства пользователя (по отпечатку клиента, не по IP)."""
         user_id = callback.from_user.id
+        from .start import should_show_devices_menu
+
+        if not await should_show_devices_menu(user_id):
+            await callback.answer(
+                "На тарифе Plus безлимит устройств — сброс не нужен.",
+                show_alert=True,
+            )
+            return
         async with get_connection() as conn:
             text, builder = await _build_my_devices_view(conn, user_id)
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
@@ -1173,13 +1136,16 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             await callback.answer("Некорректные данные", show_alert=True)
             return
         async with get_connection() as conn:
-            del_sql = f"""
+            await conn.execute(
+                """
                 DELETE FROM subscription_usage_logs
                 WHERE user_id = $1
-                  AND {_SUB_DEVICE_FP_SQL} = $2
+                  AND device_fingerprint = $2
                   AND timestamp >= NOW() - INTERVAL '6 hours'
-            """
-            await conn.execute(del_sql, user_id, fp)
+                """,
+                user_id,
+                fp,
+            )
             text, builder = await _build_my_devices_view(conn, user_id)
         await callback.answer("✅ Устройство удалено из списка.", show_alert=True)
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
@@ -1188,6 +1154,14 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_reset_devices(callback: CallbackQuery, state: FSMContext):
         """Сбросить все активные сессии (удалить логи за 6 часов)"""
         user_id = callback.from_user.id
+        from .start import should_show_devices_menu
+
+        if not await should_show_devices_menu(user_id):
+            await callback.answer(
+                "На тарифе Plus безлимит устройств — сброс не нужен.",
+                show_alert=True,
+            )
+            return
 
         async with get_connection() as conn:
             await conn.execute(
@@ -1228,7 +1202,8 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             await callback.message.edit_text(
                 text=await get_main_text(first_name, subscription_status, user_id),
                 parse_mode='HTML',
-                reply_markup=await get_main_keyboard(user_id, config)
+                reply_markup=await get_main_keyboard(user_id, config),
+                disable_web_page_preview=True,
             )
         except TelegramBadRequest as e:
             # Игнорируем ошибку, если сообщение не изменилось
@@ -1244,14 +1219,23 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         user_id = callback.from_user.id
 
         async with get_connection() as conn:
-            user_trial_used = await conn.fetchval("SELECT trial_used FROM users WHERE user_id = $1", user_id)
-            if user_trial_used:
-                await callback.answer("❌ Вы уже использовали пробный период!", show_alert=True)
+            from ..trial_usage import (
+                get_trial_days,
+                has_completed_trial_payment,
+                user_eligible_for_trial_offer,
+            )
+
+            if not await user_eligible_for_trial_offer(conn, user_id):
+                if await has_completed_trial_payment(conn, user_id):
+                    await callback.answer("❌ Вы уже использовали пробный период!", show_alert=True)
+                else:
+                    await callback.answer(
+                        "❌ Пробный период недоступен (активная Plus или отключён в настройках).",
+                        show_alert=True,
+                    )
                 return
 
-            trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
-            trial_days = trial_settings['days'] if trial_settings else 0
-
+            trial_days = await get_trial_days(conn)
             if trial_days <= 0:
                 await callback.answer("❌ Пробный период сейчас недоступен.", show_alert=True)
                 return
@@ -1288,10 +1272,6 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                     user_id, 100, "RUB", "plus_1m", "tier", "pending",
                     payment_data["id"],
                 )
-                await conn.execute(
-                    "UPDATE users SET trial_used = TRUE WHERE user_id = $1",
-                    user_id,
-                )
 
             from aiogram.utils.keyboard import InlineKeyboardBuilder as _IKB
             b = _IKB()
@@ -1301,10 +1281,14 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 f"🆓 <b>Пробный период — Plus</b>\n\n"
                 f"Период: <b>{trial_days} дней</b>\n"
                 f"Стоимость: <b>1₽</b>\n\n"
-                f"50 ГБ bypass · Безлимит устройств · Безлимит VPN",
+                f"· Безлимит устройств\n"
+                f"· 50гб/мес bypass-трафика\n"
+                f"· Безлимит на быстрые сервера\n"
+                f"· И много другое\n\n"
+                f"<i>Plus активируется после успешной оплаты - просто обновите подписку в happ, через 🔄 или через бота - раздел '🔗 Подключить VPN'</i>",
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
-            )
+            ) 
             await callback.answer()
         except Exception as e:
             logger.error("activate_trial error: %s", e, exc_info=True)

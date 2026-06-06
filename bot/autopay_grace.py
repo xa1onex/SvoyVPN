@@ -21,9 +21,9 @@ NOTIFICATION_TYPE = "autopay_payment_failed"
 
 def autopay_grace_days() -> int:
     try:
-        return max(1, int(os.getenv("SVOYVPN_AUTOPAY_GRACE_DAYS", "3")))
+        return max(1, int(os.getenv("SVOYVPN_AUTOPAY_GRACE_DAYS", "1")))
     except ValueError:
-        return 3
+        return 1
 
 
 def _as_date(value: object) -> date | None:
@@ -133,10 +133,10 @@ async def notify_autopay_failed(
 
     text = (
         "⚠️ <b>Не удалось списать оплату с привязанной карты</b>\n\n"
-        f"Тариф <b>{tier_name}</b> остаётся подключен до <b>{grace_str}</b> — "
-        f"у вас есть время оплатить вручную.\n\n"
-        "После этой даты доступ перейдёт на тариф <b>Free</b>, "
-        "если оплата не поступит."
+        "Пополните баланс карты или привяжите другую — мы повторим списание "
+        "автоматически.\n\n"
+        f"Тариф <b>{tier_name}</b> остаётся активным до <b>{grace_str}</b>.\n"
+        "После этой даты подписка перейдёт на тариф <b>Free</b>."
     )
 
     try:
@@ -186,6 +186,20 @@ async def handle_autopay_payment_failed(
     try:
         user_id = int(user_id)
     except (TypeError, ValueError):
+        return
+
+    payment_source = metadata.get("payment_source")
+    if not payment_source:
+        async with get_connection() as conn:
+            payment_source = await conn.fetchval(
+                """
+                SELECT payment_source FROM payments
+                WHERE yookassa_payment_id = $1
+                ORDER BY id DESC LIMIT 1
+                """,
+                payment_id,
+            )
+    if payment_source != "yookassa_autopay":
         return
 
     async with get_connection() as conn:

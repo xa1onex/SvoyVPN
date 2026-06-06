@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SvoyVPN Dashboard</title>
+
+<style>
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:Inter,sans-serif;
+}
+
+:root{
+--bg:#040404;
+--card:rgba(255,255,255,.03);
+--border:rgba(255,255,255,.06);
+--green:#00ff84;
+--text:#fff;
+--muted:#8a8a8a;
+}
+
+body{
+background:#040404;
+color:white;
+height:100vh;
+overflow:hidden;
+}
+
+/* GRID */
+
+body::before{
+content:'';
+position:fixed;
+inset:0;
+background:
+linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+background-size:60px 60px;
+pointer-events:none;
+}
+
+/* GLOW */
+
+body::after{
+content:'';
+position:fixed;
+inset:0;
+background:
+radial-gradient(circle at 15% 20%, rgba(0,255,132,.12), transparent 35%),
+radial-gradient(circle at 90% 80%, rgba(0,100,255,.08), transparent 40%);
+pointer-events:none;
+}
+
+.app{
+position:relative;
+z-index:2;
+display:flex;
+height:100vh;
+}
+
+/* SIDEBAR */
+
+.sidebar{
+width:90px;
+background:rgba(10,10,10,.85);
+backdrop-filter:blur(20px);
+border-right:1px solid var(--border);
+transition:.3s;
+overflow:hidden;
+}
+
+.sidebar.open{
+width:250px;
+}
+
+.sidebar-top{
+height:80px;
+display:flex;
+align-items:center;
+padding:0 20px;
+gap:15px;
+}
+
+.toggle{
+width:44px;
+height:44px;
+border:none;
+border-radius:14px;
+background:#111;
+color:white;
+cursor:pointer;
+}
+
+.logo{
+font-size:22px;
+font-weight:800;
+white-space:nowrap;
+opacity:0;
+transition:.2s;
+}
+
+.sidebar.open .logo{
+opacity:1;
+}
+
+.menu{
+padding:15px;
+}
+
+.item{
+height:56px;
+display:flex;
+align-items:center;
+gap:16px;
+padding:0 18px;
+border-radius:16px;
+margin-bottom:8px;
+cursor:pointer;
+transition:.2s;
+}
+
+.item:hover{
+background:rgba(255,255,255,.04);
+}
+
+.item.active{
+background:rgba(0,255,132,.12);
+border:1px solid rgba(0,255,132,.25);
+}
+
+.icon{
+font-size:20px;
+width:24px;
+text-align:center;
+}
+
+.label{
+opacity:0;
+white-space:nowrap;
+transition:.2s;
+}
+
+.sidebar.open .label{
+opacity:1;
+}
+
+/* CONTENT */
+
+.content{
+flex:1;
+padding:30px;
+overflow:auto;
+}
+
+.topbar{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:25px;
+}
+
+.topbar h1{
+font-size:34px;
+font-weight:700;
+}
+
+.segment{
+display:flex;
+background:#111;
+padding:6px;
+border-radius:18px;
+}
+
+.segment div{
+padding:12px 24px;
+border-radius:12px;
+cursor:pointer;
+}
+
+.segment .active{
+background:white;
+color:black;
+}
+
+/* STATS */
+
+.stats{
+display:grid;
+grid-template-columns:repeat(4,1fr);
+gap:20px;
+margin-bottom:20px;
+}
+
+.card{
+background:var(--card);
+border:1px solid var(--border);
+border-radius:24px;
+padding:24px;
+backdrop-filter:blur(20px);
+}
+
+.card-title{
+font-size:13px;
+color:var(--muted);
+margin-bottom:12px;
+}
+
+.card-value{
+font-size:34px;
+font-weight:700;
+}
+
+.card-sub{
+margin-top:10px;
+color:var(--muted);
+}
+
+/* MAIN */
+
+.main{
+display:grid;
+grid-template-columns:2fr 380px;
+gap:20px;
+}
+
+.graph{
+height:420px;
+background:var(--card);
+border:1px solid var(--border);
+border-radius:24px;
+padding:24px;
+}
+
+.graph-area{
+height:320px;
+margin-top:20px;
+border-radius:18px;
+background:
+linear-gradient(
+180deg,
+rgba(0,255,132,.18),
+transparent
+);
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:22px;
+color:var(--green);
+}
+
+.right{
+display:flex;
+flex-direction:column;
+gap:20px;
+}
+
+.globe{
+height:240px;
+background:var(--card);
+border:1px solid var(--border);
+border-radius:24px;
+display:flex;
+align-items:center;
+justify-content:center;
+}
+
+.globe-circle{
+width:170px;
+height:170px;
+border-radius:50%;
+border:2px solid var(--green);
+box-shadow:0 0 35px rgba(0,255,132,.25);
+}
+
+.bottom{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:20px;
+margin-top:20px;
+}
+
+.row{
+display:flex;
+justify-content:space-between;
+padding:14px 0;
+border-bottom:1px solid rgba(255,255,255,.05);
+}
+
+.green{
+color:var(--green);
+font-weight:600;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+<div class="sidebar" id="sidebar">
+
+<div class="sidebar-top">
+
+<button class="toggle" onclick="toggleSidebar()">
+☰
+</button>
+
+<div class="logo">
+SvoyVPN
+</div>
+
+</div>
+
+<div class="menu">
+
+<div class="item active">
+<div class="icon">🏠</div>
+<div class="label">Dashboard</div>
+</div>
+
+<div class="item">
+<div class="icon">🛡</div>
+<div class="label">VPN</div>
+</div>
+
+<div class="item">
+<div class="icon">📱</div>
+<div class="label">eSIM</div>
+</div>
+
+<div class="item">
+<div class="icon">💳</div>
+<div class="label">Billing</div>
+</div>
+
+<div class="item">
+<div class="icon">👥</div>
+<div class="label">Referrals</div>
+</div>
+
+<div class="item">
+<div class="icon">📊</div>
+<div class="label">Analytics</div>
+</div>
+
+<div class="item">
+<div class="icon">⚙</div>
+<div class="label">Settings</div>
+</div>
+
+</div>
+
+</div>
+
+<div class="content">
+
+<div class="topbar">
+
+<h1>Dashboard</h1>
+
+<div class="segment">
+<div class="active">VPN</div>
+<div>eSIM</div>
+</div>
+
+</div>
+
+<div class="stats">
+
+<div class="card">
+<div class="card-title">VPN STATUS</div>
+<div class="card-value green">ACTIVE</div>
+<div class="card-sub">17 дней осталось</div>
+</div>
+
+<div class="card">
+<div class="card-title">BYPASS</div>
+<div class="card-value">8.1 GB</div>
+<div class="card-sub">из 60 GB</div>
+</div>
+
+<div class="card">
+<div class="card-title">DEVICES</div>
+<div class="card-value">4</div>
+<div class="card-sub">онлайн устройства</div>
+</div>
+
+<div class="card">
+<div class="card-title">SECURITY</div>
+<div class="card-value">92/100</div>
+<div class="card-sub">excellent</div>
+</div>
+
+</div>
+
+<div class="main">
+
+<div>
+
+<div class="graph">
+
+<h2>Traffic Analytics</h2>
+
+<div class="graph-area">
+TRAFFIC GRAPH
+</div>
+
+</div>
+
+<div class="bottom">
+
+<div class="card">
+
+<h3>Servers</h3>
+
+<div class="row">
+<span>Frankfurt</span>
+<span class="green">16ms</span>
+</div>
+
+<div class="row">
+<span>Amsterdam</span>
+<span class="green">22ms</span>
+</div>
+
+<div class="row">
+<span>Warsaw</span>
+<span class="green">29ms</span>
+</div>
+
+<div class="row">
+<span>Singapore</span>
+<span class="green">110ms</span>
+</div>
+
+</div>
+
+<div class="card">
+
+<h3>Recent Activity</h3>
+
+<div class="row">
+<span>Windows Connected</span>
+<span>2m</span>
+</div>
+
+<div class="row">
+<span>New Login</span>
+<span>18m</span>
+</div>
+
+<div class="row">
+<span>eSIM Activated</span>
+<span>1d</span>
+</div>
+
+<div class="row">
+<span>VPN Config Downloaded</span>
+<span>3d</span>
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<div class="right">
+
+<div class="globe">
+
+<div class="globe-circle"></div>
+
+</div>
+
+<div class="card">
+
+<h3>Current Node</h3>
+
+<br>
+
+<h2>Frankfurt</h2>
+
+<br>
+
+<p>16ms latency</p>
+
+<p>99.98% uptime</p>
+
+<p>31% load</p>
+
+</div>
+
+<div class="card">
+
+<h3>Network Health</h3>
+
+<br>
+
+<p>✅ DNS Protected</p>
+<br>
+<p>✅ IPv6 Protected</p>
+<br>
+<p>✅ WebRTC Protected</p>
+
+</div>
+
+<div class="card">
+
+<h3>Subscription</h3>
+
+<br>
+
+<h2>VPN Plus</h2>
+
+<br>
+
+<p>17 days remaining</p>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+function toggleSidebar(){
+document
+.getElementById('sidebar')
+.classList
+.toggle('open');
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,15 @@
+[Unit]
+Description=SvoyVPN Support Telegram Bot
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/SvoyVPN
+EnvironmentFile=-/root/SvoyVPN/.env
+ExecStart=/root/SvoyVPN/venv/bin/python -m support_bot.main
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

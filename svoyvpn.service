@@ -8,6 +8,8 @@ After=network.target
 User=root
 # Путь к директории проекта
 WorkingDirectory=/root/SvoyVPN
+# Переменные попадут в /proc/$PID/environ (в отличие от только dotenv внутри Python).
+EnvironmentFile=-/root/SvoyVPN/.env
 # Путь к python внутри виртуального окружения
 ExecStart=/root/SvoyVPN/venv/bin/python3 -m bot.main
 # Автоматический перезапуск при падении

@@ -15,6 +15,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from .config import AppConfig
 from .database import get_connection
 from .plans import (
+    ACTIVE_TIER_PLAN_IDS,
     TIERS,
     get_tier_bypass_gb,
     get_tier_max_devices,
@@ -29,6 +30,21 @@ from .subscriptions import (
 from .traffic import apply_subscription_anchor_on_payment, ensure_bypass_period
 
 logger = logging.getLogger(__name__)
+
+
+def format_tier_activated_message(tier_info: dict, plan_data: dict) -> str:
+    """Текст после успешной активации тарифа (Plus и др.)."""
+    tier_name = tier_info.get("name", "")
+    bypass_gb = plan_data["bypass_gb"]
+    return (
+        f"✅ <b>Тариф {tier_name} активирован!</b>\n\n"
+        f"Теперь у вас:\n"
+        f"· Bypass: <b>{bypass_gb} ГБ/мес</b>\n"
+        f"· Безлимит на устройства\n"
+        f"· Приоритет к подключениям\n"
+        f"· Доступ ко всем локациям и новым обходам"
+        f"<i>Чтобы применились изменения - просто обновите подписку в happ, через 🔄 или через раздел '🔗 Подключить VPN' 👇</i>"
+    )
 
 
 def _yookassa_saved_payment_method_id(payment_obj: dict) -> Optional[str]:
@@ -159,106 +175,13 @@ async def process_tier_stars_payment(
     config: AppConfig,
     source: str = "bot",
 ) -> bool:
-    """Process Stars payment for a new tier subscription."""
-    user_id = message.from_user.id
-    charge_id = message.successful_payment.telegram_payment_charge_id
-    provider_charge_id = message.successful_payment.provider_payment_charge_id
-    currency = message.successful_payment.currency
-    total_amount = message.successful_payment.total_amount
-
-    plans = await get_tier_plans()
-    if plan_id not in plans:
-        logger.error("tier payment: unknown plan %s", plan_id)
-        await message.answer("❌ Тариф не найден.")
-        return False
-
-    plan_data = plans[plan_id]
-    tier_info = TIERS.get(plan_data["tier"], {})
-
-    async with get_connection() as conn:
-        existing = await conn.fetchrow(
-            "SELECT id, status FROM payments WHERE telegram_payment_charge_id = $1",
-            charge_id,
-        )
-        if existing and existing["status"] == "completed":
-            await message.answer("✅ Этот платёж уже обработан.")
-            return False
-
-        async with conn.transaction():
-            await activate_tier_subscription(
-                conn, user_id, plan_id, plan_data, plan_data["price_rub"]
-            )
-
-            if existing:
-                await conn.execute(
-                    """
-                    UPDATE payments SET status = 'completed', amount = $1, currency = $2
-                    WHERE telegram_payment_charge_id = $3
-                    """,
-                    total_amount, currency, charge_id,
-                )
-            else:
-                await conn.execute(
-                    """
-                    INSERT INTO payments
-                    (user_id, amount, currency, plan_id, plan_type, status,
-                     telegram_payment_charge_id, yookassa_payment_id, payment_source)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    """,
-                    user_id, total_amount, currency, plan_id, "tier",
-                    "completed", charge_id, provider_charge_id, source,
-                )
-
-        await create_or_activate_keys_for_all_servers(user_id)
-
-    sub_end = None
-    async with get_connection() as conn:
-        row = await conn.fetchrow(
-            "SELECT subscription_end FROM users WHERE user_id = $1", user_id
-        )
-        if row:
-            sub_end = row["subscription_end"]
-
-    end_str = sub_end.strftime("%d.%m.%Y") if sub_end else "—"
-    receipt = (
-        f"✅ <b>Тариф {tier_info.get('name', '')} активирован!</b>\n\n"
-        f"📅 Подписка до: <b>{end_str}</b>\n"
-        f"🔓 Bypass: <b>{plan_data['bypass_gb']} ГБ/мес</b>\n"
-        f"📱 Устройств: до {plan_data['max_devices']}\n"
-        f"🌐 Обычный VPN: безлимит\n\n"
-        f"Оплачено: {total_amount} Stars\n"
-        f"ID: <code>{charge_id}</code>"
+    """Stars для подписки отключены."""
+    await message.answer(
+        "❌ Оплата подписки через Telegram Stars недоступна.\n"
+        "Используйте оплату картой в разделе «🚀 Подписка».",
+        parse_mode="HTML",
     )
-    b = InlineKeyboardBuilder()
-    b.row(InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"))
-    await message.answer(receipt, parse_mode="HTML", reply_markup=b.as_markup())
-
-    for admin_id in config.bot.admin_ids:
-        if admin_id != user_id:
-            try:
-                await bot.send_message(
-                    admin_id,
-                    f"💎 <b>Покупка тарифа</b>\n"
-                    f"User: {user_id}\n"
-                    f"Тариф: {plan_data['title']}\n"
-                    f"Сумма: {total_amount} Stars",
-                    parse_mode="HTML",
-                )
-            except Exception:
-                pass
-
-    from .referral_purchases import referral_reward_after_payment
-
-    await referral_reward_after_payment(
-        bot,
-        payer_user_id=user_id,
-        plan_type="tier",
-        plan_id=plan_id,
-        amount_cents=int(plan_data["price_rub"]),
-        telegram_payment_charge_id=charge_id,
-    )
-
-    return True
+    return False
 
 
 async def process_tier_upgrade_stars_payment(
@@ -268,61 +191,13 @@ async def process_tier_upgrade_stars_payment(
     config: AppConfig,
     source: str = "bot",
 ) -> bool:
-    """Process Stars payment for a tier upgrade."""
-    user_id = message.from_user.id
-    charge_id = message.successful_payment.telegram_payment_charge_id
-    provider_charge_id = message.successful_payment.provider_payment_charge_id
-    currency = message.successful_payment.currency
-    total_amount = message.successful_payment.total_amount
-
-    plans = await get_tier_plans()
-    if plan_id not in plans:
-        await message.answer("❌ Тариф не найден.")
-        return False
-
-    plan_data = plans[plan_id]
-    tier_info = TIERS.get(plan_data["tier"], {})
-
-    async with get_connection() as conn:
-        existing = await conn.fetchrow(
-            "SELECT id, status FROM payments WHERE telegram_payment_charge_id = $1",
-            charge_id,
-        )
-        if existing and existing["status"] == "completed":
-            await message.answer("✅ Этот платёж уже обработан.")
-            return False
-
-        async with conn.transaction():
-            price_rub_equiv = total_amount * 100
-            await apply_tier_upgrade(
-                conn, user_id, plan_id, plan_data, price_rub_equiv
-            )
-
-            if existing:
-                await conn.execute(
-                    "UPDATE payments SET status = 'completed' WHERE telegram_payment_charge_id = $1",
-                    charge_id,
-                )
-            else:
-                await conn.execute(
-                    """
-                    INSERT INTO payments
-                    (user_id, amount, currency, plan_id, plan_type, status,
-                     telegram_payment_charge_id, yookassa_payment_id, payment_source)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    """,
-                    user_id, total_amount, currency, plan_id, "tier_upgrade",
-                    "completed", charge_id, provider_charge_id, source,
-                )
-
+    """Stars для подписки отключены."""
     await message.answer(
-        f"✅ <b>Тариф повышен до {tier_info.get('name', '')}!</b>\n\n"
-        f"🔓 Bypass: <b>{plan_data['bypass_gb']} ГБ/мес</b>\n"
-        f"📱 Устройств: до {plan_data['max_devices']}\n"
-        f"Лимит обновлён сразу.",
+        "❌ Оплата подписки через Telegram Stars недоступна.\n"
+        "Используйте оплату картой в разделе «🚀 Подписка».",
         parse_mode="HTML",
     )
-    return True
+    return False
 
 
 async def process_bypass_pack_stars_payment(
@@ -417,8 +292,8 @@ async def process_tier_webhook_payment(
         return False
 
     plans = await get_tier_plans()
-    if plan_id not in plans:
-        logger.error("tier webhook: unknown plan %s", plan_id)
+    if plan_id not in plans or plan_id not in ACTIVE_TIER_PLAN_IDS:
+        logger.error("tier webhook: inactive/legacy plan %s", plan_id)
         return False
 
     plan_data = plans[plan_id]
@@ -482,6 +357,8 @@ async def process_tier_webhook_payment(
                 )
                 await apply_subscription_anchor_on_payment(conn, user_id)
                 await ensure_bypass_period(conn, user_id)
+                from .trial_usage import sync_trial_used_flag
+                await sync_trial_used_flag(conn, user_id)
             else:
                 await activate_tier_subscription(
                     conn, user_id, plan_id, plan_data, amount_cents
@@ -525,29 +402,29 @@ async def process_tier_webhook_payment(
 
     await create_or_activate_keys_for_all_servers(user_id)
 
-    if bot:
+    is_autopay_renewal = payment_source == "yookassa_autopay"
+
+    async with get_connection() as conn:
+        from .autopay_grace import clear_autopay_grace
+        from .subscriptions import clear_subscription_expiry_reminders
+
+        await clear_autopay_grace(conn, user_id)
+        await clear_subscription_expiry_reminders(conn, user_id)
+
+    if bot and not is_autopay_renewal:
         try:
-            sub_end = None
-            async with get_connection() as conn:
-                row = await conn.fetchrow(
-                    "SELECT subscription_end FROM users WHERE user_id = $1", user_id
-                )
-                if row:
-                    sub_end = row["subscription_end"]
-            end_str = sub_end.strftime("%d.%m.%Y") if sub_end else "—"
             b = InlineKeyboardBuilder()
             b.row(InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"))
             await bot.send_message(
                 user_id,
-                f"✅ <b>Тариф {tier_info.get('name', '')} активирован!</b>\n\n"
-                f"📅 Подписка до: <b>{end_str}</b>\n"
-                f"🔓 Bypass: <b>{plan_data['bypass_gb']} ГБ/мес</b>\n"
-                f"📱 Устройств: до {plan_data['max_devices']}",
+                format_tier_activated_message(tier_info, plan_data),
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
             )
         except Exception as e:
             logger.error("tier webhook notify: %s", e)
+    elif is_autopay_renewal:
+        logger.info("tier autopay renewed silently user=%s plan=%s", user_id, plan_id)
 
     from .referral_purchases import referral_reward_after_payment
 

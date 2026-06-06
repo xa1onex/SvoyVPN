@@ -1,14 +1,71 @@
 import logging
 import json
-from datetime import datetime, time as dt_time, timedelta
-from typing import Optional, List, Dict
+import os
+import secrets
+from datetime import datetime, time as dt_time, timedelta, date
+from typing import Any, Optional, List, Dict
 import asyncio
 
-from .database import get_connection
-from .traffic import apply_subscription_anchor_on_payment
+from .database import generate_subscription_token, get_connection
+from .plans import (
+    FREE_SUBSCRIPTION_END,
+    FREE_TIER_ID,
+    PAID_TIER_IDS,
+    get_tier_bypass_gb,
+    get_tier_max_devices,
+    is_sentinel_subscription_end,
+    is_subscription_active,
+    subscription_end_date,
+)
+from .traffic import (
+    apply_subscription_anchor_on_payment,
+    ensure_bypass_period,
+    is_fast_section_header,
+    is_navigation_header_server,
+    navigation_header_vless_line,
+)
 from .xui_client import XUIClient
 
 logger = logging.getLogger(__name__)
+
+# Ключ без даты истечения не считается валидным для платной подписки.
+SQL_VPN_KEY_NOT_EXPIRED = (
+    "(k.expires_at IS NOT NULL AND DATE(k.expires_at) >= CURRENT_DATE)"
+)
+
+_NAV_PLACEHOLDER_IDS = (
+    "00000000000000000000000000000001",
+    "00000000000000000000000000000002",
+)
+
+
+def subscription_end_warning_days() -> int:
+    """За сколько дней до конца показывать дату окончания в UI."""
+    try:
+        return max(0, int(os.getenv("SVOYVPN_SUB_END_WARN_DAYS", "7")))
+    except ValueError:
+        return 7
+
+
+def should_show_subscription_end_date(
+    subscription_end: datetime | date | str | None,
+    *,
+    has_recurring_card: bool,
+) -> bool:
+    """
+    Дата в UI — если автоплатёж отключён и срок скоро истекает.
+    При активной карте дату не показываем (продление автоматическое).
+    """
+    if has_recurring_card or not subscription_end:
+        return False
+    from .plans import is_sentinel_subscription_end, subscription_end_date
+
+    if is_sentinel_subscription_end(subscription_end):
+        return False
+    end = subscription_end_date(subscription_end)
+    if end is None:
+        return False
+    return (end - datetime.now().date()).days <= subscription_end_warning_days()
 
 
 def format_subscription_status_label(end_date: datetime) -> str:
@@ -160,14 +217,44 @@ async def create_keys_for_specific_server(server_id: int) -> None:
             ):
                 logger.warning(f"Server {server_id} not found or not active")
                 return
-            
-            # Получаем всех активных пользователей
+
+            if is_navigation_header_server(server["name"]):
+                nav_users = await conn.fetch(
+                    """
+                    SELECT user_id, subscription_end FROM users
+                    WHERE pay_subscribed = TRUE
+                      AND subscription_end IS NOT NULL
+                      AND DATE(subscription_end) >= CURRENT_DATE
+                      AND COALESCE(subscription_tier, 'free') <> 'free'
+                    """
+                )
+                for ur in nav_users:
+                    uid = int(ur["user_id"])
+                    se = ur["subscription_end"]
+                    exp = se.date() if isinstance(se, datetime) else se
+                    await upsert_navigation_header_key(
+                        conn,
+                        user_id=uid,
+                        server_id=server_id,
+                        server_name=str(server["name"]),
+                        expires_at=exp,
+                    )
+                logger.info(
+                    "Navigation header stubs for server %s: %d users",
+                    server["name"],
+                    len(nav_users),
+                )
+                return
+
+            # Только платные пользователи (Free управляет своим набором серверов)
             active_users = await conn.fetch('''
                 SELECT user_id, subscription_end, pay_subscribed
                 FROM users
-                WHERE pay_subscribed = TRUE 
+                WHERE pay_subscribed = TRUE
                   AND subscription_end IS NOT NULL
                   AND DATE(subscription_end) >= CURRENT_DATE
+                  AND COALESCE(subscription_tier, 'free') <> 'free'
+                  AND DATE(subscription_end) < DATE '2090-01-01'
             ''')
             
             if not active_users:
@@ -288,7 +375,7 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
         async with get_connection() as conn:
             user_row = await conn.fetchrow(
                 """
-                SELECT subscription_end, pay_subscribed
+                SELECT subscription_end, pay_subscribed, subscription_tier
                 FROM users
                 WHERE user_id = $1
                   AND pay_subscribed = TRUE
@@ -299,18 +386,35 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
             if not user_row:
                 return
 
-            subscription_end = user_row["subscription_end"]
-            if isinstance(subscription_end, str):
-                if " " in subscription_end:
-                    end_date = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
-                else:
-                    end_date = datetime.strptime(subscription_end, "%Y-%m-%d")
-            else:
-                end_date = subscription_end
+            tier = (user_row["subscription_tier"] or FREE_TIER_ID).strip() or FREE_TIER_ID
+            is_free = tier == FREE_TIER_ID
 
-            end_dt = datetime.combine(end_date.date(), dt_time(23, 59, 59))
-            expiry_ms = int(end_dt.timestamp() * 1000)
-            expires_at = end_date.date() if isinstance(end_date, datetime) else end_date
+            if is_free:
+                from .free_tier_servers import (
+                    assign_free_tier_servers,
+                    deactivate_free_tier_extra_keys,
+                    get_free_tier_allowed_server_ids,
+                )
+
+                await assign_free_tier_servers(conn, user_id)
+                allowed = await get_free_tier_allowed_server_ids(conn, user_id)
+                expires_at = FREE_SUBSCRIPTION_END
+                end_dt = datetime.combine(FREE_SUBSCRIPTION_END, dt_time(23, 59, 59))
+                expiry_ms = int(end_dt.timestamp() * 1000)
+            else:
+                allowed = None
+                subscription_end = user_row["subscription_end"]
+                if isinstance(subscription_end, str):
+                    if " " in subscription_end:
+                        end_date = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
+                    else:
+                        end_date = datetime.strptime(subscription_end, "%Y-%m-%d")
+                else:
+                    end_date = subscription_end
+
+                end_dt = datetime.combine(end_date.date(), dt_time(23, 59, 59))
+                expiry_ms = int(end_dt.timestamp() * 1000)
+                expires_at = end_date.date() if isinstance(end_date, datetime) else end_date
 
             relay_sid = await conn.fetchval(
                 """
@@ -349,13 +453,28 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                 """,
                 user_id,
             )
-            
+
             if not servers:
                 return
 
             for server in servers:
                 server_id = server["id"]
                 try:
+                    if is_navigation_header_server(server["name"]):
+                        if is_free and int(server_id) not in allowed:
+                            continue
+                        await upsert_navigation_header_key(
+                            conn,
+                            user_id=user_id,
+                            server_id=int(server_id),
+                            server_name=str(server["name"]),
+                            expires_at=expires_at,
+                        )
+                        continue
+
+                    if is_free and int(server_id) not in allowed:
+                        continue
+
                     # Проверяем существующий ключ
                     existing = await conn.fetchrow(
                         """
@@ -379,7 +498,7 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                     if existing:
                         # Ключ есть - активируем и продлеваем
                         await client.update_client_expiry(existing["vless_client_id"], expiry_ms)
-                        
+
                         await conn.execute(
                             """
                             UPDATE vpn_keys
@@ -398,7 +517,7 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                             expiry_time_unix_ms=expiry_ms,
                             public_ip=server.get("ip")
                         )
-                        
+
                         if not result.get("id") or not result.get("link"):
                             await client.close()
                             continue
@@ -428,11 +547,18 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                                 server['name'],
                                 key_id,
                             )
-                    
+
                     await client.close()
-                    
+
                 except Exception as e:
                     logger.error(f"Failed to create/reactivate key for server {server['name']}: {e}")
+
+            if is_free and allowed:
+                from .free_tier_servers import deactivate_free_tier_extra_keys
+
+                await deactivate_free_tier_extra_keys(
+                    conn, user_id, allowed, tg_relay_server_id=relay_sid
+                )
 
     except Exception as e:
         logger.error(f"Error creating keys for user {user_id}: {e}")
@@ -600,14 +726,21 @@ async def sync_user_keys(user_id: int) -> None:
             expiry_time_unix_ms = int(end_datetime.timestamp() * 1000)
             expires_at = end_date.date() if isinstance(end_date, datetime) else end_date
             
-            # Получаем все активные ключи
+            # Получаем все активные ключи (без навигационных заглушек)
             keys = await conn.fetch('''
                 SELECT k.id, k.vless_client_id, s.base_url, s.username, s.password, s.inbound_id
                 FROM vpn_keys k
                 JOIN servers s ON k.server_id = s.id
                 WHERE k.user_id = $1 AND k.is_active = TRUE
-            ''', user_id)
-            
+                  AND REPLACE(k.vless_client_id, '-', '') <> ALL($2::text[])
+            ''', user_id, list(_NAV_PLACEHOLDER_IDS))
+
+            await conn.execute(
+                "UPDATE vpn_keys SET expires_at = $1 WHERE user_id = $2 AND is_active = TRUE "
+                "AND REPLACE(vless_client_id, '-', '') = ANY($3::text[])",
+                expires_at, user_id, list(_NAV_PLACEHOLDER_IDS),
+            )
+
             for key in keys:
                 client = XUIClient(
                     base_url=key['base_url'],
@@ -634,190 +767,120 @@ async def sync_user_keys(user_id: int) -> None:
         logger.error(f"Error syncing keys for user {user_id}: {e}")
 
 
+async def clear_subscription_expiry_reminders(conn, user_id: int) -> None:
+    await conn.execute(
+        "DELETE FROM subscription_reminders WHERE user_id = $1",
+        user_id,
+    )
+
+
 async def handle_expired_subscriptions(bot=None):
     """
-    Обрабатывает истекшие подписки: деактивирует ключи и уведомляет пользователя
+    Истекшие платные подписки: отсрочка для автоплатежа или перевод на Free.
     """
-    import pytz
-    
     logger.info("Checking for expired subscriptions...")
-    
     try:
-        now_moscow = datetime.now(pytz.timezone("Europe/Moscow")).date()
+        from .autopay_grace import try_start_grace_for_expired_autopay_user
+
+        repaired = 0
         async with get_connection() as conn:
-            expired_users = await conn.fetch('''
+            rows = await conn.fetch(
+                """
                 SELECT user_id, subscription_end
                 FROM users
-                WHERE pay_subscribed = TRUE 
+                WHERE blacklisted = FALSE
+                  AND COALESCE(subscription_tier, '') != $1
+                  AND pay_subscribed = TRUE
                   AND subscription_end IS NOT NULL
-                  AND DATE(subscription_end) < $1
-            ''', now_moscow)
-            
-            if not expired_users:
-                logger.info("No expired subscriptions found")
-                return
-            
-            processed_count = 0
-            notified_count = 0
-            
-            from aiogram.utils.keyboard import InlineKeyboardBuilder
-            from aiogram.types import InlineKeyboardButton
-            from .plans import get_subscription_plans, format_price_both
-            
-            plans = await get_subscription_plans()
+                  AND DATE(subscription_end) < CURRENT_DATE
+                LIMIT 500
+                """,
+                FREE_TIER_ID,
+            )
 
-            for user in expired_users:
-                user_id = user['user_id']
-                subscription_end = user['subscription_end']
-                
-                try:
-                    # Деактивируем ключи
-                    await conn.execute('''
-                        UPDATE vpn_keys
-                        SET is_active = FALSE
-                        WHERE user_id = $1 AND is_active = TRUE
-                    ''', user_id)
-                    
-                    # Обновляем статус подписки; докупленный трафик сгорает вместе с подпиской
-                    await conn.execute(
-                        """
-                        UPDATE users
-                        SET pay_subscribed = FALSE,
-                            renewal_used = FALSE,
-                            traffic_bonus_gb = 0
-                        WHERE user_id = $1
-                        """,
-                        user_id,
-                    )
-                    
-                    # Сбрасываем уведомления
-                    await conn.execute('DELETE FROM subscription_reminders WHERE user_id = $1', user_id)
-                    
-                    processed_count += 1
-                    
-                    # Уведомление пользователю
-                    if bot:
-                        try:
-                            if isinstance(subscription_end, str):
-                                end_date = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
-                            else:
-                                end_date = subscription_end
-                            end_date_str = end_date.strftime("%d.%m.%Y")
-                        except:
-                            end_date_str = "недавно"
-                        
-                        builder = InlineKeyboardBuilder()
-                        
-                        for plan_id, plan_data in plans.items():
-                            builder.button(
-                                text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
-                                callback_data=f"plan:{plan_id}"
-                            )
-                        builder.adjust(1)
-                        
-                        builder.row(
-                            InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"),
-                            InlineKeyboardButton(text="🎁 Бесплатно", callback_data="open_invite")
-                        )
-                        
-                        await bot.send_message(
-                            user_id,
-                            f"⏰ <b>Ваша подписка истекла</b>\n\n"
-                            f"📅 Дата окончания: <i>{end_date_str}</i>\n\n"
-                            f"💳 Доступ к VPN временно ограничен.\nЧтобы вернуть доступ, выберите тариф и продолжите пользоваться быстрым и безопасным интернетом! 👇",
-                            reply_markup=builder.as_markup(),
-                            parse_mode="HTML"
-                        )
-                        notified_count += 1
-                        await asyncio.sleep(0.05)
+        for row in rows:
+            uid = int(row["user_id"])
+            try:
+                async with get_connection() as conn:
+                    if await try_start_grace_for_expired_autopay_user(
+                        conn, uid, row["subscription_end"], bot
+                    ):
+                        continue
+                    await grant_free_tier(conn, uid)
+                await create_or_activate_keys_for_all_servers(uid)
+                repaired += 1
+            except Exception as e:
+                logger.error("handle_expired user %s: %s", uid, e)
 
-                except Exception as e:
-                    logger.error(f"Error processing expired subscription for user {user_id}: {e}")
-            
-            logger.info(f"Expired subscriptions processed: {processed_count}, notifications sent: {notified_count}")
-            
+        if repaired:
+            logger.info("Expired subscriptions → Free: %s users", repaired)
+        else:
+            logger.info("No expired subscriptions to downgrade")
     except Exception as e:
-        logger.error(f"Error in handle_expired_subscriptions: {e}", exc_info=True)
+        logger.error("Error in handle_expired_subscriptions: %s", e, exc_info=True)
 
 
 async def send_upcoming_subscription_reminders(bot, config):
     """
-    Автоматическая рассылка напоминаний о скором окончании подписки.
-    За 3 дня (с предложением скидки) и за 1 день.
+    Напоминания о скором окончании подписки (только без привязанной карты).
+    За 3 дня и за 1 день.
     """
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import InlineKeyboardButton
-    from .plans import get_user_tariffs, format_price_both
-    
+    from .plans import build_expiry_reminder_markup
+
     import pytz
 
     logger.info("Checking for upcoming subscription reminders...")
-    
+
     try:
         now_moscow = datetime.now(pytz.timezone("Europe/Moscow")).date()
         target_3d = now_moscow + timedelta(days=3)
         target_1d = now_moscow + timedelta(days=1)
 
         async with get_connection() as conn:
-            # 1. Находим тех, у кого осталось ровно 3 дня и ЕЩЕ НЕ БЫЛО напоминания '3_days'
-            users_3d = await conn.fetch('''
+            users_3d = await conn.fetch(
+                """
                 SELECT u.user_id, u.subscription_end, u.first_name
                 FROM users u
-                LEFT JOIN subscription_reminders r ON u.user_id = r.user_id AND r.reminder_type = '3_days'
+                LEFT JOIN subscription_reminders r
+                    ON u.user_id = r.user_id AND r.reminder_type = '3_days'
                 WHERE u.pay_subscribed = TRUE
                   AND u.subscription_end IS NOT NULL
                   AND DATE(u.subscription_end) = $1
                   AND r.id IS NULL
                   AND u.blacklisted = FALSE
-            ''', target_3d)
-            
-            # 2. Находим тех, у кого осталось ровно 1 день и ЕЩЕ НЕ БЫЛО напоминания '1_day'
-            users_1d = await conn.fetch('''
+                  AND u.yookassa_recurring_payment_method_id IS NULL
+                """,
+                target_3d,
+            )
+
+            users_1d = await conn.fetch(
+                """
                 SELECT u.user_id, u.subscription_end, u.first_name
                 FROM users u
-                LEFT JOIN subscription_reminders r ON u.user_id = r.user_id AND r.reminder_type = '1_day'
+                LEFT JOIN subscription_reminders r
+                    ON u.user_id = r.user_id AND r.reminder_type = '1_day'
                 WHERE u.pay_subscribed = TRUE
                   AND u.subscription_end IS NOT NULL
                   AND DATE(u.subscription_end) = $1
                   AND r.id IS NULL
                   AND u.blacklisted = FALSE
-            ''', target_1d)
-            
-            # Напоминания за 3 дня
+                  AND u.yookassa_recurring_payment_method_id IS NULL
+                """,
+                target_1d,
+            )
+
             for user in users_3d:
                 user_id = user['user_id']
                 sub_end = user['subscription_end']
                 end_date_str = sub_end.strftime("%d.%m.%Y")
-                current_tariffs, _, show_discount = await get_user_tariffs(user_id)
+                builder, _ = await build_expiry_reminder_markup(user_id)
                 
-                builder = InlineKeyboardBuilder()
-                for plan_id, plan_data in current_tariffs.items():
-                    builder.button(
-                        text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
-                        callback_data=f"plan:{plan_id}"
-                    )
-                builder.adjust(1)
-                
-                builder.row(
-                    InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"),
-                    InlineKeyboardButton(text="🎁 Бесплатно", callback_data="open_invite")
+                text = (
+                    f"⏰ <b>{user['first_name'] or 'Пользователь'}, подписка скоро закончится</b>\n\n"
+                    f"Plus заканчивается через <b>3 дня</b> ({end_date_str}).\n\n"
+                    f"Продлите заранее, чтобы VPN работал без перерыва.\n\n"
+                    f"Доступны тарифы <b>Plus на месяц</b> и <b>Plus на год</b>:"
                 )
-
-                if show_discount:
-                    text = (
-                        f"🎁 <b>{user['first_name'] or 'Пользователь'}, у нас для вас подарок!</b>\n\n"
-                        f"Ваша подписка заканчивается через <b>3 дня</b> ({end_date_str}).\n\n"
-                        f"🔥 <b>Успейте продлить её сейчас со скидкой!</b>\n"
-                        f"При продлении до истечения срока действуют специальные цены. Не упустите выгоду! 🎁\n\n"
-                        f"Выберите тариф для продления:"
-                    )
-                else:
-                    text = (
-                        f"⏰ <b>{user['first_name'] or 'Пользователь'}, подписка скоро закончится</b>\n\n"
-                        f"Ваша подписка заканчивается через <b>3 дня</b> ({end_date_str}).\n\n"
-                        f"Продлите подписку заранее, чтобы сохранить доступ к VPN без перерыва.\n\n"
-                        f"Выберите тариф для продления:"
-                    )
                 
                 try:
                     await bot.send_message(user_id, text, reply_markup=builder.as_markup(), parse_mode="HTML")
@@ -832,33 +895,13 @@ async def send_upcoming_subscription_reminders(bot, config):
                 user_id = user['user_id']
                 sub_end = user['subscription_end']
                 end_date_str = sub_end.strftime("%d.%m.%Y")
-                current_tariffs, _, show_discount = await get_user_tariffs(user_id)
-                
-                builder = InlineKeyboardBuilder()
-                for plan_id, plan_data in current_tariffs.items():
-                    builder.button(
-                        text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
-                        callback_data=f"plan:{plan_id}"
-                    )
-                builder.adjust(1)
-                
-                builder.row(
-                    InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_premium"),
-                    InlineKeyboardButton(text="🎁 Бесплатно", callback_data="open_invite")
-                )
+                builder, _ = await build_expiry_reminder_markup(user_id)
 
-                if show_discount:
-                    text = (
-                        f"⏰ <b>Внимание! Подписка почти закончилась</b>\n\n"
-                        f"Ваша подписка на VPN истекает <b>ЗАВТРА</b> ({end_date_str}).\n\n"
-                        f"Чтобы интернет не отключился в самый подходящий момент, рекомендуем продлить её прямо сейчас по выгодной цене! 🚀"
-                    )
-                else:
-                    text = (
-                        f"⏰ <b>Внимание! Подписка почти закончилась</b>\n\n"
-                        f"Ваша подписка на VPN истекает <b>ЗАВТРА</b> ({end_date_str}).\n\n"
-                        f"Чтобы интернет не отключился, продлите подписку прямо сейчас."
-                    )
+                text = (
+                    f"⏰ <b>Внимание! Подписка почти закончилась</b>\n\n"
+                    f"Plus истекает <b>завтра</b> ({end_date_str}).\n\n"
+                    f"Продлите сейчас — <b>Plus на месяц</b> или <b>Plus на год</b>:"
+                )
                 
                 try:
                     await bot.send_message(user_id, text, reply_markup=builder.as_markup(), parse_mode="HTML")
@@ -898,80 +941,571 @@ async def get_subscription_status(user_id: int) -> str:
 
 
 async def get_subscription_status_display(user_id: int) -> str:
-    """
-    Текст для главного меню: статус подписки + bypass трафик.
-    Формат: «VPN Standard активен» или «VPN неактивен».
-    """
+    """Текст статуса для главного меню /start."""
     try:
-        from .traffic import user_traffic_snapshot, user_bypass_traffic_snapshot
-        from .plans import TIERS
+        from .plans import (
+            ALL_PAID_TIER_IDS,
+            FREE_TIER_ID,
+            TIERS,
+            format_subscription_end_for_display,
+            is_sentinel_subscription_end,
+            is_subscription_active,
+        )
 
         async with get_connection() as conn:
             row = await conn.fetchrow(
-                "SELECT subscription_tier, pay_subscribed, subscription_end FROM users WHERE user_id = $1",
+                """
+                SELECT subscription_tier, pay_subscribed, subscription_end,
+                       yookassa_recurring_payment_method_id IS NOT NULL AS has_card
+                FROM users WHERE user_id = $1
+                """,
                 user_id,
             )
 
-        if not row or not row["pay_subscribed"] or not row["subscription_end"]:
-            return "VPN неактивен"
+        if not row or not is_subscription_active(row["pay_subscribed"], row["subscription_end"]):
+            return "VPN не подключен"
 
+        tier = (row["subscription_tier"] or FREE_TIER_ID).strip() or FREE_TIER_ID
+        has_card = bool(row["has_card"])
         sub_end = row["subscription_end"]
-        if isinstance(sub_end, str):
-            from datetime import datetime as _dt
-            sub_end = _dt.strptime(sub_end.split()[0], "%Y-%m-%d")
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        if sub_end.replace(hour=0, minute=0, second=0, microsecond=0) < today:
-            return "VPN неактивен"
 
-        tier = (row["subscription_tier"] or "legacy")
-        if tier != "legacy":
-            tier_info = TIERS.get(tier, {})
-            tier_name = tier_info.get("name", tier.capitalize())
-            # Check if autopay is disabled (card unlinked)
-            has_card = False
-            async with get_connection() as conn:
-                has_card = await conn.fetchval(
-                    "SELECT yookassa_recurring_payment_method_id IS NOT NULL FROM users WHERE user_id = $1",
-                    user_id,
-                )
-            end_date = sub_end.strftime("%d.%m.%Y")
-            if has_card:
-                header = f"<b>VPN {tier_name}</b> активен"
-            else:
-                header = f"<b>VPN {tier_name}</b> активен до {end_date}"
+        if tier == FREE_TIER_ID or is_sentinel_subscription_end(sub_end):
+            return "<b>VPN Free</b> подключен"
 
-            async with get_connection() as conn:
-                snap = await user_bypass_traffic_snapshot(conn, user_id)
-            used = float(snap.get("bypassUsedGb") or 0)
-            limit = float(snap.get("bypassLimitGb") or 0)
-            bonus = int(snap.get("bypassBonusGb") or 0)
-            if limit > 0:
-                line = f"\n<b>Bypass(Лимит)</b>: {used:.1f} / {limit:.0f} ГБ"
-                if used > limit:
-                    line += " ⚠️"
-                if bonus > 0:
-                    line += f" (+{bonus} ГБ пакет)"
-                return header + line
-            return header
-        else:
-            header = "VPN активен"
-            async with get_connection() as conn:
-                snap = await user_traffic_snapshot(conn, user_id, sync_from_panels=False)
-            if not snap.get("trafficEnforced"):
-                return header
-            used = float(snap.get("usedGb") or 0)
-            limit = float(snap.get("limitGb") or 0)
-            bonus = int(snap.get("bonusGb") or 0)
-            bonus_rem = float(snap.get("bonusRemainingGb") or 0)
-            if bonus > 0:
-                return (
-                    f"{header}\n📊 Трафик: {used:.1f} / {limit:.0f} ГБ"
-                    f" (пакет: осталось {bonus_rem:.1f} из {bonus} ГБ)"
-                )
-            return f"{header}\n📊 Трафик: {used:.1f} / {limit:.0f} ГБ"
+        if tier in ALL_PAID_TIER_IDS:
+            tier_name = TIERS.get(tier, TIERS.get("plus", {})).get("name", "Plus")
+            end_str = format_subscription_end_for_display(sub_end)
+            label = f"<b>VPN {tier_name}</b> подключен"
+            # С привязанной картой (автооплата) — без даты; без карты — до окончания периода
+            if has_card or not end_str:
+                return label
+            return f"{label} до {end_str}"
+
+        return "<b>VPN</b> подключен"
     except Exception as e:
         logger.error("get_subscription_status_display: %s", e)
-        return "VPN неактивен"
+        return "VPN не подключен"
+
+
+async def get_subscription_navigation_header_rows(conn) -> list[dict[str, Any]]:
+    """
+    Строки-разделители «Информация» (🚀 Быстрые / 🆓 обход) для подписки.
+    Доступны всем активным тарифам, не требуют клиента на X-UI.
+    """
+    from .free_tier_servers import get_system_server_ids_for_subscription
+
+    sys_ids = await get_system_server_ids_for_subscription(conn)
+    if not sys_ids:
+        return []
+    rows = await conn.fetch(
+        """
+        SELECT id AS sid, name AS server_name, display_order
+        FROM servers
+        WHERE id = ANY($1::bigint[])
+          AND is_active = TRUE
+          AND COALESCE(exclude_from_subscription, FALSE) = FALSE
+        ORDER BY display_order ASC NULLS LAST, id ASC
+        """,
+        list(sys_ids),
+    )
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        sname = str(r["server_name"] or "")
+        if not is_navigation_header_server(sname):
+            continue
+        sid = int(r["sid"])
+        out.append(
+            {
+                "vless_link": navigation_header_vless_line(sname),
+                "server_id": sid,
+                "display_order": int(r["display_order"] or 100),
+                "sid": sid,
+                "server_name": sname,
+                "is_bypass": False,
+            }
+        )
+    return out
+
+
+def merge_subscription_keys_with_navigation_headers(
+    keys: list[Any], header_rows: list[dict[str, Any]]
+) -> list[Any]:
+    """Добавить заголовки секций, если их ещё нет в списке ключей."""
+    if not header_rows:
+        return keys
+    present = {int(k.get("server_id") or 0) for k in keys}
+    merged = list(keys)
+    for row in header_rows:
+        if int(row["server_id"]) not in present:
+            merged.append(row)
+    return sorted(
+        merged, key=lambda x: (x.get("display_order", 100), x.get("sid", 0))
+    )
+
+
+async def upsert_navigation_header_key(
+    conn,
+    *,
+    user_id: int,
+    server_id: int,
+    server_name: str,
+    expires_at: date,
+) -> None:
+    """Заглушка vless для строки-разделителя (без панели X-UI)."""
+    fake = navigation_header_vless_line(str(server_name))
+    placeholder_id = (
+        "00000000-0000-0000-0000-000000000001"
+        if is_fast_section_header(server_name)
+        else "00000000-0000-0000-0000-000000000002"
+    )
+    existing = await conn.fetchrow(
+        """
+        SELECT id FROM vpn_keys
+        WHERE user_id = $1 AND server_id = $2
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        user_id,
+        server_id,
+    )
+    if existing:
+        await conn.execute(
+            """
+            UPDATE vpn_keys
+            SET is_active = TRUE,
+                vless_link = $1,
+                expires_at = $2,
+                key_name = $3
+            WHERE id = $4
+            """,
+            fake,
+            expires_at,
+            server_name,
+            existing["id"],
+        )
+        return
+    await conn.execute(
+        """
+        INSERT INTO vpn_keys (
+            user_id, server_id, vless_client_id, vless_link,
+            key_name, expires_at, is_active
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+        """,
+        user_id,
+        server_id,
+        placeholder_id,
+        fake,
+        server_name,
+        expires_at,
+    )
+
+
+async def fetch_subscription_keys(
+    conn, user_id: int
+) -> tuple[list[Any], str, bool, int]:
+    """
+    Ключи для /sub и Happ.
+
+    Returns:
+        keys, subscription_tier, calendar_active, expire_timestamp
+    """
+    from .free_tier_servers import (
+        filter_subscription_keys,
+        get_free_tier_allowed_server_ids,
+    )
+
+    user_row = await conn.fetchrow(
+        """
+        SELECT pay_subscribed, subscription_end, subscription_tier
+        FROM users WHERE user_id = $1
+        """,
+        user_id,
+    )
+    if not user_row:
+        return [], FREE_TIER_ID, False, 0
+
+    tier = (user_row["subscription_tier"] or FREE_TIER_ID).strip() or FREE_TIER_ID
+    calendar_active = is_subscription_active(
+        user_row["pay_subscribed"], user_row["subscription_end"]
+    )
+
+    expire_ts = 0
+    sub_end = user_row.get("subscription_end")
+    if sub_end and calendar_active:
+        try:
+            end_d = subscription_end_date(sub_end)
+            if end_d:
+                expire_ts = int(
+                    datetime.combine(end_d, dt_time(23, 59, 59)).timestamp()
+                )
+        except Exception:
+            pass
+
+    if not calendar_active and tier != FREE_TIER_ID:
+        return [], tier, False, 1
+
+    if tier == FREE_TIER_ID:
+        keys_data = await conn.fetch(
+            """
+            SELECT DISTINCT ON (k.server_id)
+                k.vless_link, k.server_id, s.display_order, s.id AS sid,
+                s.name AS server_name, s.is_bypass
+            FROM vpn_keys k
+            INNER JOIN servers s ON k.server_id = s.id
+            WHERE k.user_id = $1
+              AND k.is_active = TRUE
+              AND s.is_active = TRUE
+              AND COALESCE(s.exclude_from_subscription, FALSE) = FALSE
+              AND (
+                  k.expires_at IS NULL
+                  OR DATE(k.expires_at) >= CURRENT_DATE
+              )
+            ORDER BY k.server_id, k.id ASC
+            """,
+            user_id,
+        )
+        keys = sorted(
+            keys_data, key=lambda x: (x.get("display_order", 100), x.get("sid", 0))
+        )
+        allowed = await get_free_tier_allowed_server_ids(conn, user_id)
+        keys = filter_subscription_keys(keys, allowed)
+        nav_headers = await get_subscription_navigation_header_rows(conn)
+        keys = merge_subscription_keys_with_navigation_headers(keys, nav_headers)
+        if not expire_ts and calendar_active:
+            expire_ts = int(
+                datetime.combine(FREE_SUBSCRIPTION_END, dt_time(23, 59, 59)).timestamp()
+            )
+        return keys, tier, calendar_active, expire_ts
+
+    if not calendar_active:
+        return [], tier, False, 1
+
+    keys_data = await conn.fetch(
+        f"""
+        SELECT DISTINCT ON (k.server_id)
+            k.vless_link, k.server_id, s.display_order, s.id AS sid,
+            s.name AS server_name, s.is_bypass
+        FROM vpn_keys k
+        INNER JOIN servers s ON k.server_id = s.id
+        WHERE k.user_id = $1
+          AND k.is_active = TRUE
+          AND s.is_active = TRUE
+          AND COALESCE(s.exclude_from_subscription, FALSE) = FALSE
+          AND {SQL_VPN_KEY_NOT_EXPIRED}
+        ORDER BY k.server_id, k.id ASC
+        """,
+        user_id,
+    )
+    keys = sorted(keys_data, key=lambda x: (x.get("display_order", 100), x.get("sid", 0)))
+    nav_headers = await get_subscription_navigation_header_rows(conn)
+    keys = merge_subscription_keys_with_navigation_headers(keys, nav_headers)
+    return keys, tier, calendar_active, expire_ts
+
+
+async def finalize_free_tier_access(conn, user_id: int) -> None:
+    """
+    После перехода на Free: отключить платные ключи в БД, продлить free-ключи до 2099.
+    """
+    from .free_tier_servers import (
+        assign_free_tier_servers,
+        deactivate_free_tier_extra_keys,
+        get_free_tier_allowed_server_ids,
+    )
+
+    await assign_free_tier_servers(conn, user_id)
+    allowed = await get_free_tier_allowed_server_ids(conn, user_id)
+    relay_sid = await conn.fetchval(
+        """
+        SELECT tg_relay_server_id FROM traffic_settings ORDER BY id DESC LIMIT 1
+        """
+    )
+
+    revoked_rows = []
+    if allowed:
+        revoked_rows = await conn.fetch(
+            """
+            UPDATE vpn_keys
+            SET is_active = FALSE,
+                expires_at = CURRENT_DATE - INTERVAL '1 day'
+            WHERE user_id = $1
+              AND is_active = TRUE
+              AND server_id <> ALL($2::bigint[])
+              AND (
+                  $3::bigint IS NULL
+                  OR server_id IS DISTINCT FROM $3::bigint
+              )
+            RETURNING id, vless_client_id, server_id
+            """,
+            user_id,
+            list(allowed),
+            relay_sid,
+        )
+        await conn.execute(
+            """
+            UPDATE vpn_keys
+            SET is_active = TRUE, expires_at = $2
+            WHERE user_id = $1
+              AND server_id = ANY($3::bigint[])
+            """,
+            user_id,
+            FREE_SUBSCRIPTION_END,
+            list(allowed),
+        )
+        await deactivate_free_tier_extra_keys(
+            conn, user_id, allowed, tg_relay_server_id=relay_sid
+        )
+    else:
+        revoked_rows = await conn.fetch(
+            """
+            UPDATE vpn_keys
+            SET is_active = FALSE,
+                expires_at = CURRENT_DATE - INTERVAL '1 day'
+            WHERE user_id = $1 AND is_active = TRUE
+            RETURNING id, vless_client_id, server_id
+            """,
+            user_id,
+        )
+
+    if revoked_rows:
+        asyncio.create_task(_revoke_keys_on_panels(list(revoked_rows)))
+
+
+async def _revoke_keys_on_panels(rows: list) -> None:
+    """Срок клиента на X-UI в прошлое — платные узлы перестают работать."""
+    past_ms = 1_000
+    for row in rows:
+        cid = row.get("vless_client_id")
+        sid = row.get("server_id")
+        if not cid or not sid:
+            continue
+        if str(cid).replace("-", "") in _NAV_PLACEHOLDER_IDS:
+            continue
+        try:
+            async with get_connection() as conn:
+                server = await conn.fetchrow(
+                    """
+                    SELECT base_url, username, password, inbound_id
+                    FROM servers WHERE id = $1
+                    """,
+                    sid,
+                )
+            if not server:
+                continue
+            client = XUIClient(
+                base_url=server["base_url"],
+                username=server["username"],
+                password=server["password"],
+                inbound_id=server["inbound_id"],
+            )
+            await client.update_client_expiry(str(cid), past_ms)
+            await client.close()
+        except Exception as e:
+            logger.warning(
+                "revoke panel client user key server %s: %s",
+                sid,
+                e,
+            )
+
+
+async def repair_expired_subscriptions_access(*, limit: int = 500, bot=None) -> int:
+    """Пользователи с прошедшей датой подписки — отсрочка автоплатежа или перевод на Free."""
+    from .autopay_grace import try_start_grace_for_expired_autopay_user
+
+    repaired = 0
+    try:
+        async with get_connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT user_id, subscription_end FROM users
+                WHERE blacklisted = FALSE
+                  AND COALESCE(subscription_tier, '') != $1
+                  AND pay_subscribed = TRUE
+                  AND subscription_end IS NOT NULL
+                  AND DATE(subscription_end) < CURRENT_DATE
+                LIMIT $2
+                """,
+                FREE_TIER_ID,
+                limit,
+            )
+        for row in rows:
+            uid = int(row["user_id"])
+            try:
+                async with get_connection() as conn:
+                    if await try_start_grace_for_expired_autopay_user(
+                        conn, uid, row["subscription_end"], bot
+                    ):
+                        continue
+                    await grant_free_tier(conn, uid)
+                await create_or_activate_keys_for_all_servers(uid)
+                repaired += 1
+            except Exception as e:
+                logger.error("repair_expired access user %s: %s", uid, e)
+
+        async with get_connection() as conn:
+            free_stale = await conn.fetch(
+                """
+                SELECT u.user_id
+                FROM users u
+                WHERE u.subscription_tier = $1
+                  AND u.blacklisted = FALSE
+                  AND EXISTS (
+                      SELECT 1 FROM vpn_keys k
+                      INNER JOIN servers s ON s.id = k.server_id
+                      WHERE k.user_id = u.user_id
+                        AND k.is_active = TRUE
+                        AND COALESCE(s.is_bypass, FALSE) = FALSE
+                        AND k.server_id IS DISTINCT FROM u.free_vpn_server_id
+                        AND k.server_id IS DISTINCT FROM u.free_bypass_server_id
+                        AND REPLACE(k.vless_client_id, '-', '') <> ALL($2::text[])
+                  )
+                LIMIT $3
+                """,
+                FREE_TIER_ID,
+                list(_NAV_PLACEHOLDER_IDS),
+                limit,
+            )
+        for row in free_stale:
+            uid = int(row["user_id"])
+            try:
+                async with get_connection() as conn:
+                    await finalize_free_tier_access(conn, uid)
+                repaired += 1
+            except Exception as e:
+                logger.error("repair_free stale keys user %s: %s", uid, e)
+    except Exception as e:
+        logger.error("repair_expired_subscriptions_access: %s", e, exc_info=True)
+    if repaired:
+        logger.info("repair_expired_subscriptions_access: %s users", repaired)
+    return repaired
+
+
+async def ensure_user_has_subscription(
+    user_id: int,
+    *,
+    username: str | None = None,
+    first_name: str | None = None,
+    provision_keys: bool = False,
+) -> str:
+    """
+    Гарантирует запись в users и активную подписку (минимум Free).
+    Возвращает subscription_tier.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT subscription_tier, pay_subscribed, subscription_end
+            FROM users WHERE user_id = $1
+            """,
+            user_id,
+        )
+        if not row:
+            token = generate_subscription_token()
+            ref = secrets.token_hex(4)
+            await conn.execute(
+                """
+                INSERT INTO users (
+                    user_id, username, first_name, registration_date, last_activity,
+                    referral_code, pay_subscribed, subscription_end, subscription_token,
+                    subscription_tier, bypass_traffic_limit_gb, device_limit
+                ) VALUES (
+                    $1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                    $4, TRUE, $5, $6, $7, $8, $9
+                )
+                """,
+                user_id,
+                username,
+                first_name or "Пользователь",
+                ref,
+                FREE_SUBSCRIPTION_END,
+                token,
+                FREE_TIER_ID,
+                get_tier_bypass_gb(FREE_TIER_ID),
+                get_tier_max_devices(FREE_TIER_ID),
+            )
+            await ensure_bypass_period(conn, user_id)
+            tier = FREE_TIER_ID
+        elif is_subscription_active(row["pay_subscribed"], row["subscription_end"]):
+            tier = row["subscription_tier"] or FREE_TIER_ID
+        else:
+            await grant_free_tier(conn, user_id)
+            tier = FREE_TIER_ID
+
+    if provision_keys:
+        asyncio.create_task(create_or_activate_keys_for_all_servers(user_id))
+    return tier
+
+
+async def migrate_inactive_users_to_free(
+    *, batch_size: int = 300, provision_keys: bool = False
+) -> int:
+    """Перевести пользователей без активной подписки на Free (только БД)."""
+    migrated = 0
+    try:
+        async with get_connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT user_id FROM users
+                WHERE blacklisted = FALSE
+                  AND (
+                    pay_subscribed = FALSE
+                    OR subscription_end IS NULL
+                    OR DATE(subscription_end) < CURRENT_DATE
+                  )
+                LIMIT $1
+                """,
+                batch_size,
+            )
+        for row in rows:
+            uid = row["user_id"]
+            async with get_connection() as conn:
+                await grant_free_tier(conn, uid)
+            migrated += 1
+            if provision_keys:
+                asyncio.create_task(create_or_activate_keys_for_all_servers(uid))
+        if migrated:
+            logger.info("migrate_inactive_users_to_free: %s users", migrated)
+    except Exception as e:
+        logger.error("migrate_inactive_users_to_free: %s", e, exc_info=True)
+    return migrated
+
+
+async def grant_free_tier(conn, user_id: int) -> None:
+    """Перевести пользователя на тариф Free (без сброса trial_used)."""
+    from .plans import (
+        FREE_SUBSCRIPTION_END,
+        FREE_TIER_ID,
+        get_tier_bypass_gb,
+        get_tier_max_devices,
+    )
+    from .free_tier_servers import assign_free_tier_servers
+
+    await conn.execute(
+        """
+        UPDATE users SET
+            subscription_tier = $2,
+            pay_subscribed = TRUE,
+            subscription_end = $3,
+            bypass_traffic_limit_gb = $4,
+            device_limit = $5,
+            bypass_traffic_used_bytes = 0,
+            yookassa_recurring_payment_method_id = NULL,
+            pending_downgrade_tier = NULL,
+            referral_discount_percent = 0,
+            tier_duration_months = NULL,
+            tier_price_paid = NULL,
+            tier_purchased_at = NULL,
+            renewal_used = FALSE
+        WHERE user_id = $1
+        """,
+        user_id,
+        FREE_TIER_ID,
+        FREE_SUBSCRIPTION_END,
+        get_tier_bypass_gb(FREE_TIER_ID),
+        get_tier_max_devices(FREE_TIER_ID),
+    )
+    await assign_free_tier_servers(conn, user_id)
+    await finalize_free_tier_access(conn, user_id)
 
 
 async def update_vless_links_for_server(server_id: int) -> None:

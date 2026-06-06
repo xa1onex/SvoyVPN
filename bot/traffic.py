@@ -47,6 +47,40 @@ def is_navigation_header_server(label: object) -> bool:
     return is_fast_section_header(label) or is_free_header_server(label)
 
 
+def navigation_header_vless_line(
+    server_name: str,
+    *,
+    uuid: str = "00000000-0000-0000-0000-000000000000",
+) -> str:
+    """Нерабочий vless:// для заголовка секции (как лимит/уведомления)."""
+    from .happ_catalog import presentation_for_server
+    from .happ_text_notice import happ_text_notice_vless_uri
+
+    name = (server_name or "Сервер").strip()
+    title, subtitle = presentation_for_server(
+        remark=name,
+        server_name=name,
+        is_bypass=False,
+    )
+    return happ_text_notice_vless_uri(title=title, subtitle=subtitle, uuid=uuid)
+
+
+def subscription_row_is_bypass(server_name: object, is_bypass: object) -> bool:
+    """Bypass-узел: флаг с панели или 🆓 в названии (кроме заголовка секции)."""
+    if is_free_header_server(server_name):
+        return False
+    if bool(is_bypass):
+        return True
+    return is_free_server_label(server_name)
+
+
+def subscription_vless_line(link: str, server_name: str) -> str:
+    """Рабочая ссылка или заглушка для навигационного заголовка."""
+    if is_navigation_header_server(server_name):
+        return navigation_header_vless_line(server_name)
+    return link
+
+
 def _norm_xui_identity(raw: object) -> str:
     """UUID с панели и в БД могут отличаться дефисами — сравниваем в одном виде."""
     return str(raw or "").strip().lower().replace("-", "")
@@ -195,7 +229,33 @@ async def get_user_tg_relay_vless_line(conn, user_id: int) -> str | None:
     )
     if not key or not key.get("vless_link"):
         return None
-    return vless_set_fragment_display_name(str(key["vless_link"]), "‼️ ТГ БЕЗЛИМИТ ‼️")
+    from .happ_catalog import tg_relay_presentation
+    from .happ_text_notice import vless_link_with_happ_caption
+
+    title, subtitle = tg_relay_presentation()
+    return vless_link_with_happ_caption(
+        str(key["vless_link"]),
+        title=title,
+        subtitle=subtitle,
+        is_tg_relay=True,
+    )
+
+
+async def ensure_user_tg_relay_vless_line(conn, user_id: int) -> str | None:
+    """Строка «‼️ ТГ БЕЗЛИМИТ ‼️»; при отсутствии ключа — создаёт и повторяет."""
+    line = await get_user_tg_relay_vless_line(conn, user_id)
+    if line:
+        return line
+    sid = await get_tg_relay_server_id(conn)
+    if sid is None:
+        return None
+    from .subscriptions import ensure_user_keys_for_server_ids
+
+    try:
+        await ensure_user_keys_for_server_ids(user_id, [sid])
+    except Exception:
+        return None
+    return await get_user_tg_relay_vless_line(conn, user_id)
 
 
 async def ensure_traffic_anchor_and_period(conn, user_id: int) -> None:

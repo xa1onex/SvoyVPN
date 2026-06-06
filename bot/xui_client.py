@@ -277,6 +277,35 @@ class XUIClient:
         if resp.status_code != 200:
             raise RuntimeError(f"Failed to update client expiry: {resp.status_code} {resp.text}")
 
+    async def delete_client(self, client_id: str) -> None:
+        """Удалить клиента с панели (3x-ui)."""
+        await self.ensure_login()
+        inbound_id = self.inbound_id
+        if not inbound_id:
+            raise RuntimeError("inbound_id is not set")
+
+        headers = {"Content-Type": "application/json", **self._auth_headers()}
+        resp = await self._client.post(
+            f"panel/api/inbounds/{inbound_id}/delClient/{client_id}",
+            headers=headers,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if not (isinstance(data, dict) and data.get("success") is False):
+                return
+
+        # Fallback для других версий панели
+        resp = await self._client.post(
+            "panel/api/inbounds/delClient",
+            json={"id": inbound_id, "clientId": client_id},
+            headers=headers,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"delClient failed: {resp.status_code} {resp.text}")
+        data = resp.json()
+        if isinstance(data, dict) and data.get("success") is False:
+            raise RuntimeError(f"delClient error: {data}")
+
     async def close(self) -> None:
         """Закрыть клиент."""
         await self._client.aclose()

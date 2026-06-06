@@ -15,6 +15,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..database import get_connection, get_support_link, set_announcement_text, get_device_instruction_photos, get_device_instruction_photos_list, add_device_instruction_photo, delete_device_instruction_photo
+from ..admin_panel import build_admin_stats_text, get_admin_panel_keyboard
 from ..config import AppConfig
 from ..plans import SUBSCRIPTION_PLANS_BASE, RENEWAL_PLANS_BASE, format_price_rub, format_price_stars, format_price_both, get_renewal_plans
 from ..subscriptions import create_or_activate_keys_for_all_servers, create_keys_for_specific_server, update_vless_links_for_server
@@ -33,7 +34,7 @@ DEVICE_TYPES = {
 
 
 async def _admin_traffic_panel_builder() -> tuple[str, InlineKeyboardBuilder]:
-    """Текст и клавиатура экрана «Трафик и пакеты ГБ» (список пакетов из БД)."""
+    """Экран настроек bypass-трафика (лимиты, синхронизация, ТГ relay)."""
     async with get_connection() as conn:
         ts = await conn.fetchrow(
             """
@@ -49,59 +50,28 @@ async def _admin_traffic_panel_builder() -> tuple[str, InlineKeyboardBuilder]:
         sync_sec = int(ts["panel_sync_min_seconds"] or 240) if ts else 240
         tg_sid = int(ts["tg_relay_server_id"]) if ts and ts.get("tg_relay_server_id") is not None else None
         tg_name = (ts.get("tg_relay_server_name") or "") if ts else ""
-        packs = await conn.fetch(
-            """
-            SELECT id, title, gb_amount, price_rub, price_stars, is_active, display_order
-            FROM gb_pack_products
-            ORDER BY gb_amount ASC, display_order ASC, id ASC
-            """
-        )
     if tg_sid:
         tg_line = (
-            f"• Сервер «ТГ безлимит» (при лимите — одна ссылка <b>‼️ ТГ БЕЗЛИМИТ ‼️</b> в конце подписки): "
-            f"<b>#{tg_sid}</b> {html_std.escape(str(tg_name))}\n"
+            f"• Сервер «ТГ безлимит»: <b>#{tg_sid}</b> {html_std.escape(str(tg_name))}\n"
         )
     else:
-        tg_line = (
-            "• Сервер «ТГ безлимит»: <i>не выбран</i> — при лимите только информационные строки подписки\n"
-        )
+        tg_line = "• Сервер «ТГ безлимит»: <i>не выбран</i>\n"
     lines = [
-        "📶 <b>Трафик и пакеты ГБ</b>\n",
-        f"• Лимит по умолчанию: <b>{default_gb} ГБ</b> / месяц (день сброса = день первой оплаты)\n",
-        f"• Мин. интервал синхронизации с панелями: <b>{sync_sec}</b> сек\n",
+        "📶 <b>Настройки трафика</b>\n",
+        f"• Лимит Plus по умолчанию: <b>{default_gb} ГБ</b>/мес\n",
+        f"• Интервал синхронизации с панелями: <b>{sync_sec}</b> сек\n",
         tg_line,
-        "\n<b>Пакеты доп. ГБ</b> (хранятся в таблице <code>gb_pack_products</code>):",
+        "\n<i>Пакеты докупки bypass — в разделе «Plus — цены и bypass».</i>",
     ]
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="✏️ Лимит по умолчанию (ГБ)", callback_data="admin_traffic_edit:default_gb")
+        InlineKeyboardButton(text="✏️ Лимит Plus", callback_data="admin_traffic_edit:default_gb"),
+        InlineKeyboardButton(text="✏️ Интервал", callback_data="admin_traffic_edit:sync_sec"),
     )
     builder.row(
-        InlineKeyboardButton(text="✏️ Интервал синхронизации (сек)", callback_data="admin_traffic_edit:sync_sec")
+        InlineKeyboardButton(text="📡 ТГ безлимит", callback_data="admin_traffic_tg_relay_pick"),
+        InlineKeyboardButton(text="📶 Bypass", callback_data="admin_bypass_packs"),
     )
-    builder.row(
-        InlineKeyboardButton(text="📡 Сервер «ТГ безлимит»", callback_data="admin_traffic_tg_relay_pick")
-    )
-    builder.row(InlineKeyboardButton(text="➕ Новый пакет ГБ", callback_data="admin_gb_pack_add"))
-    if packs:
-        for p in packs:
-            st = "✅" if p["is_active"] else "⏸"
-            lines.append(
-                f"\n{st} <b>#{p['id']}</b> {html_std.escape(str(p['title']))} — +{p['gb_amount']} ГБ, "
-                f"{p['price_rub'] // 100}₽ / {p['price_stars']}⭐"
-            )
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"✏️ #{p['id']}",
-                    callback_data=f"admin_gb_pack_manage:{p['id']}",
-                ),
-                InlineKeyboardButton(
-                    text=f"{st} вкл",
-                    callback_data=f"admin_gb_pack_toggle:{p['id']}",
-                ),
-            )
-    else:
-        lines.append("\n<i>Пакетов пока нет — добавь через «Новый пакет ГБ».</i>")
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
     return "\n".join(lines), builder
 
@@ -124,11 +94,6 @@ class AdminStates(StatesGroup):
     DISCOUNT_DAYS_THRESHOLD = State()
     TRAFFIC_SETTING_VALUE = State()
     TRAFFIC_TG_RELAY_SERVER_ID = State()
-    GB_PACK_TITLE = State()
-    GB_PACK_GB = State()
-    GB_PACK_PRICE_RUB = State()
-    GB_PACK_PRICE_STARS = State()
-    GB_PACK_EDIT_FIELD = State()
     TRIAL_DAYS = State()
     SERVER_NAME = State()
     SERVER_IP = State()
@@ -200,31 +165,6 @@ async def safe_callback_answer(callback: CallbackQuery, text: str = None, show_a
             logger.debug(f"Ignoring expired callback query: {e}")
         else:
             logger.warning(f"Error answering callback: {e}")
-
-
-def get_admin_panel_keyboard():
-    """Получить клавиатуру админ панели"""
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"))
-    builder.row(InlineKeyboardButton(text="🔔 Логи активности", callback_data="admin_realtime_logs"))
-    builder.row(InlineKeyboardButton(text="💰 Управление ценами", callback_data="admin_prices"))
-    builder.row(InlineKeyboardButton(text="🚀 Тарифы (Lite/Standard/Pro)", callback_data="admin_tier_prices"))
-    builder.row(InlineKeyboardButton(text="📶 Трафик и пакеты ГБ", callback_data="admin_traffic"))
-    builder.row(InlineKeyboardButton(text="🎁 Управление скидками", callback_data="admin_discounts"))
-    builder.row(InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast"))
-    builder.row(InlineKeyboardButton(text="✏️ Редактировать объявление", callback_data="edit_announcement"))
-    builder.row(InlineKeyboardButton(text="🎁 Управление реферальной системой", callback_data="admin_referral"))
-    builder.row(InlineKeyboardButton(text="🆓 Управление пробным периодом", callback_data="admin_trial"))
-    builder.row(InlineKeyboardButton(text="🖥️ Управление серверами", callback_data="admin_servers"))
-    builder.row(InlineKeyboardButton(text="💳 Управление балансом", callback_data="admin_balance"))
-    builder.row(InlineKeyboardButton(text="👥 Управление админами", callback_data="admin_manage_admins"))
-    builder.row(InlineKeyboardButton(text="🛟 Управление менеджерами", callback_data="admin_manage_managers"))
-    builder.row(InlineKeyboardButton(text="📱 Управление приложениями", callback_data="admin_device_apps"))
-    builder.row(InlineKeyboardButton(text="📈 UTM метки", callback_data="admin_utm"))
-    builder.row(InlineKeyboardButton(text="👤 Инфо о пользователе", callback_data="admin_user_info"))
-    builder.row(InlineKeyboardButton(text="⏰ Ручная отправка напоминаний", callback_data="admin_manual_reminder"))
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back_to_main"))
-    return builder.as_markup()
 
 
 
@@ -348,13 +288,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         async with get_connection() as conn:
             await conn.execute("UPDATE users SET last_activity = CURRENT_TIMESTAMP WHERE user_id = $1", user_id)
         
-        from ..subscriptions import get_subscription_status
-        subscription_status = await get_subscription_status(user_id)
+        from ..subscriptions import get_subscription_status_display
+        subscription_status = await get_subscription_status_display(user_id)
         
         await callback.message.edit_text(
             await get_main_text(first_name, subscription_status, user_id),
             parse_mode="HTML",
-            reply_markup=await get_main_keyboard(user_id, config)
+            reply_markup=await get_main_keyboard(user_id, config),
+            disable_web_page_preview=True,
         )
         await safe_callback_answer(callback)
     
@@ -401,194 +342,23 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     # Статистика
     @dp.callback_query(F.data == "admin_stats")
     async def handle_admin_stats(callback: CallbackQuery):
-        """Подробная статистика"""
+        """Подробная статистика Free / Plus."""
         if not is_admin(callback.from_user.id, config):
             await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
-        
+
         async with get_connection() as conn:
-            # Общая статистика пользователей
-            total_users = await conn.fetchval('SELECT COUNT(*) FROM users')
-            active_subscriptions = await conn.fetchval('SELECT COUNT(*) FROM users WHERE pay_subscribed = TRUE AND subscription_end >= CURRENT_DATE')
-            new_today = await conn.fetchval('SELECT COUNT(*) FROM users WHERE DATE(registration_date) = CURRENT_DATE')
-            new_week = await conn.fetchval('SELECT COUNT(*) FROM users WHERE registration_date >= CURRENT_DATE - INTERVAL \'7 days\'')
-            
-            # Статистика по платежам
-            total_revenue_rub = await conn.fetchval('SELECT COALESCE(SUM(amount), 0) FROM payments WHERE currency = \'RUB\' AND status = \'completed\'')
-            total_revenue_stars = await conn.fetchval('SELECT COALESCE(SUM(amount), 0) FROM payments WHERE currency = \'XTR\' AND status = \'completed\'')
-            payments_today = await conn.fetchval('SELECT COUNT(*) FROM payments WHERE DATE(timestamp) = CURRENT_DATE AND status = \'completed\'')
-            revenue_today_rub = await conn.fetchval('SELECT COALESCE(SUM(amount), 0) FROM payments WHERE currency = \'RUB\' AND DATE(timestamp) = CURRENT_DATE AND status = \'completed\'')
-            
-            # Доход за 30 дней
-            revenue_30d_rub = await conn.fetchval('''
-                SELECT COALESCE(SUM(amount), 0) 
-                FROM payments 
-                WHERE currency = 'RUB' 
-                    AND status = 'completed' 
-                    AND timestamp >= CURRENT_DATE - INTERVAL '30 days'
-            ''')
-            paying_users_30d = await conn.fetchval('''
-                SELECT COUNT(DISTINCT user_id) 
-                FROM payments 
-                WHERE status = 'completed'
-                    AND timestamp >= CURRENT_DATE - INTERVAL '30 days'
-            ''')
-            active_users_30d = await conn.fetchval(
-                'SELECT COUNT(DISTINCT user_id) FROM users WHERE last_activity >= CURRENT_DATE - INTERVAL \'30 days\''
-            )
-            
-            arpu_30d = 0.0
-            arppu_30d = 0.0
-            if active_users_30d and active_users_30d > 0:
-                arpu_30d = (revenue_30d_rub or 0) / 100.0 / active_users_30d
-            if paying_users_30d and paying_users_30d > 0:
-                arppu_30d = (revenue_30d_rub or 0) / 100.0 / paying_users_30d
-            
-            # Статистика по ключам
-            total_keys = await conn.fetchval('SELECT COUNT(*) FROM vpn_keys')
-            active_keys = await conn.fetchval('SELECT COUNT(*) FROM vpn_keys WHERE is_active = TRUE')
-            
-            # Статистика по рефералам
-            total_referrals = await conn.fetchval('SELECT COALESCE(SUM(referral_count), 0) FROM users')
-            
-            # Статистика активности
-            active_7days = await conn.fetchval('SELECT COUNT(DISTINCT user_id) FROM users WHERE last_activity >= CURRENT_DATE - INTERVAL \'7 days\'')
-            inactive_30days = await conn.fetchval('SELECT COUNT(*) FROM users WHERE last_activity < CURRENT_DATE - INTERVAL \'30 days\' OR last_activity IS NULL')
-            
-            # Отток и продления
-            churn_30d = await conn.fetchval('''
-                SELECT COUNT(*) 
-                FROM users
-                WHERE subscription_end BETWEEN CURRENT_DATE - INTERVAL '30 days' AND CURRENT_DATE - INTERVAL '1 day'
-                  AND (pay_subscribed = FALSE OR subscription_end < CURRENT_DATE)
-            ''')
-            expiring_7d = await conn.fetchval('''
-                SELECT COUNT(*) 
-                FROM users
-                WHERE pay_subscribed = TRUE
-                  AND subscription_end BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
-            ''')
-            
-            # Статистика по серверам
-            total_servers = await conn.fetchval('SELECT COUNT(*) FROM servers')
-            active_servers = await conn.fetchval('SELECT COUNT(*) FROM servers WHERE is_active = TRUE')
-            
-            # Платежеспособные пользователи
-            paying_users_count = await conn.fetchval('''
-                SELECT COUNT(DISTINCT user_id) FROM payments 
-                WHERE status = 'completed'
-            ''')
-            
-            # Пробный период
-            trial_activated = await conn.fetchval('SELECT COUNT(*) FROM users WHERE trial_used = TRUE')
-            trial_converted = await conn.fetchval('''
-                SELECT COUNT(DISTINCT p.user_id)
-                FROM payments p
-                JOIN users u ON u.user_id = p.user_id
-                WHERE p.status = 'completed'
-                  AND u.trial_used = TRUE
-            ''')
-            trial_conversion_rate = 0.0
-            if trial_activated and trial_activated > 0:
-                trial_conversion_rate = (trial_converted or 0) / trial_activated * 100.0
-                
-            # Статистика использования подписок (из новых логов)
-            # DAU (24h), WAU (7d), MAU (30d) по реальным запросам
-            sub_dau_24h = await conn.fetchval('SELECT COUNT(DISTINCT user_id) FROM subscription_usage_logs WHERE timestamp >= CURRENT_TIMESTAMP - INTERVAL \'24 hours\'')
-            sub_wau_7d = await conn.fetchval('SELECT COUNT(DISTINCT user_id) FROM subscription_usage_logs WHERE timestamp >= CURRENT_TIMESTAMP - INTERVAL \'7 days\'')
-            sub_mau_30d = await conn.fetchval('SELECT COUNT(DISTINCT user_id) FROM subscription_usage_logs WHERE timestamp >= CURRENT_TIMESTAMP - INTERVAL \'30 days\'')
-            sub_requests_today = await conn.fetchval('SELECT COUNT(*) FROM subscription_usage_logs WHERE DATE(timestamp) = CURRENT_DATE')
-            
-            # Топ платформ за 7 дней
-            top_platforms_rows = await conn.fetch('''
-                SELECT user_agent, COUNT(*) as count 
-                FROM subscription_usage_logs 
-                WHERE timestamp >= CURRENT_TIMESTAMP - INTERVAL '7 days'
-                GROUP BY user_agent 
-                ORDER BY count DESC 
-                LIMIT 5
-            ''')
-            
-            platforms_text = ""
-            for row in top_platforms_rows:
-                ua = (row['user_agent'] or "Unknown").split('/')[0].split(' ')[0][:15]
-                platforms_text += f"  • {ua}: <i>{row['count']} запр.</i>\n"
-            if not platforms_text: platforms_text = "  • Данных пока нет\n"
+            stats_text = await build_admin_stats_text(conn)
 
-            # Статистика продаж по источникам
-            sales_source = await conn.fetch('''
-                SELECT payment_source, COUNT(*) as count, SUM(amount) as total
-                FROM payments 
-                WHERE status = 'completed'
-                GROUP BY payment_source
-            ''')
-            sales_stats = {"bot": {"count": 0, "total": 0}, "miniapp": {"count": 0, "total": 0}}
-            for row in sales_source:
-                src = row['payment_source'] or 'bot'
-                if src in sales_stats:
-                    sales_stats[src] = {"count": row['count'], "total": row['total']}
-        
-        stats_text = (
-            "📊 <b>Подробная статистика</b>\n\n"
-            "👥 <b>Пользователи:</b>\n"
-            f"• Всего пользователей: <i>{total_users}</i>\n"
-            f"• Активных подписок: <i>{active_subscriptions}</i>\n"
-            f"• Платежеспособных (платили): <i>{paying_users_count}</i>\n"
-            f"• Новых сегодня: <i>{new_today}</i>\n"
-            f"• Новых за неделю: <i>{new_week}</i>\n\n"
-
-            "📈 <b>Активность VPN (по логам):</b>\n"
-            f"  • DAU (24ч): <b>{sub_dau_24h or 0}</b> чел. 🏆\n"
-            f"  • WAU (7дн): <b>{sub_wau_7d or 0}</b> чел.\n"
-            f"  • MAU (30дн): <b>{sub_mau_30d or 0}</b> чел.\n"
-            f"  • Запросов сегодня: <b>{sub_requests_today or 0}</b>\n\n"
-            
-            "📱 <b>Топ клиентов (7дн):</b>\n"
-            f"{platforms_text}\n"
-            
-            "🤖 <b>Активность в боте:</b>\n"
-            f"• Активных за 7 дней: <i>{active_7days}</i>\n"
-            f"• Активных за 30 дней: <i>{active_users_30d}</i>\n"
-            f"• Неактивных 30+ дней: <i>{inactive_30days}</i>\n\n"
-
-            "💰 <b>Финансы:</b>\n"
-            f"• Доход (RUB): <i>{total_revenue_rub / 100 if total_revenue_rub else 0:.2f}₽</i>\n"
-            f"• Доход (Stars): <i>{total_revenue_stars}⭐</i>\n"
-            f"• Платежи через Бота: <b>{sales_stats['bot']['count']}</b> (<i>{sales_stats['bot']['total']/100:.0f}₽</i>)\n"
-            f"• Платежи через Mini-App: <b>{sales_stats['miniapp']['count']}</b> (<i>{sales_stats['miniapp']['total']/100:.0f}₽</i>)\n"
-            f"• Платежей сегодня: <i>{payments_today}</i>\n"
-            f"• Доход сегодня: <i>{revenue_today_rub / 100 if revenue_today_rub else 0:.2f}₽</i>\n"
-            f"• Доход за 30 дней (RUB): <i>{revenue_30d_rub / 100 if revenue_30d_rub else 0:.2f}₽</i>\n"
-            f"• ARPU 30д: <i>{arpu_30d:.2f}₽</i>\n"
-            f"• ARPPU 30д: <i>{arppu_30d:.2f}₽</i>\n\n"
-
-            "📉 <b>Отток и продления:</b>\n"
-            f"• Подписок истекло за 30д (churn): <i>{churn_30d}</i>\n"
-            f"• Подписок истекает в ближайшие 7д: <i>{expiring_7d}</i>\n\n"
-
-            "🧪 <b>Пробный период:</b>\n"
-            f"• Активировали триал: <i>{trial_activated}</i>\n"
-            f"• Сделали платеж после триала: <i>{trial_converted}</i>\n"
-            f"• Конверсия триала в оплату: <i>{trial_conversion_rate:.1f}%</i>\n\n"
-
-            "🔑 <b>VPN Ключи:</b>\n"
-            f"• Всего ключей: <i>{total_keys}</i>\n"
-            f"• Активных ключей: <i>{active_keys}</i>\n\n"
-
-            "🎁 <b>Рефералы:</b>\n"
-            f"• Всего рефералов: <i>{total_referrals}</i>\n\n"
-
-            "🖥️ <b>Серверы:</b>\n"
-            f"• Всего серверов: <i>{total_servers}</i>\n"
-            f"• Активных серверов: <i>{active_servers}</i>\n\n"
-            
-            f"🕒 {datetime.now(pytz.timezone('Europe/Moscow')).strftime('%d.%m.%Y %H:%M')}"
-        )
-        
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
-        
-        await callback.message.edit_text(stats_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        builder.row(
+            InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_stats"),
+            InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"),
+        )
+
+        await callback.message.edit_text(
+            stats_text, reply_markup=builder.as_markup(), parse_mode="HTML"
+        )
         await safe_callback_answer(callback)
     
     # Логи активности в реальном времени
@@ -657,35 +427,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     # Управление ценами
     @dp.callback_query(F.data == "admin_prices")
     async def handle_admin_prices(callback: CallbackQuery):
-        """Управление ценами"""
-        if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
-            return
-        
-        # Получаем текущие цены из БД
-        async with get_connection() as conn:
-            price_settings = await conn.fetch('SELECT plan_id, price_rub, price_stars FROM price_settings')
-            prices_dict = {row['plan_id']: row for row in price_settings}
-        
-        # Объединяем все планы
-        all_plans = {**SUBSCRIPTION_PLANS_BASE, **RENEWAL_PLANS_BASE}
-        
-        text = "💰 <b>Управление ценами</b>\n\n"
-        builder = InlineKeyboardBuilder()
-        
-        for plan_id, plan_data in all_plans.items():
-            current_price_rub = prices_dict.get(plan_id, {}).get('price_rub', plan_data['price_rub'])
-            current_price_stars = prices_dict.get(plan_id, {}).get('price_stars', plan_data['price_stars'])
-            text += f"• {plan_data['title']}: {format_price_rub(current_price_rub)} | {format_price_stars(current_price_stars)}\n"
-            builder.row(InlineKeyboardButton(
-                text=f"✏️ {plan_data['title']}",
-                callback_data=f"admin_edit_price:{plan_id}"
-            ))
-        
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
-        
-        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
-        await safe_callback_answer(callback)
+        """Legacy: перенаправление на Plus."""
+        await handle_admin_tier_prices(callback)
     
     @dp.callback_query(F.data.startswith("admin_edit_price:"))
     async def handle_edit_price(callback: CallbackQuery, state: FSMContext):
@@ -770,58 +513,42 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             await state.clear()
             return
 
-        # --- Handle tier plan edit ---
+        # --- Handle tier plan edit (Plus — только RUB) ---
         if tier_plan_id:
             from ..plans import TIER_PLANS_BASE
             parts = text_input.split()
-            if len(parts) != 2:
-                await message.answer("❌ Формат: RUB 9900 или STARS 99")
+            if len(parts) != 2 or parts[0] != "RUB":
+                await message.answer("❌ Формат: <code>RUB 14900</code> (цена в копейках)", parse_mode="HTML")
                 return
-            currency_type, amt_str = parts
             try:
-                amount = int(amt_str)
+                amount = int(parts[1])
             except ValueError:
                 await message.answer("❌ Сумма должна быть числом")
+                return
+            if amount < 0:
+                await message.answer("❌ Цена не может быть отрицательной")
                 return
             base = TIER_PLANS_BASE.get(tier_plan_id, {})
             tier = base.get("tier", "")
             duration = base.get("duration", 1)
             async with get_connection() as conn:
-                if currency_type == "RUB":
-                    existing = await conn.fetchrow(
-                        "SELECT price_stars FROM tier_price_settings WHERE tier = $1 AND duration_months = $2",
-                        tier, duration,
-                    )
-                    stars = existing["price_stars"] if existing else base.get("price_stars", 0)
-                    await conn.execute(
-                        """
-                        INSERT INTO tier_price_settings (tier, duration_months, price_rub, price_stars, updated_at)
-                        VALUES ($1, $2, $3, $4, NOW())
-                        ON CONFLICT (tier, duration_months) DO UPDATE SET price_rub = $3, updated_at = NOW()
-                        """,
-                        tier, duration, amount, stars,
-                    )
-                elif currency_type == "STARS":
-                    existing = await conn.fetchrow(
-                        "SELECT price_rub FROM tier_price_settings WHERE tier = $1 AND duration_months = $2",
-                        tier, duration,
-                    )
-                    rub = existing["price_rub"] if existing else base.get("price_rub", 0)
-                    await conn.execute(
-                        """
-                        INSERT INTO tier_price_settings (tier, duration_months, price_rub, price_stars, updated_at)
-                        VALUES ($1, $2, $3, $4, NOW())
-                        ON CONFLICT (tier, duration_months) DO UPDATE SET price_stars = $4, updated_at = NOW()
-                        """,
-                        tier, duration, rub, amount,
-                    )
-                else:
-                    await message.answer("❌ Используйте RUB или STARS")
-                    return
+                existing = await conn.fetchrow(
+                    "SELECT price_stars FROM tier_price_settings WHERE tier = $1 AND duration_months = $2",
+                    tier, duration,
+                )
+                stars = existing["price_stars"] if existing else base.get("price_stars", 0)
+                await conn.execute(
+                    """
+                    INSERT INTO tier_price_settings (tier, duration_months, price_rub, price_stars, updated_at)
+                    VALUES ($1, $2, $3, $4, NOW())
+                    ON CONFLICT (tier, duration_months) DO UPDATE SET price_rub = $3, updated_at = NOW()
+                    """,
+                    tier, duration, amount, stars,
+                )
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text="◀️ К тарифам", callback_data="admin_tier_prices"))
             await message.answer(
-                f"✅ Цена тарифа обновлена: {base.get('title', tier_plan_id)}",
+                f"✅ Цена обновлена: {base.get('title', tier_plan_id)} — {format_price_rub(amount)}",
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML",
             )
@@ -894,43 +621,56 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         await state.clear()
 
     # ------------------------------------------------------------------
-    # Tier price management (Lite/Standard/Pro)
+    # Tier price management (Plus)
     # ------------------------------------------------------------------
     @dp.callback_query(F.data == "admin_tier_prices")
     async def handle_admin_tier_prices(callback: CallbackQuery):
-        """Управление ценами тарифов Lite/Standard/Pro"""
+        """Цены Plus и bypass-пакеты."""
         if not is_admin(callback.from_user.id, config):
             await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
 
-        from ..plans import TIER_PLANS_BASE, TIERS, get_tier_plans, get_bypass_packs
+        from ..plans import TIERS, get_tier_plans, get_bypass_packs
 
         plans = await get_tier_plans()
-        text = "🚀 <b>Тарифы: Lite / Standard / Pro</b>\n\n"
+        plus_t = TIERS["plus"]
+        text = (
+            "💎 <b>Тариф Plus</b>\n\n"
+            f"• Bypass: {plus_t['bypass_gb']} ГБ/мес\n"
+            f"• Устройства: безлимит\n"
+            f"• Оплата подписки: только карта (ЮKassa)\n\n"
+            "<b>Планы:</b>\n"
+        )
 
         builder = InlineKeyboardBuilder()
-        for tier_id in ["lite", "standard", "pro"]:
-            t = TIERS[tier_id]
-            text += f"<b>{t['name']}</b> ({t['bypass_gb']} ГБ bypass, до {t['max_devices']} устр.)\n"
-            for plan_id, plan_data in plans.items():
-                if plan_data.get("tier") == tier_id:
-                    text += f"  • {plan_data['title']}: {format_price_rub(plan_data['price_rub'])} | {format_price_stars(plan_data['price_stars'])}\n"
-            text += "\n"
+        plan_buttons = []
+        for plan_id, plan_data in plans.items():
+            text += f"  • {plan_data['title']}: {format_price_rub(plan_data['price_rub'])}\n"
+            plan_buttons.append(
+                InlineKeyboardButton(
+                    text=f"✏️ {plan_data['title']}",
+                    callback_data=f"admin_tier_edit:{plan_id}",
+                )
+            )
+        if len(plan_buttons) == 2:
+            builder.row(*plan_buttons)
+        else:
+            for btn in plan_buttons:
+                builder.row(btn)
 
-        text += "<b>Bypass пакеты (докупка):</b>\n"
+        text += "\n<b>Bypass-пакеты (докупка):</b>\n"
         packs = await get_bypass_packs()
         for p in packs:
-            text += f"  • +{p['gb_amount']} ГБ: {format_price_rub(p['price_rub'])} | {format_price_stars(p['price_stars'])}\n"
-        text += "\n💡 Докупка должна быть менее выгодной, чем апгрейд.\n"
+            st = "✅" if p.get("is_active", True) else "⏸"
+            text += (
+                f"  {st} +{p['gb_amount']} ГБ: {format_price_rub(p['price_rub'])}"
+                f" | {p['price_stars']}⭐\n"
+            )
 
-        for plan_id in plans:
-            builder.row(InlineKeyboardButton(
-                text=f"✏️ {plans[plan_id]['title']}",
-                callback_data=f"admin_tier_edit:{plan_id}",
-            ))
-
-        builder.row(InlineKeyboardButton(text="📶 Bypass пакеты", callback_data="admin_bypass_packs"))
-        builder.row(InlineKeyboardButton(text="🏷️ Пометить bypass-сервер", callback_data="admin_mark_bypass"))
+        builder.row(
+            InlineKeyboardButton(text="📶 Bypass-пакеты", callback_data="admin_bypass_packs"),
+            InlineKeyboardButton(text="🏷️ Bypass-серв.", callback_data="admin_mark_bypass"),
+        )
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
 
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
@@ -953,10 +693,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
 
         await callback.message.edit_text(
             f"✏️ <b>Редактирование: {plan_data['title']}</b>\n\n"
-            f"Текущая цена: {format_price_rub(plan_data['price_rub'])} | {format_price_stars(plan_data['price_stars'])}\n\n"
-            f"Введите новую цену:\n"
-            f"<code>RUB КОПЕЙКИ</code> или <code>STARS КОЛИЧЕСТВО</code>\n\n"
-            f"Пример: <code>RUB 9900</code> = 99₽",
+            f"Текущая цена: {format_price_rub(plan_data['price_rub'])}\n\n"
+            f"Введите новую цену в копейках:\n"
+            f"<code>RUB 14900</code> = 149₽\n\n"
+            f"<i>Оплата подписки Stars отключена.</i>",
             parse_mode="HTML",
         )
         await state.set_state(AdminStates.SETTING_PRICE)
@@ -1309,321 +1049,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
 
     @dp.callback_query(F.data == "admin_gb_pack_add")
     async def handle_admin_gb_pack_add(callback: CallbackQuery, state: FSMContext):
+        """Legacy: пакеты перенесены в bypass_pack_products."""
+        await handle_admin_gb_pack_legacy(callback, state)
+
+    @dp.callback_query(F.data.startswith("admin_gb_pack_"))
+    async def handle_admin_gb_pack_legacy(callback: CallbackQuery, state: FSMContext):
+        """Legacy gb_pack_products — редирект на bypass."""
         if not is_admin(callback.from_user.id, config):
             await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
-        await state.set_state(AdminStates.GB_PACK_TITLE)
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_traffic"))
-        await callback.message.edit_text(
-            "➕ <b>Новый пакет ГБ</b>\n\nВведите <b>название</b> для отображения в магазине:",
-            reply_markup=builder.as_markup(),
-            parse_mode="HTML",
-        )
-        await safe_callback_answer(callback)
-
-    @dp.message(AdminStates.GB_PACK_TITLE)
-    async def process_gb_pack_title(message: Message, state: FSMContext):
-        if not is_admin(message.from_user.id, config):
-            await state.clear()
-            return
-        title = (message.text or "").strip()
-        if len(title) < 2:
-            await message.answer("❌ Слишком короткое название")
-            return
-        await state.update_data(gb_pack_title=title)
-        await state.set_state(AdminStates.GB_PACK_GB)
-        await message.answer("Введите объём пакета в <b>ГБ</b> (целое число):", parse_mode="HTML")
-
-    @dp.message(AdminStates.GB_PACK_GB)
-    async def process_gb_pack_gb(message: Message, state: FSMContext):
-        if not is_admin(message.from_user.id, config):
-            await state.clear()
-            return
-        try:
-            gb = int((message.text or "").strip())
-        except ValueError:
-            await message.answer("❌ Введите целое число")
-            return
-        if gb < 1 or gb > 100000:
-            await message.answer("❌ От 1 до 100000")
-            return
-        await state.update_data(gb_pack_gb=gb)
-        await state.set_state(AdminStates.GB_PACK_PRICE_RUB)
-        await message.answer("Введите цену в <b>копейках</b> (например 9900 = 99₽):", parse_mode="HTML")
-
-    @dp.message(AdminStates.GB_PACK_PRICE_RUB)
-    async def process_gb_pack_rub(message: Message, state: FSMContext):
-        if not is_admin(message.from_user.id, config):
-            await state.clear()
-            return
-        try:
-            rub = int((message.text or "").strip())
-        except ValueError:
-            await message.answer("❌ Введите целое число")
-            return
-        if rub < 0:
-            await message.answer("❌ Не может быть отрицательной")
-            return
-        await state.update_data(gb_pack_rub=rub)
-        await state.set_state(AdminStates.GB_PACK_PRICE_STARS)
-        await message.answer("Введите цену в <b>Telegram Stars</b> (целое число):", parse_mode="HTML")
-
-    @dp.message(AdminStates.GB_PACK_PRICE_STARS)
-    async def process_gb_pack_stars(message: Message, state: FSMContext):
-        if not is_admin(message.from_user.id, config):
-            await state.clear()
-            return
-        try:
-            stars = int((message.text or "").strip())
-        except ValueError:
-            await message.answer("❌ Введите целое число")
-            return
-        if stars < 0:
-            await message.answer("❌ Не может быть отрицательной")
-            return
-        data = await state.get_data()
-        title = data.get("gb_pack_title")
-        gb = data.get("gb_pack_gb")
-        rub = data.get("gb_pack_rub")
-        async with get_connection() as conn:
-            next_ord = await conn.fetchval("SELECT COALESCE(MAX(display_order), 0) + 10 FROM gb_pack_products")
-            await conn.execute(
-                """
-                INSERT INTO gb_pack_products (title, gb_amount, price_rub, price_stars, is_active, display_order, updated_at)
-                VALUES ($1, $2, $3, $4, TRUE, $5, CURRENT_TIMESTAMP)
-                """,
-                title,
-                gb,
-                rub,
-                stars,
-                next_ord or 100,
-            )
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ К трафику", callback_data="admin_traffic"))
-        await message.answer("✅ Пакет добавлен", reply_markup=builder.as_markup())
         await state.clear()
-
-    @dp.callback_query(F.data.startswith("admin_gb_pack_toggle:"))
-    async def handle_admin_gb_pack_toggle(callback: CallbackQuery, state: FSMContext):
-        if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
-            return
-        try:
-            pid = int(callback.data.split(":")[1])
-        except (IndexError, ValueError):
-            await safe_callback_answer(callback, "Ошибка id", show_alert=True)
-            return
-        async with get_connection() as conn:
-            await conn.execute(
-                """
-                UPDATE gb_pack_products
-                SET is_active = NOT COALESCE(is_active, TRUE), updated_at = CURRENT_TIMESTAMP
-                WHERE id = $1
-                """,
-                pid,
-            )
-        await state.clear()
-        text, builder = await _admin_traffic_panel_builder()
-        await callback.message.edit_text(
-            text,
-            reply_markup=builder.as_markup(),
-            parse_mode="HTML",
-        )
-        await safe_callback_answer(callback, "Статус обновлён")
-
-    @dp.callback_query(F.data.startswith("admin_gb_pack_manage:"))
-    async def handle_admin_gb_pack_manage(callback: CallbackQuery, state: FSMContext):
-        if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
-            return
-        try:
-            pid = int(callback.data.split(":")[1])
-        except (IndexError, ValueError):
-            await safe_callback_answer(callback, "Ошибка id", show_alert=True)
-            return
-        await state.clear()
-        async with get_connection() as conn:
-            p = await conn.fetchrow(
-                """
-                SELECT id, title, gb_amount, price_rub, price_stars, is_active
-                FROM gb_pack_products WHERE id = $1
-                """,
-                pid,
-            )
-        if not p:
-            await safe_callback_answer(callback, "Пакет не найден", show_alert=True)
-            return
-        st = "✅ активен" if p["is_active"] else "⏸ выключен"
-        body = (
-            f"✏️ <b>Пакет #{p['id']}</b> ({st})\n\n"
-            f"• Название: <b>{html_std.escape(str(p['title']))}</b>\n"
-            f"• Объём: <b>+{p['gb_amount']} ГБ</b>\n"
-            f"• Цена (коп.): <b>{p['price_rub']}</b> ({p['price_rub'] // 100} ₽)\n"
-            f"• Stars: <b>{p['price_stars']}</b>\n\n"
-            "Выберите, что изменить:"
-        )
-        b = InlineKeyboardBuilder()
-        b.row(InlineKeyboardButton(text="📝 Название", callback_data=f"admin_gb_pack_field:{pid}:title"))
-        b.row(InlineKeyboardButton(text="📦 Объём (ГБ)", callback_data=f"admin_gb_pack_field:{pid}:gb"))
-        b.row(InlineKeyboardButton(text="₽ Цена (коп.)", callback_data=f"admin_gb_pack_field:{pid}:rub"))
-        b.row(InlineKeyboardButton(text="⭐ Stars", callback_data=f"admin_gb_pack_field:{pid}:stars"))
-        b.row(InlineKeyboardButton(text="🗑 Удалить пакет", callback_data=f"admin_gb_pack_askdel:{pid}"))
-        b.row(InlineKeyboardButton(text="◀️ К списку пакетов", callback_data="admin_traffic"))
-        await callback.message.edit_text(body, reply_markup=b.as_markup(), parse_mode="HTML")
-        await safe_callback_answer(callback)
-
-    @dp.callback_query(F.data.startswith("admin_gb_pack_field:"))
-    async def handle_admin_gb_pack_field(callback: CallbackQuery, state: FSMContext):
-        if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
-            return
-        parts = callback.data.split(":")
-        if len(parts) != 3:
-            await safe_callback_answer(callback, "Ошибка данных", show_alert=True)
-            return
-        try:
-            pid = int(parts[1])
-        except ValueError:
-            await safe_callback_answer(callback, "Ошибка id", show_alert=True)
-            return
-        field = parts[2]
-        prompts = {
-            "title": "Введите новое <b>название</b> пакета (от 2 символов):",
-            "gb": "Введите новый объём в <b>ГБ</b> (целое число, 1–100000):",
-            "rub": "Введите цену в <b>копейках</b> (целое число ≥ 0, например 9900 = 99₽):",
-            "stars": "Введите цену в <b>Telegram Stars</b> (целое число ≥ 0):",
-        }
-        if field not in prompts:
-            await safe_callback_answer(callback, "Неизвестное поле", show_alert=True)
-            return
-        await state.set_state(AdminStates.GB_PACK_EDIT_FIELD)
-        await state.update_data(gb_pack_edit_id=pid, gb_pack_edit_field=field)
-        b = InlineKeyboardBuilder()
-        b.row(InlineKeyboardButton(text="◀️ Отмена", callback_data=f"admin_gb_pack_manage:{pid}"))
-        await callback.message.edit_text(
-            f"📶 <b>Редактирование пакета #{pid}</b>\n\n{prompts[field]}",
-            reply_markup=b.as_markup(),
-            parse_mode="HTML",
-        )
-        await safe_callback_answer(callback)
-
-    @dp.message(AdminStates.GB_PACK_EDIT_FIELD)
-    async def process_gb_pack_edit_field(message: Message, state: FSMContext):
-        if not is_admin(message.from_user.id, config):
-            await state.clear()
-            return
-        data = await state.get_data()
-        pid = data.get("gb_pack_edit_id")
-        field = data.get("gb_pack_edit_field")
-        if pid is None or field not in ("title", "gb", "rub", "stars"):
-            await message.answer("❌ Сессия устарела. Откройте пакет снова из админки.")
-            await state.clear()
-            return
-        raw = (message.text or "").strip()
-        try:
-            async with get_connection() as conn:
-                if field == "title":
-                    if len(raw) < 2:
-                        await message.answer("❌ Слишком короткое название")
-                        return
-                    await conn.execute(
-                        """
-                        UPDATE gb_pack_products
-                        SET title = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
-                        """,
-                        raw,
-                        int(pid),
-                    )
-                elif field == "gb":
-                    gb = int(raw)
-                    if gb < 1 or gb > 100000:
-                        await message.answer("❌ От 1 до 100000")
-                        return
-                    await conn.execute(
-                        """
-                        UPDATE gb_pack_products
-                        SET gb_amount = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
-                        """,
-                        gb,
-                        int(pid),
-                    )
-                elif field == "rub":
-                    rub = int(raw)
-                    if rub < 0:
-                        await message.answer("❌ Не может быть отрицательной")
-                        return
-                    await conn.execute(
-                        """
-                        UPDATE gb_pack_products
-                        SET price_rub = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
-                        """,
-                        rub,
-                        int(pid),
-                    )
-                elif field == "stars":
-                    stars = int(raw)
-                    if stars < 0:
-                        await message.answer("❌ Не может быть отрицательной")
-                        return
-                    await conn.execute(
-                        """
-                        UPDATE gb_pack_products
-                        SET price_stars = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
-                        """,
-                        stars,
-                        int(pid),
-                    )
-        except ValueError:
-            await message.answer("❌ Введите целое число")
-            return
-        await state.clear()
-        kb = InlineKeyboardBuilder()
-        kb.row(InlineKeyboardButton(text="◀️ К пакету", callback_data=f"admin_gb_pack_manage:{pid}"))
-        kb.row(InlineKeyboardButton(text="📶 К списку трафика", callback_data="admin_traffic"))
-        await message.answer("✅ Сохранено", reply_markup=kb.as_markup())
-
-    @dp.callback_query(F.data.startswith("admin_gb_pack_askdel:"))
-    async def handle_admin_gb_pack_askdel(callback: CallbackQuery, state: FSMContext):
-        if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
-            return
-        try:
-            pid = int(callback.data.split(":")[1])
-        except (IndexError, ValueError):
-            await safe_callback_answer(callback, "Ошибка id", show_alert=True)
-            return
-        await state.clear()
-        b = InlineKeyboardBuilder()
-        b.row(InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"admin_gb_pack_del:{pid}"))
-        b.row(InlineKeyboardButton(text="◀️ Нет, назад", callback_data=f"admin_gb_pack_manage:{pid}"))
-        await callback.message.edit_text(
-            f"🗑 Удалить пакет <b>#{pid}</b> из базы?\nЭто действие необратимо.",
-            reply_markup=b.as_markup(),
-            parse_mode="HTML",
-        )
-        await safe_callback_answer(callback)
-
-    @dp.callback_query(F.data.startswith("admin_gb_pack_del:"))
-    async def handle_admin_gb_pack_del(callback: CallbackQuery, state: FSMContext):
-        if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
-            return
-        try:
-            pid = int(callback.data.split(":")[1])
-        except (IndexError, ValueError):
-            await safe_callback_answer(callback, "Ошибка id", show_alert=True)
-            return
-        await state.clear()
-        async with get_connection() as conn:
-            await conn.execute("DELETE FROM gb_pack_products WHERE id = $1", pid)
-        text, builder = await _admin_traffic_panel_builder()
-        await callback.message.edit_text(
-            text,
-            reply_markup=builder.as_markup(),
-            parse_mode="HTML",
-        )
-        await safe_callback_answer(callback, "Пакет удалён")
+        await handle_admin_bypass_packs(callback)
     
     # Управление скидками
     @dp.callback_query(F.data == "admin_discounts")
@@ -1770,20 +1206,24 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         """
         logger.info(f"Starting manual subscription reminders: end_day_offset={end_day_offset}, time_before_hours={time_before_hours}")
         
+        from ..plans import ALL_PAID_TIER_IDS, SENTINEL_SUBSCRIPTION_END_THRESHOLD
+        paid_tiers_sql = ", ".join(f"'{t}'" for t in ALL_PAID_TIER_IDS)
+
         try:
             async with get_connection() as conn:
-                # Вычисляем целевую дату окончания
                 target_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=end_day_offset)
                 target_date_only = target_date.date()
-                
-                # Получаем пользователей, у которых подписка заканчивается в выбранный день
-                users_to_remind = await conn.fetch('''
+
+                users_to_remind = await conn.fetch(f'''
                     SELECT user_id, username, first_name, subscription_end
                     FROM users
                     WHERE pay_subscribed = TRUE
                       AND subscription_end IS NOT NULL
                       AND DATE(subscription_end) = $1
-                ''', target_date_only)
+                      AND DATE(subscription_end) < $2
+                      AND COALESCE(subscription_tier, 'free') IN ({paid_tiers_sql})
+                      AND yookassa_recurring_payment_method_id IS NULL
+                ''', target_date_only, SENTINEL_SUBSCRIPTION_END_THRESHOLD)
                 
                 if not users_to_remind:
                     return 0, f"Не найдено пользователей с подписками, заканчивающимися {target_date.strftime('%d.%m.%Y')}"
@@ -1818,11 +1258,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                         builder = InlineKeyboardBuilder()
                         for plan_id, plan_data in current_tariffs.items():
                             builder.button(
-                                text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
-                                callback_data=f"plan:{plan_id}"
+                                text=f"{plan_data['title']} - {format_price_rub(plan_data['price_rub'])}",
+                                callback_data=f"tier_pay:{plan_id}"
                             )
                         builder.adjust(1)
-                        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
+                        builder.row(InlineKeyboardButton(text="💎 Тарифы", callback_data="open_tiers"))
                         
                         # Формируем текст
                         if days_remaining < 1:
@@ -2002,7 +1442,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         builder.row(InlineKeyboardButton(text="🎁 Подарок", callback_data="broadcast_add_menu_button:referral"))
         builder.row(InlineKeyboardButton(text="💎 Подписка", callback_data="broadcast_add_menu_button:premium"))
         builder.row(InlineKeyboardButton(text="🆘 Помощь", callback_data="broadcast_add_menu_button:help"))
-        builder.row(InlineKeyboardButton(text="🎁 Standard за 1₽", callback_data="broadcast_add_menu_button:trial"))
+        builder.row(InlineKeyboardButton(text="🎁 Plus за 1₽", callback_data="broadcast_add_menu_button:trial"))
         builder.row(InlineKeyboardButton(text="➕ Добавить свою кнопку", callback_data="broadcast_add_custom_button"))
         if existing_buttons:
             builder.row(InlineKeyboardButton(text="✅ Готово", callback_data="broadcast_buttons_done"))
@@ -2037,7 +1477,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             "referral": "🎁 Подарок",
             "premium": "💎 Подписка",
             "help": "🆘 Помощь",
-            "trial": "🎁 Standard за 1₽ — попробовать"
+            "trial": "🎁 Plus за 1₽ — попробовать"
         }
         
         button_text = menu_buttons_map.get(button_type)
@@ -5207,7 +4647,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             # 1. Основная информация
             user = await conn.fetchrow('''
                 SELECT user_id, username, first_name, registration_date, last_activity, 
-                       pay_subscribed, subscription_end, invited_by, referral_count, balance, trial_used, utm_source
+                       pay_subscribed, subscription_end, subscription_tier,
+                       invited_by, referral_count, balance, trial_used, utm_source,
+                       yookassa_recurring_payment_method_id, autopay_grace_until
                 FROM users WHERE user_id = $1
             ''', target_user_id)
 
@@ -5232,8 +4674,19 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     inviter_name = f"{inviter['first_name']} (@{inviter['username'] or '—'}) [<code>{user['invited_by']}</code>]"
             
             # Формируем текст
+            from ..plans import TIERS, FREE_TIER_ID, is_sentinel_subscription_end
+
+            tier_id = (user.get("subscription_tier") or FREE_TIER_ID).strip() or FREE_TIER_ID
+            tier_name = TIERS.get(tier_id, {}).get("name", tier_id)
+            has_card = bool(user.get("yookassa_recurring_payment_method_id"))
+            grace_until = user.get("autopay_grace_until")
+            grace_str = grace_until.strftime("%d.%m.%Y") if grace_until else "—"
+
             sub_status = "✅ Активна" if user['pay_subscribed'] and user['subscription_end'] and user['subscription_end'] >= datetime.now() else "❌ Неактивна"
-            sub_end = user['subscription_end'].strftime("%d.%m.%Y %H:%M") if user['subscription_end'] else "—"
+            if is_sentinel_subscription_end(user['subscription_end']):
+                sub_end = "бессрочно (Free)"
+            else:
+                sub_end = user['subscription_end'].strftime("%d.%m.%Y %H:%M") if user['subscription_end'] else "—"
             reg_date = user['registration_date'].strftime("%d.%m.%Y %H:%M") if user['registration_date'] else "—"
             last_act = user['last_activity'].strftime("%d.%m.%Y %H:%M") if user['last_activity'] else "—"
             
@@ -5248,8 +4701,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 f"🕒 <b>Активность:</b> <code>{last_act}</code>\n"
                 f"📍 <b>Источник (UTM):</b> <code>{user['utm_source'] or 'Прямой вход'}</code>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"💎 <b>Подписка:</b> {sub_status}\n"
+                f"💎 <b>Тариф:</b> {tier_name} (<code>{tier_id}</code>)\n"
+                f"📋 <b>Подписка:</b> {sub_status}\n"
                 f"⏳ <b>Истекает:</b> <code>{sub_end}</code>\n"
+                f"💳 <b>Карта:</b> {'✅ привязана' if has_card else '❌ нет'}\n"
+                f"⏸ <b>Отсрочка автоплатежа:</b> <code>{grace_str}</code>\n"
                 f"🎁 <b>Триал:</b> {'✅ Юзал' if user['trial_used'] else '❌ Нет'}\n"
                 f"💰 <b>Баланс:</b> <code>{user['balance'] or 0}</code> коп.\n"
                 f"━━━━━━━━━━━━━━━━━━\n"

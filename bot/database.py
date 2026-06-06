@@ -8,6 +8,8 @@ import asyncpg
 import pytz
 from asyncpg.exceptions import UniqueViolationError
 
+from .device_fingerprint import SUBSCRIPTION_DEVICE_COUNTABLE_SQL
+
 _pool: asyncpg.Pool | None = None
 
 
@@ -642,6 +644,24 @@ async def init_db() -> None:
             await conn.execute(
                 'CREATE INDEX IF NOT EXISTS idx_user_device_fp_user_seen ON user_device_fingerprints(user_id, last_seen)'
             )
+            for col_name in ("device_model", "device_hwid"):
+                try:
+                    exists = await conn.fetchval(
+                        """
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'user_device_fingerprints'
+                          AND column_name = $1
+                        """,
+                        col_name,
+                    )
+                    if not exists:
+                        await conn.execute(
+                            f"ALTER TABLE user_device_fingerprints ADD COLUMN {col_name} TEXT"
+                        )
+                except Exception as e:
+                    logging.warning(
+                        "Could not migrate user_device_fingerprints.%s: %s", col_name, e
+                    )
         except Exception as e:
             logging.warning(f"Could not create user_device_fingerprints table: {e}")
 
@@ -972,6 +992,24 @@ async def init_db() -> None:
                 )
             except Exception as e:
                 logging.warning(f"Could not migrate subscription_usage_logs.device_fingerprint: {e}")
+            for col_name in ("device_model", "device_hwid"):
+                try:
+                    exists = await conn.fetchval(
+                        """
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'subscription_usage_logs'
+                          AND column_name = $1
+                        """,
+                        col_name,
+                    )
+                    if not exists:
+                        await conn.execute(
+                            f"ALTER TABLE subscription_usage_logs ADD COLUMN {col_name} TEXT"
+                        )
+                except Exception as e:
+                    logging.warning(
+                        "Could not migrate subscription_usage_logs.%s: %s", col_name, e
+                    )
         except Exception as e:
             logging.warning(f"Could not create subscription_usage_logs table: {e}")
 
@@ -1065,19 +1103,14 @@ async def count_active_devices(conn, user_id: int, hours: int = 6) -> tuple[int,
     Returns (active_device_count, device_limit).
     """
     row = await conn.fetchrow(
-        """
+        f"""
         SELECT
-            (SELECT COUNT(DISTINCT COALESCE(
-                device_fingerprint,
-                md5(
-                    'ua:' || regexp_replace(
-                        lower(trim(coalesce(user_agent, ''))), '\\s+', ' ', 'g'
-                    )
-                )
-            ))
+            (SELECT COUNT(DISTINCT device_fingerprint)
              FROM subscription_usage_logs
              WHERE user_id = $1
                AND timestamp >= NOW() - ($2 || ' hours')::interval
+               AND device_fingerprint IS NOT NULL
+               AND ({SUBSCRIPTION_DEVICE_COUNTABLE_SQL.strip()})
             ) AS device_count,
             COALESCE(u.device_limit, 5) AS device_limit
         FROM users u
@@ -1217,21 +1250,48 @@ async def log_subscription_usage(
     user_agent: str,
     ip_address: str,
     device_fingerprint: str,
+    *,
+    device_model: str = "",
+    device_hwid: str = "",
 ) -> None:
     """Логирует запрос подписки пользователя (с отпечатком клиента, без привязки к IP в лимите)."""
+    from .device_fingerprint import is_countable_subscription_client
+
     try:
         async with get_connection() as conn:
-            await conn.execute(
-                """
-                INSERT INTO subscription_usage_logs
-                (user_id, user_agent, ip_address, device_fingerprint, timestamp)
-                VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-                """,
-                user_id,
-                user_agent,
-                ip_address,
-                device_fingerprint,
-            )
+            if is_countable_subscription_client(user_agent):
+                await conn.execute(
+                    """
+                    INSERT INTO subscription_usage_logs
+                    (user_id, user_agent, ip_address, device_fingerprint, device_model, device_hwid, timestamp)
+                    VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+                    """,
+                    user_id,
+                    user_agent,
+                    ip_address,
+                    device_fingerprint,
+                    (device_model or "").strip() or None,
+                    (device_hwid or "").strip() or None,
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO user_device_fingerprints
+                        (user_id, fingerprint, user_agent, ip_address, device_model, device_hwid, last_seen)
+                    VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id, fingerprint) DO UPDATE SET
+                        last_seen = CURRENT_TIMESTAMP,
+                        user_agent = EXCLUDED.user_agent,
+                        ip_address = EXCLUDED.ip_address,
+                        device_model = COALESCE(EXCLUDED.device_model, user_device_fingerprints.device_model),
+                        device_hwid = COALESCE(EXCLUDED.device_hwid, user_device_fingerprints.device_hwid)
+                    """,
+                    user_id,
+                    device_fingerprint,
+                    user_agent,
+                    ip_address,
+                    (device_model or "").strip() or None,
+                    (device_hwid or "").strip() or None,
+                )
     except Exception as e:
         logging.error(f"Error logging subscription usage: {e}")
 

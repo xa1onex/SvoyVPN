@@ -170,12 +170,13 @@ async def build_tiers_message(user_id: int, *, view: str = "main"):
         builder.row(
             InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"),
         )
-    elif ctx["is_renewable"] and ctx["is_plus"]:
-        builder.row(
-            InlineKeyboardButton(
-                text="🆓 Free (отменить)", callback_data="cancel_sub_start"
-            ),
-        )
+    elif ctx["is_active"] and ctx["is_plus"]:
+        if ctx["has_card"]:
+            builder.row(
+                InlineKeyboardButton(
+                    text="🆓 Free (отменить)", callback_data="cancel_sub_start"
+                ),
+            )
         builder.row(
             InlineKeyboardButton(
                 text="✅ Plus — подключен", callback_data="tier_info:plus"
@@ -406,7 +407,9 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             )
 
         tier_id = requested_tier if requested_tier in TIERS else snap["tier"]
-        tier_info = TIERS.get(tier_id, {})
+        if tier_id in ALL_PAID_TIER_IDS and tier_id != FREE_TIER_ID:
+            tier_id = "plus"
+        tier_info = TIERS.get(tier_id, TIERS["plus"])
         has_card = bool(row and row.get("yookassa_recurring_payment_method_id"))
         actual_tier = snap.get("tier") or (row["subscription_tier"] if row else FREE_TIER_ID)
 

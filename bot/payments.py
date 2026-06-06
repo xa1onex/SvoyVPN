@@ -888,6 +888,24 @@ async def process_webhook_payment(
     if user_id <= 0:
         logger.error(f"Invalid user_id value: {user_id}")
         return False
+
+    from .plans import is_active_tier_plan, is_legacy_subscription_plan
+
+    if is_legacy_subscription_plan(plan_id):
+        logger.warning("Rejected legacy subscription payment plan_id=%s payment=%s", plan_id, payment_id)
+        return False
+
+    if is_active_tier_plan(plan_id):
+        from .tier_payments import process_tier_webhook_payment
+        tier_metadata = dict(metadata)
+        tier_metadata["product_type"] = "tier"
+        return await process_tier_webhook_payment(
+            payment_id=payment_id,
+            payment_obj=payment_obj,
+            metadata=tier_metadata,
+            bot=bot,
+            config=config,
+        )
     
     try:
         # Определяем тип подписки
