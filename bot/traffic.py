@@ -36,6 +36,17 @@ def is_free_header_server(label: object) -> bool:
     return "🆓" in str(label or "") and "обход" in s and "белых" in s
 
 
+def is_fast_section_header(label: object) -> bool:
+    """Заголовок секции «🚀 Быстрые сервера 👇» — не подключать."""
+    s = str(label or "")
+    return "👇" in s and "быстр" in s.lower()
+
+
+def is_navigation_header_server(label: object) -> bool:
+    """Строки-разделители в списке Happ (не пинговать, не использовать в автовыборе)."""
+    return is_fast_section_header(label) or is_free_header_server(label)
+
+
 def _norm_xui_identity(raw: object) -> str:
     """UUID с панели и в БД могут отличаться дефисами — сравниваем в одном виде."""
     return str(raw or "").strip().lower().replace("-", "")
@@ -574,13 +585,10 @@ async def user_bypass_allowance_bytes(conn, user_id: int) -> tuple[int, int]:
     if not row:
         return 0, 0
 
-    from .plans import get_tier_bypass_gb, LEGACY_FAIR_USE_GB
+    from .plans import FREE_TIER_ID, get_tier_bypass_gb
 
-    tier = row["subscription_tier"] or "legacy"
-    if tier == "legacy":
-        base_gb = int(row["bypass_traffic_limit_gb"] or LEGACY_FAIR_USE_GB)
-    else:
-        base_gb = int(row["bypass_traffic_limit_gb"] or get_tier_bypass_gb(tier))
+    tier = row["subscription_tier"] or FREE_TIER_ID
+    base_gb = int(row["bypass_traffic_limit_gb"] or get_tier_bypass_gb(tier))
 
     bonus_gb = int(row["bypass_bonus_gb"] or 0)
     # Referral bonus: +X% of base tier GB
@@ -617,19 +625,16 @@ async def user_bypass_traffic_snapshot(conn, user_id: int) -> dict[str, Any]:
             "periodEndExclusive": None,
         }
 
-    from .plans import get_tier_bypass_gb, LEGACY_FAIR_USE_GB
+    from .plans import FREE_TIER_ID, get_tier_bypass_gb
 
-    tier = row["subscription_tier"] or "legacy"
+    tier = row["subscription_tier"] or FREE_TIER_ID
     limit_bytes, bonus_gb = await user_bypass_allowance_bytes(conn, user_id)
     used = int(row["bypass_traffic_used_bytes"] or 0)
     exceeded = limit_bytes > 0 and used >= limit_bytes
 
     base_gb = int(row["bypass_traffic_limit_gb"] or 0)
     if base_gb == 0:
-        if tier == "legacy":
-            base_gb = LEGACY_FAIR_USE_GB
-        else:
-            base_gb = get_tier_bypass_gb(tier)
+        base_gb = get_tier_bypass_gb(tier)
 
     remaining_gb = max(0, (limit_bytes - used)) / BYTES_PER_GB
     percent_used = (used / limit_bytes * 100) if limit_bytes > 0 else 0

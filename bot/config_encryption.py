@@ -129,7 +129,7 @@ def build_encrypted_subscription_url(
     Создаёт URL для получения зашифрованного профиля.
     Профиль отдаётся с сервера, а не встраивается в deep link.
     """
-    return f"{base_url}/sub/{subscription_token}?format=crypt5"
+    return f"{base_url.rstrip('/')}/profile/{subscription_token}/crypt5"
 
 
 # ---------------------------------------------------------------------------

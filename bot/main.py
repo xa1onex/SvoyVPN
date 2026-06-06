@@ -19,6 +19,7 @@ from .engagement_notifications import run_engagement_notifications
 from .webhook_server import WebhookServer
 from .yookassa_client import YooKassaClient
 from .flyer_client import FlyerClient
+from .flyer_middleware import FlyerSubscriptionMiddleware
 from .payments import process_webhook_payment
 from .plans import get_subscription_plans, get_renewal_plans, PAYMENT_METHODS
 from .traffic_worker import run_traffic_sync_loop
@@ -26,6 +27,7 @@ from .traffic_worker import run_traffic_sync_loop
 # Импортируем обработчики
 from .handlers import start, subscription, payment, admin
 from .handlers.tiers import setup_tier_handlers
+from .handlers.balance import setup_balance_handlers
 from .bypass_notifications import check_bypass_traffic_notifications
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
@@ -37,6 +39,7 @@ bot = Bot(token=config.bot.bot_token)
 dp = Dispatcher()
 scheduler: AsyncIOScheduler | None = None
 webhook_server: WebhookServer | None = None
+flyer_client: FlyerClient | None = None
 traffic_worker_task: asyncio.Task | None = None
 _shutdown_in_progress = False
 
@@ -77,7 +80,18 @@ def setup_scheduler():
         "cron",
         hour=10,
         minute=15,
-        args=[config],
+        args=[config, bot],
+    )
+
+    from .referral_monthly import send_referral_monthly_summaries
+
+    scheduler.add_job(
+        send_referral_monthly_summaries,
+        "cron",
+        day=1,
+        hour=9,
+        minute=0,
+        args=[bot],
     )
 
     # Engagement notifications (daily at 11:00 and 18:00)
@@ -188,10 +202,9 @@ async def shutdown():
         except Exception as e:
             logger.error(f"Error stopping webhook server: {e}")
     
-    # Закрываем Flyer клиент
-    if config.flyer.enabled:
+    global flyer_client
+    if flyer_client:
         try:
-            flyer_client = FlyerClient(config.flyer)
             await flyer_client.close()
             logger.info("Flyer client closed")
         except Exception as e:
@@ -227,6 +240,28 @@ async def main():
     # Инициализируем БД
     await init_db()
     logger.info("Database initialized")
+
+    try:
+        from .subscriptions import (
+            migrate_inactive_users_to_free,
+            repair_expired_subscriptions_access,
+        )
+        migrated = await migrate_inactive_users_to_free(provision_keys=False)
+        if migrated:
+            logger.info("Free tier DB migration: %s users", migrated)
+        repaired = await repair_expired_subscriptions_access(limit=500)
+        if repaired:
+            logger.info("Subscription access repair: %s users", repaired)
+    except Exception as e:
+        logger.error("Free tier migration failed: %s", e)
+
+    try:
+        from .free_tier_servers import migrate_free_tier_server_assignments
+        assigned = await migrate_free_tier_server_assignments()
+        if assigned:
+            logger.info("Free tier server assignments migrated: %s users", assigned)
+    except Exception as e:
+        logger.error("Free tier server assignment migration failed: %s", e)
     
     # Миграция конфигураций (удаление спецсимволов из ID для стабильности в браузерах)
     try:
@@ -235,13 +270,32 @@ async def main():
     except Exception as e:
         logger.error(f"Error during VLESS configuration migration: {e}")
     
+    global flyer_client
+    flyer_client = FlyerClient(config.flyer)
+    if flyer_client.enabled:
+        dp.message.middleware(FlyerSubscriptionMiddleware(flyer_client, config, bot))
+        dp.callback_query.middleware(FlyerSubscriptionMiddleware(flyer_client, config, bot))
+        try:
+            me = await flyer_client.get_me()
+            logger.info(
+                "Flyer API connected: type=%s status=%s key_number=%s",
+                me.get("type"),
+                me.get("status"),
+                me.get("key_number"),
+            )
+        except Exception as e:
+            logger.error("Flyer get_me failed (check FLYER_API_KEY): %s", e)
+
     # Настраиваем обработчики
     await start.setup_start_handler(dp, bot, config)
     await subscription.setup_subscription_handlers(dp, bot, config)
     await setup_tier_handlers(dp, bot, config)
     await payment.setup_payment_handlers(dp, bot, config)
     await start.setup_other_handlers(dp, bot, config)
+    await setup_balance_handlers(dp, bot, config)
     await admin.setup_admin_handlers(dp, bot, config)
+    from .handlers.personal_promo import setup_personal_promo_handlers
+    await setup_personal_promo_handlers(dp, bot, config)
     logger.info("All handlers registered")
     
     # Запускаем планировщик
@@ -271,7 +325,7 @@ async def main():
         logger.error("⚠️ CryptoPay is ENABLED but CRYPTOPAY_API_TOKEN is MISSING!")
     
     # Фоновый воркер учёта трафика: раз в N секунд опрашивает панели X-UI,
-    # пишет traffic_lifetime_bytes в vpn_keys и агрегирует users.traffic_used_bytes.
+    # пишет traffic_lifetime_bytes в vpn_keys и агрегирует users.bypass_traffic_used_bytes.
     global traffic_worker_task
     try:
         traffic_worker_task = asyncio.create_task(run_traffic_sync_loop())

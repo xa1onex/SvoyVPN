@@ -1,22 +1,25 @@
 """
-Автопродление тарифов (Lite/Standard/Pro) через ЮKassa по сохранённой карте.
+Автопродление тарифа Plus через ЮKassa по сохранённой карте.
+Поддерживает ежемесячное (plus_1m) и годовое (plus_12m) продление.
 https://yookassa.ru/developers/payment-acceptance/scenario-extensions/recurring-payments/basics
 """
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from asyncpg.exceptions import UniqueViolationError
+from aiogram import Bot
 
 from .config import AppConfig
 from .database import get_connection
-from .plans import TIER_PLANS_BASE, get_tier_plans
+from .plans import ALL_PAID_TIER_IDS, TIER_PLANS_BASE, get_tier_plans, TIERS
 from .yookassa_client import YooKassaClient
 
 logger = logging.getLogger(__name__)
 
 
-async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
+async def run_yookassa_autopay_renewals(config: AppConfig, bot: Optional[Bot] = None) -> None:
     """За день до окончания подписки создаём платёж по сохранённому payment_method_id.
 
     Работает для всех tier-планов (lite_1m, standard_1m, pro_1m).
@@ -28,14 +31,14 @@ async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
     plans = await get_tier_plans()
 
     async with get_connection() as conn:
+        tier_ids_sql = ", ".join(f"'{t}'" for t in ALL_PAID_TIER_IDS)
         rows = await conn.fetch(
-            """
+            f"""
             SELECT u.user_id, u.subscription_tier, u.subscription_end,
                    u.yookassa_recurring_payment_method_id,
-                   u.pending_downgrade_tier,
-                   COALESCE(u.referral_discount_percent, 0) as referral_discount_percent
+                   u.tier_duration_months
             FROM users u
-            WHERE u.subscription_tier IN ('lite', 'standard', 'pro')
+            WHERE u.subscription_tier IN ({tier_ids_sql})
               AND u.pay_subscribed = TRUE
               AND u.subscription_end IS NOT NULL
               AND DATE(u.subscription_end) = CURRENT_DATE + 1
@@ -55,23 +58,32 @@ async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
         tier = row["subscription_tier"]
         pm_id = row["yookassa_recurring_payment_method_id"]
         sub_end = row["subscription_end"]
-        pending_downgrade = row.get("pending_downgrade_tier")
-        referral_discount = row.get("referral_discount_percent") or 0
+        duration_months = int(row.get("tier_duration_months") or 1)
 
-        # If downgrade is scheduled, use the new (lower) tier for billing
-        effective_tier = pending_downgrade if pending_downgrade else tier
-        plan_id = f"{effective_tier}_1m"
-        plan = plans.get(plan_id)
+        # Legacy-тарифы (lite/standard/pro) продлеваем как plus_1m
+        from .plans import LEGACY_TIER_IDS
+        effective_tier = "plus" if tier in LEGACY_TIER_IDS else tier
+
+        # Выбираем план на основе сохранённой длительности (1m или 12m)
+        plan_id = f"{effective_tier}_{duration_months}m"
+        plan = plans.get(plan_id) or plans.get(f"{effective_tier}_1m")
         if not plan:
             logger.warning("autopay: plan %s not found for user=%s", plan_id, user_id)
             continue
+        plan_id = next(k for k, v in plans.items() if v is plan)
 
-        amount_rub = plan["price_rub"] / 100.0
-        # Apply referral discount (one-time per cycle, then reset)
-        if referral_discount > 0:
-            amount_rub = round(amount_rub * (100 - referral_discount) / 100, 2)
-            if amount_rub < 1.0:
-                amount_rub = 1.0
+        price_cents = plan["price_rub"]
+
+        # ── Попытка оплаты с баланса ────────────────────────────────────────
+        paid_from_balance = await _try_pay_from_balance(
+            user_id, plan_id, plan, price_cents, effective_tier, bot
+        )
+        if paid_from_balance:
+            logger.info("autopay: paid from balance user=%s plan=%s", user_id, plan_id)
+            continue
+        # ────────────────────────────────────────────────────────────────────
+
+        amount_rub = price_cents / 100.0
 
         end_key = sub_end.strftime("%Y-%m-%d") if sub_end else "na"
         idem = f"autopay-{user_id}-{plan_id}-{end_key}"
@@ -83,10 +95,6 @@ async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
             "product_type": "tier",
             "payment_source": "yookassa_autopay",
         }
-        if pending_downgrade:
-            metadata["downgrade_from"] = tier
-        if referral_discount > 0:
-            metadata["referral_discount"] = str(referral_discount)
         try:
             payment = yk.create_recurring_payment(
                 amount=amount_rub,
@@ -125,3 +133,97 @@ async def run_yookassa_autopay_renewals(config: AppConfig) -> None:
             continue
 
         logger.info("autopay: created payment %s user=%s plan=%s", payment.get("id"), user_id, plan_id)
+
+
+async def _try_pay_from_balance(
+    user_id: int,
+    plan_id: str,
+    plan: dict,
+    price_cents: int,
+    effective_tier: str,
+    bot: Optional[Bot],
+) -> bool:
+    """
+    Если у пользователя достаточно баланса — списываем и продлеваем подписку без ЮKassa.
+    Возвращает True если оплата с баланса прошла успешно.
+    """
+    from .balance import get_balance, debit_balance
+    from .subscriptions import set_new_subscription_days
+    from .traffic import apply_subscription_anchor_on_payment, ensure_bypass_period
+    from .subscriptions import create_or_activate_keys_for_all_servers
+
+    try:
+        async with get_connection() as conn:
+            balance = await get_balance(conn, user_id)
+            if balance < price_cents:
+                return False
+
+            success, new_balance = await debit_balance(
+                conn,
+                user_id,
+                price_cents,
+                "subscription_payment",
+                f"Оплата подписки {plan.get('title', plan_id)} с баланса",
+            )
+            if not success:
+                return False
+
+            # Продлеваем на количество дней в зависимости от плана
+            plan_duration_months = plan.get("duration", 1)
+            renewal_days = plan_duration_months * 30
+            await set_new_subscription_days(user_id, renewal_days, conn)
+
+            tier_info = TIERS.get(effective_tier, {})
+            await conn.execute(
+                """
+                UPDATE users SET
+                    subscription_tier = $1,
+                    bypass_traffic_limit_gb = $2,
+                    device_limit = $3,
+                    tier_duration_months = $4,
+                    tier_price_paid = $5,
+                    tier_purchased_at = NOW(),
+                    bypass_traffic_used_bytes = 0,
+                    pending_downgrade_tier = NULL
+                WHERE user_id = $6
+                """,
+                effective_tier,
+                tier_info.get("bypass_gb", plan.get("bypass_gb")),
+                tier_info.get("max_devices", plan.get("max_devices")),
+                plan_duration_months,
+                price_cents,
+                user_id,
+            )
+            await conn.execute(
+                """
+                INSERT INTO payments
+                (user_id, amount, currency, plan_id, plan_type, status, payment_source)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                user_id, price_cents, "RUB", plan_id, "tier",
+                "completed", "balance",
+            )
+            await apply_subscription_anchor_on_payment(conn, user_id)
+            await ensure_bypass_period(conn, user_id)
+            from .autopay_grace import clear_autopay_grace
+            from .subscriptions import clear_subscription_expiry_reminders
+
+            await clear_autopay_grace(conn, user_id)
+            await clear_subscription_expiry_reminders(conn, user_id)
+
+        await create_or_activate_keys_for_all_servers(user_id)
+
+        # Тихое автопродление с баланса — без уведомления пользователю
+        logger.info(
+            "autopay balance: user=%s plan=%s charged=%s new_balance=%s",
+            user_id,
+            plan_id,
+            price_cents,
+            new_balance,
+        )
+
+        return True
+
+    except Exception as e:
+        logger.error("_try_pay_from_balance error user=%s: %s", user_id, e, exc_info=True)
+        return False

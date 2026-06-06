@@ -40,7 +40,6 @@ async def check_bypass_traffic_notifications(bot: Bot) -> None:
                   AND subscription_end IS NOT NULL
                   AND DATE(subscription_end) >= CURRENT_DATE
                   AND subscription_tier IS NOT NULL
-                  AND subscription_tier != 'legacy'
                   AND bypass_traffic_limit_gb IS NOT NULL
                   AND bypass_traffic_limit_gb > 0
                 """

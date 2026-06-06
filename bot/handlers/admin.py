@@ -119,6 +119,8 @@ class AdminStates(StatesGroup):
     REMOVE_MANAGER = State()
     REFERRAL_INVITER_DAYS = State()
     REFERRAL_INVITED_DAYS = State()
+    REFERRAL_PURCHASE_PERCENT = State()
+    REFERRAL_YEARLY_GIFT_N = State()
     DISCOUNT_DAYS_THRESHOLD = State()
     TRAFFIC_SETTING_VALUE = State()
     TRAFFIC_TG_RELAY_SERVER_ID = State()
@@ -3213,24 +3215,48 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             return
         
         async with get_connection() as conn:
-            settings = await conn.fetchrow('SELECT inviter_bonus_days, invited_bonus_days FROM referral_settings ORDER BY id DESC LIMIT 1')
+            settings = await conn.fetchrow(
+                """
+                SELECT inviter_bonus_days, invited_bonus_days,
+                       purchase_bonus_percent, yearly_gift_every_n
+                FROM referral_settings ORDER BY id DESC LIMIT 1
+                """
+            )
             if not settings:
                 inviter_days = 5
                 invited_days = 3
+                purchase_pct = 10
+                yearly_n = 3
             else:
                 inviter_days = settings['inviter_bonus_days']
                 invited_days = settings['invited_bonus_days']
+                purchase_pct = settings['purchase_bonus_percent'] or 10
+                yearly_n = settings['yearly_gift_every_n'] or 3
+
+            pending_gifts = int(
+                await conn.fetchval(
+                    "SELECT COUNT(*) FROM referral_tg_gift_claims WHERE status = 'pending'"
+                )
+                or 0
+            )
         
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="✏️ Дни для приглашающего", callback_data="admin_referral_inviter"))
         builder.row(InlineKeyboardButton(text="✏️ Дни для приглашенного", callback_data="admin_referral_invited"))
+        builder.row(InlineKeyboardButton(text="✏️ % дней за оплату друга", callback_data="admin_referral_purchase_pct"))
+        builder.row(InlineKeyboardButton(text="✏️ TG-подарок каждые N годовых Plus", callback_data="admin_referral_yearly_n"))
+        gift_label = f"🎁 TG-подарки ({pending_gifts})" if pending_gifts else "🎁 TG-подарки"
+        builder.row(InlineKeyboardButton(text=gift_label, callback_data="admin_referral_tg_gifts"))
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
         
         await callback.message.edit_text(
             f"🎁 <b>Управление реферальной системой</b>\n\n"
             f"Текущие настройки:\n"
             f"• Приглашающий получает: <b>{inviter_days} дней</b>\n"
-            f"• Приглашенный получает: <b>{invited_days} дней</b>\n\n"
+            f"• Приглашенный получает: <b>{invited_days} дней</b>\n"
+            f"• % дней за оплату друга: <b>{purchase_pct}%</b>\n"
+            f"• TG-подарок каждые: <b>{yearly_n}</b> годовых Plus\n"
+            f"• Ожидают TG-подарка: <b>{pending_gifts}</b>\n\n"
             f"Выберите, что хотите изменить:",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -3359,6 +3385,228 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         )
         await state.clear()
     
+    @dp.callback_query(F.data == "admin_referral_purchase_pct")
+    async def handle_referral_purchase_pct(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_referral"))
+        await callback.message.edit_text(
+            "✏️ <b>% дней за оплату друга</b>\n\n"
+            "Введите процент (0–100): сколько дней Plus получит пригласивший "
+            "от базовой длительности покупки друга.",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+        await state.set_state(AdminStates.REFERRAL_PURCHASE_PERCENT)
+        await safe_callback_answer(callback)
+
+    @dp.message(AdminStates.REFERRAL_PURCHASE_PERCENT)
+    async def process_referral_purchase_pct(message: Message, state: FSMContext):
+        if not is_admin(message.from_user.id, config):
+            return
+        try:
+            pct = int(message.text.strip())
+            if pct < 0 or pct > 100:
+                raise ValueError("out of range")
+        except ValueError:
+            await message.answer("❌ Введите целое число от 0 до 100")
+            return
+        async with get_connection() as conn:
+            existing = await conn.fetchrow('SELECT id FROM referral_settings ORDER BY id DESC LIMIT 1')
+            if not existing:
+                await conn.execute(
+                    """
+                    INSERT INTO referral_settings
+                    (inviter_bonus_days, invited_bonus_days, purchase_bonus_percent, updated_at)
+                    VALUES (5, 3, $1, CURRENT_TIMESTAMP)
+                    """,
+                    pct,
+                )
+            else:
+                await conn.execute(
+                    """
+                    UPDATE referral_settings
+                    SET purchase_bonus_percent = $1, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = (SELECT id FROM referral_settings ORDER BY id DESC LIMIT 1)
+                    """,
+                    pct,
+                )
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="◀️ Назад к реферальной системе", callback_data="admin_referral"))
+        await message.answer(
+            f"✅ Процент за оплату друга установлен: {pct}%",
+            reply_markup=builder.as_markup(),
+        )
+        await state.clear()
+
+    @dp.callback_query(F.data == "admin_referral_yearly_n")
+    async def handle_referral_yearly_n(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_referral"))
+        await callback.message.edit_text(
+            "✏️ <b>TG-подарок за годовую Plus</b>\n\n"
+            "Введите N: за каждую N-ю годовую Plus от друзей пользователь "
+            "получает TG-подарок (800–1500₽). Минимум 1.",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+        await state.set_state(AdminStates.REFERRAL_YEARLY_GIFT_N)
+        await safe_callback_answer(callback)
+
+    @dp.message(AdminStates.REFERRAL_YEARLY_GIFT_N)
+    async def process_referral_yearly_n(message: Message, state: FSMContext):
+        if not is_admin(message.from_user.id, config):
+            return
+        try:
+            n = int(message.text.strip())
+            if n < 1:
+                raise ValueError("too small")
+        except ValueError:
+            await message.answer("❌ Введите целое число от 1 и выше")
+            return
+        async with get_connection() as conn:
+            existing = await conn.fetchrow('SELECT id FROM referral_settings ORDER BY id DESC LIMIT 1')
+            if not existing:
+                await conn.execute(
+                    """
+                    INSERT INTO referral_settings
+                    (inviter_bonus_days, invited_bonus_days, yearly_gift_every_n, updated_at)
+                    VALUES (5, 3, $1, CURRENT_TIMESTAMP)
+                    """,
+                    n,
+                )
+            else:
+                await conn.execute(
+                    """
+                    UPDATE referral_settings
+                    SET yearly_gift_every_n = $1, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = (SELECT id FROM referral_settings ORDER BY id DESC LIMIT 1)
+                    """,
+                    n,
+                )
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="◀️ Назад к реферальной системе", callback_data="admin_referral"))
+        await message.answer(
+            f"✅ TG-подарок выдаётся каждые {n} годовых Plus",
+            reply_markup=builder.as_markup(),
+        )
+        await state.clear()
+
+    @dp.callback_query(F.data == "admin_referral_tg_gifts")
+    async def handle_admin_referral_tg_gifts(callback: CallbackQuery):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        async with get_connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT g.id, g.referrer_id, g.milestone_no, g.created_at,
+                       u.first_name, u.username, r.product_label
+                FROM referral_tg_gift_claims g
+                JOIN users u ON u.user_id = g.referrer_id
+                LEFT JOIN referral_purchase_rewards r ON r.payment_id = g.payment_id
+                WHERE g.status = 'pending'
+                ORDER BY g.created_at ASC
+                LIMIT 15
+                """
+            )
+        builder = InlineKeyboardBuilder()
+        if not rows:
+            text = (
+                "🎁 <b>TG-подарки</b>\n\n"
+                "Нет ожидающих подарков."
+            )
+        else:
+            lines = ["🎁 <b>Ожидают TG-подарка</b>\n"]
+            for row in rows:
+                name = row["first_name"] or "Пользователь"
+                uname = row["username"]
+                who = f"@{uname}" if uname else name
+                dt = row["created_at"].strftime("%d.%m.%Y")
+                product = row["product_label"] or "Plus год"
+                lines.append(
+                    f"• <code>{row['referrer_id']}</code> {who}\n"
+                    f"  #{row['milestone_no']} · {product} · {dt}"
+                )
+                builder.row(
+                    InlineKeyboardButton(
+                        text=f"✅ Выдан · {who[:20]}",
+                        callback_data=f"admin_tg_gift_fulfill:{row['id']}",
+                    )
+                )
+            text = "\n".join(lines)
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_referral"))
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        await safe_callback_answer(callback)
+
+    @dp.callback_query(F.data.startswith("admin_tg_gift_fulfill:"))
+    async def handle_admin_tg_gift_fulfill(callback: CallbackQuery):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        try:
+            claim_id = int(callback.data.split(":")[1])
+        except (IndexError, ValueError):
+            await safe_callback_answer(callback, "❌ Неверный ID", show_alert=True)
+            return
+        async with get_connection() as conn:
+            row = await conn.fetchrow(
+                """
+                UPDATE referral_tg_gift_claims
+                SET status = 'fulfilled', fulfilled_at = NOW()
+                WHERE id = $1 AND status = 'pending'
+                RETURNING referrer_id
+                """,
+                claim_id,
+            )
+        if not row:
+            await safe_callback_answer(callback, "Уже обработано", show_alert=True)
+            return
+        await safe_callback_answer(callback, "✅ Подарок отмечен как выданный")
+
+        async with get_connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT g.id, g.referrer_id, g.milestone_no, g.created_at,
+                       u.first_name, u.username, r.product_label
+                FROM referral_tg_gift_claims g
+                JOIN users u ON u.user_id = g.referrer_id
+                LEFT JOIN referral_purchase_rewards r ON r.payment_id = g.payment_id
+                WHERE g.status = 'pending'
+                ORDER BY g.created_at ASC
+                LIMIT 15
+                """
+            )
+        builder = InlineKeyboardBuilder()
+        if not rows:
+            text = "🎁 <b>TG-подарки</b>\n\nНет ожидающих подарков."
+        else:
+            lines = ["🎁 <b>Ожидают TG-подарка</b>\n"]
+            for gift_row in rows:
+                name = gift_row["first_name"] or "Пользователь"
+                uname = gift_row["username"]
+                who = f"@{uname}" if uname else name
+                dt = gift_row["created_at"].strftime("%d.%m.%Y")
+                product = gift_row["product_label"] or "Plus год"
+                lines.append(
+                    f"• <code>{gift_row['referrer_id']}</code> {who}\n"
+                    f"  #{gift_row['milestone_no']} · {product} · {dt}"
+                )
+                builder.row(
+                    InlineKeyboardButton(
+                        text=f"✅ Выдан · {who[:20]}",
+                        callback_data=f"admin_tg_gift_fulfill:{gift_row['id']}",
+                    )
+                )
+            text = "\n".join(lines)
+        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_referral"))
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+
     # ==================== УПРАВЛЕНИЕ ПРОБНЫМ ПЕРИОДОМ ====================
     
     @dp.callback_query(F.data == "admin_trial")

@@ -247,6 +247,17 @@ async def process_tier_stars_payment(
             except Exception:
                 pass
 
+    from .referral_purchases import referral_reward_after_payment
+
+    await referral_reward_after_payment(
+        bot,
+        payer_user_id=user_id,
+        plan_type="tier",
+        plan_id=plan_id,
+        amount_cents=int(plan_data["price_rub"]),
+        telegram_payment_charge_id=charge_id,
+    )
+
     return True
 
 
@@ -371,6 +382,18 @@ async def process_bypass_pack_stars_payment(
         f"Оплачено: {total_amount} Stars",
         parse_mode="HTML",
     )
+
+    from .referral_purchases import referral_reward_after_payment
+
+    await referral_reward_after_payment(
+        bot,
+        payer_user_id=user_id,
+        plan_type="bypass_pack",
+        plan_id=f"bypass_pack:{pack_id}",
+        amount_cents=int(total_amount or 0),
+        telegram_payment_charge_id=charge_id,
+    )
+
     return True
 
 
@@ -526,6 +549,18 @@ async def process_tier_webhook_payment(
         except Exception as e:
             logger.error("tier webhook notify: %s", e)
 
+    from .referral_purchases import referral_reward_after_payment
+
+    await referral_reward_after_payment(
+        bot,
+        payer_user_id=user_id,
+        plan_type="tier",
+        plan_id=plan_id,
+        amount_cents=amount_cents,
+        is_trial=is_trial,
+        yookassa_payment_id=payment_id,
+    )
+
     return True
 
 
@@ -673,4 +708,16 @@ async def process_bypass_pack_webhook_payment(
             )
         except Exception:
             pass
+
+    from .referral_purchases import referral_reward_after_payment
+
+    await referral_reward_after_payment(
+        bot,
+        payer_user_id=user_id,
+        plan_type="bypass_pack",
+        plan_id=f"bypass_pack:{pack_id}",
+        amount_cents=amount_cents,
+        yookassa_payment_id=payment_id,
+    )
+
     return True

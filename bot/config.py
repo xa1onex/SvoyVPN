@@ -34,7 +34,7 @@ class PaymentConfig(BaseModel):
 
 class FlyerConfig(BaseModel):
     api_key: str | None = Field(None, description="Flyer Service API key")
-    api_url: str = Field(default="https://api.flyerservice.io", description="Flyer Service API URL")
+    api_url: str = Field(default="https://api.flyerhubs.com", description="Flyer API URL")
     enabled: bool = Field(default=False, description="Enable Flyer Service integration")
 
 
@@ -61,6 +61,10 @@ class AppConfig(BaseModel):
     yookassa: YooKassaConfig = Field(default_factory=YooKassaConfig)
     cryptopay: CryptoPayConfig = Field(default_factory=CryptoPayConfig)
     subscription_base_url: str | None = Field(None, description="Base URL for subscription links")
+    happ_open_base_urls: list[str] = Field(
+        default_factory=list,
+        description="Open domains for /happy-link/ (anti-block, fallback)",
+    )
     app_url: str | None = Field(None, description="Base URL for miniapp (APP_URL)")
 
 
@@ -97,7 +101,7 @@ def load_config() -> AppConfig:
 
     flyer = FlyerConfig(
         api_key=os.getenv("FLYER_API_KEY"),
-        api_url=os.getenv("FLYER_API_URL", "https://api.flyerservice.io"),
+        api_url=os.getenv("FLYER_API_URL", "https://api.flyerhubs.com"),
         enabled=os.getenv("FLYER_ENABLED", "false").lower() == "true",
     )
 
@@ -127,6 +131,10 @@ def load_config() -> AppConfig:
     )
     if subscription_base_url:
         subscription_base_url = subscription_base_url.rstrip("/")
+
+    from .happ_link import parse_happ_open_base_urls
+
+    happ_open_base_urls = parse_happ_open_base_urls()
     
     app_url = os.getenv("APP_URL")
     if app_url:
@@ -141,6 +149,7 @@ def load_config() -> AppConfig:
         yookassa=yookassa,
         cryptopay=cryptopay,
         subscription_base_url=subscription_base_url,
+        happ_open_base_urls=happ_open_base_urls,
         app_url=app_url,
     )
 

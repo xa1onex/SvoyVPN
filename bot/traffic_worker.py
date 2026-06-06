@@ -3,13 +3,12 @@
 
 Модель:
 - По каждому активному серверу раз в цикл делаем ОДИН login + ОДИН запрос inbound list.
-- Для каждого клиента inbound берём lifetime up+down и пишем в vpn_keys.traffic_lifetime_bytes.
+- Для каждого клиента inbound берём lifetime download и пишем в vpn_keys.traffic_lifetime_bytes.
 - traffic_period_baseline_bytes фиксируется при старте биллингового периода (= lifetime на тот момент).
-  Для уже существующих ключей при первом проходе воркера baseline ставится = 0
-  (весь накопленный трафик считается расходом текущего периода — это то,
-  что мы хотим: "было 40ГБ до фикса — считаем их сейчас").
+  При первом проходе воркера по ключу baseline = текущий lifetime на панели,
+  чтобы в период не попадал старый накопленный трафик.
 - После прохода по всем серверам одной SQL-аггрегацией пересчитываем
-  users.traffic_used_bytes = SUM(GREATEST(lifetime - baseline, 0)).
+  users.bypass_traffic_used_bytes (только servers.is_bypass = TRUE).
 
 На сбой отдельной панели реагируем мягко: значения lifetime прошлого прохода сохраняются,
 никакой ключ не «обнуляется» из-за таймаута.
@@ -27,6 +26,7 @@ from .traffic import (
     _client_norm_ids_from_record,
     _client_usage_bytes,
     _norm_xui_identity,
+    ensure_bypass_period,
 )
 from .xui_client import XUIClient
 
@@ -95,9 +95,8 @@ async def _collect_server_usage(server: dict[str, Any]) -> dict[str, int] | None
             email = str(cs.get("email") or "").strip()
             if not email:
                 continue
-            up = int(cs.get("up") or 0)
             down = int(cs.get("down") or 0)
-            stats_by_email[email] = up + down
+            stats_by_email[email] = down
 
     usage: dict[str, int] = {}
     for c in clients:
@@ -138,9 +137,9 @@ async def _apply_server_usage(server_id: int, usage: dict[str, int]) -> int:
             baseline = r["traffic_period_baseline_bytes"]
 
             if baseline is None:
-                # Первый проход воркера по этому ключу — считаем с 0
-                # (= накопленный на панели трафик попадёт в текущий период).
-                baseline_val = 0
+                # Первый sync нового ключа: якорим на текущем lifetime,
+                # чтобы старый накопленный трафик не попал в текущий период.
+                baseline_val = new_lifetime
             else:
                 baseline_val = int(baseline)
 
@@ -165,36 +164,33 @@ async def _apply_server_usage(server_id: int, usage: dict[str, int]) -> int:
     return updated
 
 
-async def _aggregate_users_traffic() -> None:
-    """Пересчитывает users.traffic_used_bytes по серверам с пометкой 🆓 (legacy)."""
+async def _refresh_bypass_periods() -> None:
+    """
+    Устанавливает bypass-период для новых пользователей и сбрасывает
+    счётчик для тех, у кого истёк период (anchor day пройден).
+    Вызывается перед агрегацией, чтобы при каждом цикле воркера
+    период корректно переходил в новый месяц.
+    """
     async with get_connection() as conn:
-        await conn.execute(
+        rows = await conn.fetch(
             """
-            UPDATE users u
-            SET traffic_used_bytes = COALESCE(agg.used, 0),
-                traffic_last_sync_at = NOW()
-            FROM (
-                SELECT user_id,
-                       SUM(
-                           GREATEST(
-                               traffic_lifetime_bytes
-                               - COALESCE(traffic_period_baseline_bytes, 0),
-                               0
-                           )
-                       ) AS used
-                FROM vpn_keys k
-                JOIN servers s ON s.id = k.server_id
-                WHERE k.is_active = TRUE
-                  AND (
-                      s.name LIKE '%🆓%'
-                      OR s.name ILIKE '%[free]%'
-                      OR s.name ~* '(^|[^a-z])free([^a-z]|$)'
-                  )
-                GROUP BY user_id
-            ) agg
-            WHERE u.user_id = agg.user_id
+            SELECT user_id FROM users
+            WHERE traffic_anchor_day IS NOT NULL
+              AND (
+                bypass_period_start IS NULL
+                OR bypass_period_end_excl <= CURRENT_DATE
+              )
             """
         )
+    for row in rows:
+        try:
+            async with get_connection() as conn:
+                await ensure_bypass_period(conn, row["user_id"])
+        except Exception as e:
+            logger.warning(
+                "traffic worker: bypass period refresh failed uid=%s: %s",
+                row["user_id"], e,
+            )
 
 
 async def _aggregate_bypass_traffic() -> None:
@@ -272,9 +268,9 @@ async def run_sync_once() -> dict[str, int]:
                 )
 
     try:
-        await _aggregate_users_traffic()
+        await _refresh_bypass_periods()
     except Exception as e:
-        logger.warning("traffic worker: aggregate users failed: %s", e)
+        logger.warning("traffic worker: bypass period refresh failed: %s", e)
 
     try:
         await _aggregate_bypass_traffic()

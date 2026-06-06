@@ -20,6 +20,51 @@ OFFER_PRIVACY_TELEGRAPH_URL = (
 )
 
 
+def _svoyvpn_tagline_html() -> str:
+    return (
+        "<b>SvoyVPN</b> — стабильный VPN с обходом <b>Белых списков</b> "
+        "и с <b>бесплатным</b> тарифом!\n\n"
+    )
+
+
+def _svoyvpn_why_and_footer_html() -> str:
+    offer_link = (
+        f'<a href="{OFFER_PRIVACY_TELEGRAPH_URL}">'
+        "офертой и политикой конфиденциальности</a>"
+    )
+    why_block = (
+        "<b>Зачем он вам:</b>\n"
+        "• Мы дарим подарки всем за использование VPN - /invite\n"
+        "• Универсальные тарифы от <b>0₽/год</b>\n"
+        "• Стабильный обход <b>Белых списков</b>\n"
+        "• И многое другое"
+    )
+    footer = (
+        f"\n\n👉 Больше информации в разделе <b>помощь</b> — /help\n\n"
+        f"‼️ Используя сервис, вы соглашаетесь с {offer_link}."
+    )
+    return why_block + footer
+
+
+async def build_new_user_welcome_message(
+    *,
+    has_referral: bool = False,
+    referral_bonus_days: int = 0,
+) -> str:
+    header = _svoyvpn_tagline_html()
+    body = _svoyvpn_why_and_footer_html()
+
+    if has_referral:
+        days = max(int(referral_bonus_days or 0), 1)
+        gift_line = (
+            f"🎁 Ваш друг подарил вам подписку на <b>{days} дн.</b> — "
+            "просто подключайтесь и пользуйтесь свободным интернетом без ограничений"
+        )
+        return f"{header}{gift_line}\n\n{body}"
+
+    return f"{header}{body}"
+
+
 async def setup_start_handler(dp, bot: Bot, config):
     """Настраивает обработчик /start"""
     
@@ -123,65 +168,37 @@ async def setup_start_handler(dp, bot: Bot, config):
                         if campaign and campaign['bonus_days'] and campaign['bonus_days'] > 0:
                             utm_bonus_days = campaign['bonus_days']
                             utm_campaign_desc = campaign['description']
-                            # Выдаём бонусные дни
-                            await conn.execute('''
-                                UPDATE users SET
-                                    subscription_end = CURRENT_DATE + ($2 || ' days')::INTERVAL,
-                                    pay_subscribed = TRUE
-                                WHERE user_id = $1
-                            ''', user_id, str(utm_bonus_days))
+                            from ..referral_rewards import grant_plus_bonus_days
+                            await grant_plus_bonus_days(conn, user_id, utm_bonus_days)
                             utm_bonus_applied = True
-                            logger.info(f"UTM bonus {utm_bonus_days} days applied to user {user_id} (tag: {utm_tag})")
+                            logger.info(
+                                "UTM Plus bonus %s days applied to user %s (tag: %s)",
+                                utm_bonus_days, user_id, utm_tag,
+                            )
                     except Exception as e:
                         logger.warning(f"Could not process UTM campaign: {e}")
                 
                 if referral_code:
-                    inviter = await conn.fetchrow('SELECT user_id, referral_discount_percent, referral_bonus_bypass_percent FROM users WHERE referral_code = $1', referral_code)
-                    
-                    if inviter:
+                    inviter = await conn.fetchrow(
+                        'SELECT user_id FROM users WHERE referral_code = $1', referral_code
+                    )
+                    if inviter and inviter['user_id'] != user_id:
                         inviter_id = inviter['user_id']
-
-                        # New referral system: +5% discount (max 25%) and +5% bypass to both
-                        new_discount = min((inviter.get('referral_discount_percent') or 0) + 5, 25)
-                        new_bypass = (inviter.get('referral_bonus_bypass_percent') or 0) + 5
-
-                        await conn.execute('''
-                            UPDATE users SET
-                                referral_count = referral_count + 1,
-                                referral_discount_percent = $2,
-                                referral_bonus_bypass_percent = $3
-                            WHERE user_id = $1
-                        ''', inviter_id, new_discount, new_bypass)
-
-                        # Give invited user +5% bypass bonus and 5% discount on first payment
-                        await conn.execute('''
-                            UPDATE users SET
-                                invited_by = $1,
-                                referral_discount_percent = 5,
-                                referral_bonus_bypass_percent = 5
-                            WHERE user_id = $2
-                        ''', inviter_id, user_id)
-
-                        # Notify inviter
-                        try:
-                            await bot.send_message(
-                                inviter_id,
-                                f"🎉 <b>Новый друг зарегистрировался!</b>\n\n"
-                                f"Ваша скидка на следующее списание: <b>{new_discount}%</b>\n"
-                                f"Бонус bypass: <b>+{new_bypass}%</b> ГБ от тарифа",
-                                parse_mode="HTML",
-                            )
-                        except Exception as e:
-                            logger.error(f"Referral notification error: {e}")
-
-                        logger.info(
-                            "Referral: inviter=%s invited=%s discount=%s%% bypass_bonus=%s%%",
-                            inviter_id, user_id, new_discount, new_bypass,
+                        await conn.execute(
+                            'UPDATE users SET invited_by = $1 WHERE user_id = $2',
+                            inviter_id, user_id,
                         )
-
+                        await conn.execute(
+                            'UPDATE users SET referral_count = referral_count + 1 WHERE user_id = $1',
+                            inviter_id,
+                        )
+                        try:
+                            from ..referral_rewards import grant_referral_bonuses
+                            await grant_referral_bonuses(bot, user_id, inviter_id)
+                        except Exception as e:
+                            logger.error("referral bonus grant error: %s", e)
                         has_referral = True
-                        invited_bonus_days = 0
-                        invited_end_date = None
+                        logger.info("Referral: inviter=%s invited=%s", inviter_id, user_id)
                 
                 # Уведомление админам
                 source_info = "по реферальной ссылке" if has_referral else "без рефералки"
@@ -205,40 +222,35 @@ async def setup_start_handler(dp, bot: Bot, config):
                     except Exception as e:
                         logger.error(f"Failed to notify admin {admin_id}: {e}")
                 
-                # Формируем приветственное сообщение для нового пользователя
-                welcome_msg_parts = [
-                    "<b>VPN бот</b> — быстрый и надежный VPN сервис\n\n"
-                ]
+                from ..referral_rewards import get_referral_bonus_days
+                referral_bonus_days = await get_referral_bonus_days() if has_referral else 0
 
-                if has_referral:
-                    welcome_msg_parts.append(
-                        "🎁 Вы зарегистрировались по реферальной ссылке!\n"
-                        "• <b>Скидка 5%</b> на первую оплату\n"
-                        "• <b>+5%</b> бонусных bypass ГБ от тарифа\n\n"
+                welcome_msg = await build_new_user_welcome_message(
+                    has_referral=has_referral,
+                    referral_bonus_days=referral_bonus_days,
+                )
+
+                if utm_bonus_applied and utm_bonus_days > 0 and not has_referral:
+                    user_data = await conn.fetchrow(
+                        'SELECT subscription_end FROM users WHERE user_id = $1', user_id
                     )
-                elif utm_bonus_applied and utm_bonus_days > 0:
-                    user_data = await conn.fetchrow('SELECT subscription_end FROM users WHERE user_id = $1', user_id)
                     if user_data and user_data['subscription_end']:
                         expiration_date = user_data['subscription_end'].strftime("%d.%m.%Y")
                     else:
-                        expiration_date = (datetime.now() + timedelta(days=utm_bonus_days)).strftime("%d.%m.%Y")
-                    
-                    welcome_msg_parts.append(
-                        f"🎁 Вы получили +{utm_bonus_days} {'день' if utm_bonus_days == 1 else 'дня' if utm_bonus_days < 5 else 'дней'} <b>VPN</b> по акции!\n"
-                        f"Ваш <b>VPN</b> активен до: {expiration_date}\n\n"
+                        expiration_date = (
+                            datetime.now() + timedelta(days=utm_bonus_days)
+                        ).strftime("%d.%m.%Y")
+                    day_word = (
+                        "день" if utm_bonus_days == 1
+                        else "дня" if utm_bonus_days < 5
+                        else "дней"
                     )
-
-                welcome_msg_parts.extend([
-                    "<b>Бот предоставляет</b>:\n"
-                    "• Безопасный и быстрый VPN\n"
-                    "• Обход блокировок\n"
-                    "• Высокая скорость\n\n"
-                    "👉 Больше информации в разделе <b>помощь</b> - /help\n\n"
-                    f"‼️ Продолжая использовать бота, вы принимаете "
-                    f"<a href='{OFFER_PRIVACY_TELEGRAPH_URL}'>публичную оферту и политику конфиденциальности</a>!\n\n"
-                ])
-
-                welcome_msg = "".join(welcome_msg_parts)
+                    utm_prefix = (
+                        f"🎁 Вы получили +{utm_bonus_days} {day_word} "
+                        f"<b>Plus</b> по акции!\n"
+                        f"Ваш <b>VPN Plus</b> подключен до: {expiration_date}\n\n"
+                    )
+                    welcome_msg = utm_prefix + welcome_msg
 
                 await message.answer(
                     welcome_msg,
@@ -270,25 +282,13 @@ async def setup_start_handler(dp, bot: Bot, config):
 
 async def get_main_text(first_name: str, subscription_status: str, user_id: int = None, is_new_user: bool = False, has_referral: bool = False) -> str:
     """Возвращает основной текст с объявлением"""
-    from ..database import get_connection, get_announcement_text
-    
-    ann = await get_announcement_text()
-    
     if is_new_user:
         greeting = f"👋 Добро пожаловать, <b>{first_name}</b>!"
     else:
         greeting = f"👋 Рады видеть тебя снова, <b>{first_name}</b>!"
 
-    msg = (
-        f"{greeting}\n\n"
-        f"{subscription_status}\n\n"
-        f"📌 <b>Команды:</b>\n"
-        "<i>/start</i> - Перезагрузить бота\n"
-        "<i>/prem</i> - Покупка VPN\n"
-        "<i>/invite</i> - Пригласи друга\n\n"
-        f"{ann}"
-    )
-    return msg
+    marketing = _svoyvpn_tagline_html() + _svoyvpn_why_and_footer_html()
+    return f"{greeting}\n\n{subscription_status}\n\n{marketing}"
 
 
 async def get_main_keyboard(user_id: int, config):
@@ -347,7 +347,7 @@ async def get_main_keyboard(user_id: int, config):
         logger.error(f"Error checking trial logic: {e}")
         
     if show_trial:
-        builder.row(InlineKeyboardButton(text="🎁 Standard за 1₽ — попробовать", callback_data="activate_trial"))
+        builder.row(InlineKeyboardButton(text="🎁 Plus за 1₽ — попробовать", callback_data="activate_trial"))
 
     show_traffic_boost = False
     try:
@@ -400,101 +400,14 @@ async def setup_other_handlers(dp, bot: Bot, config):
     @dp.callback_query(F.data == "open_invite")
     @dp.message(Command("invite"))
     async def handle_open_invite(message_or_callback: Message | CallbackQuery):
-        """Обработчик кнопки Подарок и команды /invite (реферальная система)"""
+        """/invite и кнопка «Подарок» → экран подарков."""
+        from .balance import render_balance_screen
+
         if isinstance(message_or_callback, CallbackQuery):
-            callback = message_or_callback
-            message = callback.message
-            actor = callback.from_user
-            await callback.answer()
-        else:
-            message = message_or_callback
-            callback = None
-            actor = message.from_user
-        
-        user_id = actor.id
-        username = actor.username
-        first_name = actor.first_name or "Пользователь"
-        from urllib.parse import quote
-        
-        async with get_connection() as conn:
-            user_data = await conn.fetchrow(
-                "SELECT referral_code, referral_count FROM users WHERE user_id = $1",
-                user_id
-            )
-            
-            # Если пользователя нет, создаем его автоматически
-            if not user_data:
-                new_referral_code = secrets.token_hex(4)
-                sub_token = generate_subscription_token()
-                
-                await conn.execute('''
-                    INSERT INTO users (
-                        user_id, username, first_name, registration_date, last_activity,
-                        referral_code, pay_subscribed, subscription_end, subscription_token
-                    ) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $4, FALSE, NULL, $5)
-                ''', user_id, username, first_name, new_referral_code, sub_token)
-                
-                referral_code = new_referral_code
-                referral_count = 0
-            else:
-                referral_code = user_data.get("referral_code", "")
-                referral_count = user_data.get("referral_count", 0)
-                
-                # Если реферальный код отсутствует, генерируем новый
-                if not referral_code:
-                    referral_code = secrets.token_hex(4)
-                    await conn.execute('''
-                        UPDATE users
-                        SET referral_code = $1
-                        WHERE user_id = $2
-                    ''', referral_code, user_id)
-            
-        bot_username = (await bot.get_me()).username
-        ref_link = f"https://t.me/{bot_username}?start=ref_{referral_code}"
-
-        # Track referral page open for engagement notification
-        try:
-            async with get_connection() as conn2:
-                await conn2.execute(
-                    """
-                    INSERT INTO user_notifications (user_id, notification_type)
-                    SELECT $1, 'referral_opened'
-                    WHERE NOT EXISTS (
-                        SELECT 1 FROM user_notifications
-                        WHERE user_id = $1 AND notification_type = 'referral_opened'
-                          AND created_at > NOW() - INTERVAL '2 hours'
-                    )
-                    """,
-                    user_id,
-                )
-        except Exception:
-            pass
-
-        # New referral text
-        text = (
-            f"🎁 <b>Пригласи друга — получи скидку!</b>\n\n"
-            f"🔗 Ваша ссылка:\n<code>{ref_link}</code>\n\n"
-            f"👥 Приглашено: <i>{referral_count or 0}</i>\n\n"
-            f"За каждого друга:\n"
-            f"• <b>Скидка 5%</b> на следующее списание (до 25%)\n"
-            f"• <b>+5%</b> bypass ГБ от тарифа — вам и другу"
+            await message_or_callback.answer()
+        await render_balance_screen(
+            message_or_callback, bot, config, track_referral=True
         )
-        
-        # Клавиатура с кнопкой поделиться
-        from aiogram.types import InlineKeyboardMarkup
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="📤 Поделиться",
-                url=f"https://t.me/share/url?url={ref_link}&text={quote('Присоединяйся к VPN боту с моей подпиской!')}"
-            )],
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="go_back")]
-        ])
-        
-        # Если это callback, редактируем сообщение, иначе отправляем новое
-        if isinstance(message_or_callback, CallbackQuery):
-            await callback.message.edit_text(text, parse_mode='HTML', reply_markup=keyboard, disable_web_page_preview=True)
-        else:
-            await message.answer(text, parse_mode='HTML', reply_markup=keyboard, disable_web_page_preview=True)
     
     @dp.callback_query(F.data == "go_back")
     async def go_back_handler(callback: CallbackQuery):

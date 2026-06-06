@@ -1,6 +1,6 @@
 """
-Обработчики новой системы тарифов (Lite / Standard / Pro).
-Покупка, апгрейд, докупка bypass ГБ.
+Обработчики системы тарифов (Free / Plus).
+Покупка Plus, докупка bypass ГБ.
 """
 from __future__ import annotations
 
@@ -21,14 +21,19 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..config import AppConfig
 from ..database import get_connection
 from ..plans import (
+    ALL_PAID_TIER_IDS,
+    FREE_TIER_ID,
+    PAID_TIER_IDS,
     PAYMENT_METHODS,
     TIER_ORDER,
+    TIER_PLANS_BASE,
     TIERS,
-    calculate_upgrade_price,
-    can_upgrade,
     format_price_both,
     format_price_rub,
     format_price_stars,
+    format_subscription_end_for_display,
+    format_tier_monthly_price_button,
+    format_tier_monthly_price_html,
     get_bypass_packs,
     get_tier_bypass_gb,
     get_tier_max_devices,
@@ -41,112 +46,164 @@ from ..yookassa_client import YooKassaClient
 logger = logging.getLogger(__name__)
 
 
-async def build_tiers_message(user_id: int):
-    """Build the tier selection text and markup (standalone, importable)."""
+async def _load_tier_screen_context(user_id: int) -> dict:
+    """Контекст экрана подписки: тариф, статус, цены Plus."""
+    plans = await get_tier_plans()
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
             SELECT subscription_tier, pay_subscribed, subscription_end,
-                   yookassa_recurring_payment_method_id, pending_downgrade_tier
+                   yookassa_recurring_payment_method_id
             FROM users WHERE user_id = $1
             """,
             user_id,
         )
 
+    from ..plans import is_sentinel_subscription_end
+
     current_tier = (row["subscription_tier"] if row else None) or "none"
-    is_active = (
+    sub_end = row["subscription_end"] if row else None
+    paid_sentinel = (
+        current_tier in ALL_PAID_TIER_IDS
+        and bool(sub_end)
+        and is_sentinel_subscription_end(sub_end)
+    )
+    is_active = bool(
         row
         and row["pay_subscribed"]
-        and row["subscription_end"]
-        and row["subscription_end"].date() >= datetime.now().date()
-    ) if row else False
+        and sub_end
+        and not paid_sentinel
+        and sub_end.date() >= datetime.now().date()
+    )
     has_card = bool(row and row.get("yookassa_recurring_payment_method_id"))
-    pending_downgrade = row.get("pending_downgrade_tier") if row else None
-    # If card is unlinked (cancelled), treat as no active subscription for button logic
-    is_renewable = is_active and has_card
+    is_plus = current_tier in ALL_PAID_TIER_IDS
 
-    text_parts = ["🚀 <b>Подписка VPN</b>\n"]
-    if is_active and current_tier != "legacy" and current_tier != "none":
-        tier_info = TIERS.get(current_tier)
-        if tier_info:
-            if has_card:
-                text_parts.append(f"Текущий тариф: <b>{tier_info['name']}</b>\n")
+    plan_1m = plans.get("plus_1m") or TIER_PLANS_BASE.get("plus_1m", {})
+    plan_12m = plans.get("plus_12m") or TIER_PLANS_BASE.get("plus_12m", {})
+
+    return {
+        "current_tier": current_tier,
+        "sub_end": sub_end,
+        "is_active": is_active,
+        "has_card": has_card,
+        "is_renewable": is_active and has_card,
+        "is_plus": is_plus,
+        "plan_1m": plan_1m,
+        "plan_12m": plan_12m,
+        "price_1m": plan_1m.get("price_rub", 14900),
+        "price_12m": plan_12m.get("price_rub", 99900),
+    }
+
+
+def _tier_header_sections(ctx: dict) -> list[str]:
+    """Верх экрана: заголовок и строка о текущем тарифе (одинаково на всех шагах)."""
+    sections: list[str] = ["🚀 <b>Подписка VPN</b>"]
+    if ctx["is_active"] and ctx["is_plus"]:
+        from ..subscriptions import should_show_subscription_end_date
+
+        if should_show_subscription_end_date(
+            ctx["sub_end"], has_recurring_card=ctx["has_card"]
+        ):
+            end_str = format_subscription_end_for_display(ctx["sub_end"])
+            if end_str:
+                sections.append(f"Тариф <b>Plus</b> подключен до {end_str}")
             else:
-                end_str = row["subscription_end"].strftime("%d.%m.%Y")
-                text_parts.append(f"<b>{tier_info['name']}</b> до {end_str}\n")
-        if pending_downgrade and TIERS.get(pending_downgrade):
-            dg_name = TIERS[pending_downgrade]["name"]
-            text_parts.append(f"⬇️ Запланирован переход на <b>{dg_name}</b> со следующего списания\n")
-    elif is_active and current_tier == "legacy":
-        text_parts.append("Текущий тариф: <b>Legacy</b> (старая подписка)\n")
-
-    text_parts.append("")
-    text_parts.append("Обычный VPN — <b>безлимитный</b> на всех тарифах.")
-    text_parts.append("Bypass-сервера — для обхода блокировок (лимит ГБ/мес).\n")
-
-    for tier_id in TIER_ORDER:
-        t = TIERS[tier_id]
-        marker = " ← ваш" if (is_renewable and current_tier == tier_id) else ""
-        text_parts.append(f"<b>{t['name']}</b>{marker}")
-        for f in t["features"]:
-            text_parts.append(f"  • {f}")
-        text_parts.append("")
-
-    text = "\n".join(text_parts)
-
-    tier_icons = {"lite": "🆗", "standard": "🆒", "pro": "🆙"}
-    builder = InlineKeyboardBuilder()
-    for tier_id in TIER_ORDER:
-        t = TIERS[tier_id]
-        icon = tier_icons.get(tier_id, "")
-        if is_renewable and current_tier == tier_id:
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"✅ {t['name']} (текущий)",
-                    callback_data=f"tier_info:{tier_id}",
-                )
-            )
-        elif is_renewable and can_upgrade(current_tier, tier_id):
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"⬆️ {t['name']} (апгрейд)",
-                    callback_data=f"tier_upgrade:{tier_id}",
-                )
-            )
-        elif is_renewable and current_tier in TIER_ORDER and tier_id in TIER_ORDER and TIER_ORDER.index(tier_id) < TIER_ORDER.index(current_tier):
-            if pending_downgrade == tier_id:
-                builder.row(
-                    InlineKeyboardButton(
-                        text=f"⬇️ {t['name']} (запланирован)",
-                        callback_data=f"tier_downgrade_cancel:{tier_id}",
-                    )
-                )
-            else:
-                builder.row(
-                    InlineKeyboardButton(
-                        text=f"⬇️ {t['name']}",
-                        callback_data=f"tier_downgrade:{tier_id}",
-                    )
-                )
+                sections.append("Тариф <b>Plus</b> подключен")
         else:
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"{icon} {t['name']}",
-                    callback_data=f"tier_select:{tier_id}",
-                )
-            )
+            sections.append("Тариф <b>Plus</b> подключен")
+    elif ctx["is_active"] and ctx["current_tier"] == FREE_TIER_ID:
+        sections.append("Тариф: <b>Free</b> (бесплатный)")
+    return sections
 
-    if is_active:
+
+async def build_tiers_message(user_id: int, *, view: str = "main"):
+    """
+    Экран подписки.
+    view=main — Free и Plus, кнопка «Plus».
+    view=plus_plans — варианты Plus с ценами (месяц / год).
+    """
+    ctx = await _load_tier_screen_context(user_id)
+    sections = _tier_header_sections(ctx)
+
+    plus_t = TIERS["plus"]
+    plus_features = [f"  • {f}" for f in plus_t["features"]]
+
+    if view == "plus_plans":
+        per_month_12m = ctx["price_12m"] // 1200
+        plus_1m_lines = (
+            [f"<b>Plus</b> · <b>{format_price_rub(ctx['price_1m'])}/мес</b>"] + plus_features
+        )
+        plus_12m_lines = (
+            [
+                f"<b>Plus</b> · <b>{format_price_rub(ctx['price_12m'])}/год</b> "
+                f"(<b>{per_month_12m}₽/мес</b>)"
+            ]
+            + plus_features
+        )
+        sections.append("\n".join(plus_1m_lines))
+        sections.append("\n".join(plus_12m_lines))
+    else:
+        free_t = TIERS["free"]
+        free_marker = " ← ваш" if (ctx["is_active"] and not ctx["is_plus"]) else ""
+        free_lines = [f"<b>Free</b>{free_marker}"] + [
+            f"  • {f}" for f in free_t["features"]
+        ]
+        plus_marker = " ← ваш" if (ctx["is_active"] and ctx["is_plus"]) else ""
+        plus_lines = [f"<b>Plus</b>{plus_marker}"] + plus_features
+        sections.append("\n".join(free_lines))
+        sections.append("\n".join(plus_lines))
+
+    text = "\n\n".join(sections)
+    builder = InlineKeyboardBuilder()
+
+    if view == "plus_plans":
         builder.row(
             InlineKeyboardButton(
-                text="📶 Лимиты",
-                callback_data="open_bypass_packs",
-            )
+                text=f"💎 Plus · {format_price_rub(ctx['price_1m'])}/мес",
+                callback_data="tier_select:plus:plus_1m",
+            ),
+            InlineKeyboardButton(
+                text=f"🌟 Plus · {format_price_rub(ctx['price_12m'])}/год",
+                callback_data="tier_select:plus:plus_12m",
+            ),
         )
-
-    builder.row(
-        InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription")
-    )
+        builder.row(
+            InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"),
+        )
+    elif ctx["is_renewable"] and ctx["is_plus"]:
+        builder.row(
+            InlineKeyboardButton(
+                text="🆓 Free (отменить)", callback_data="cancel_sub_start"
+            ),
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text="✅ Plus — подключен", callback_data="tier_info:plus"
+            ),
+            InlineKeyboardButton(
+                text="📶 Лимиты", callback_data="open_bypass_packs"
+            ),
+        )
+        builder.row(
+            InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"),
+        )
+    else:
+        free_label = (
+            "✅ Free — ваш"
+            if (ctx["is_active"] and not ctx["is_plus"])
+            else "🆓 Free — бесплатно"
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text=free_label, callback_data=f"tier_info:{FREE_TIER_ID}"
+            ),
+        )
+        builder.row(
+            InlineKeyboardButton(text="💎 Plus", callback_data="tier_select:plus"),
+        )
+        builder.row(
+            InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"),
+        )
 
     return text, builder.as_markup()
 
@@ -170,20 +227,19 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
     # ------------------------------------------------------------------
     @dp.callback_query(F.data.startswith("tier_select:"))
     async def handle_tier_select(callback: CallbackQuery):
-        """Описание тарифа + сразу создание платежа и кнопка оплаты."""
-        tier_id = callback.data.split(":")[1]
-        if tier_id not in TIERS:
-            await callback.answer("❌ Тариф не найден", show_alert=True)
+        """tier_select:plus — выбор срока; tier_select:plus:plus_1m — оплата."""
+        parts = callback.data.split(":")
+        if len(parts) == 2 and parts[1] == "plus":
+            user_id = callback.from_user.id
+            text, markup = await build_tiers_message(user_id, view="plus_plans")
+            await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+            await callback.answer()
             return
-
-        t = TIERS[tier_id]
-        plans = await get_tier_plans_for_tier(tier_id)
-        if not plans:
-            await callback.answer("❌ Нет доступных планов", show_alert=True)
+        if len(parts) >= 3:
+            plan_id = parts[2]
+            await _do_tier_pay(callback, plan_id)
             return
-
-        plan_id, plan_data = next(iter(plans.items()))
-        await _do_tier_pay(callback, plan_id)
+        await callback.answer("❌ Нет доступных планов", show_alert=True)
 
     # ------------------------------------------------------------------
     # Buy tier (legacy callback kept for backward compat, redirects to pay)
@@ -215,20 +271,6 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             return
         price = plan["price_rub"]
 
-        # Check referral discount for first payment
-        referral_discount = 0
-        async with get_connection() as conn:
-            ref_row = await conn.fetchrow(
-                "SELECT referral_discount_percent, pay_subscribed FROM users WHERE user_id = $1",
-                user_id,
-            )
-            if ref_row and (ref_row.get("referral_discount_percent") or 0) > 0:
-                if not ref_row.get("pay_subscribed"):
-                    referral_discount = ref_row["referral_discount_percent"]
-
-        if referral_discount > 0:
-            price = int(price * (100 - referral_discount) / 100)
-
         if price < 100:
             price = 100
         try:
@@ -258,21 +300,18 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                     payment_data["id"],
                 )
 
-            if referral_discount > 0:
-                full_price = plan["price_rub"]
-                text = (
-                    f"💎 <b>{t.get('name', tier_id)}</b> · "
-                    f"<s>{format_price_rub(full_price)}</s> {format_price_rub(price)}/мес "
-                    f"(скидка {referral_discount}%)\n\n"
-                )
-            else:
-                text = f"💎 <b>{t.get('name', tier_id)}</b> · {format_price_rub(price)}/мес\n\n"
+            duration_months = plan.get("duration", 1)
+            price_display = (
+                f"{format_price_rub(price)}/год" if duration_months >= 12
+                else f"{format_price_rub(price)}/мес"
+            )
+            text = f"💎 <b>{t.get('name', tier_id)}</b> · {price_display}\n\n"
             for feat in t.get("features", []):
                 text += f"• {feat}\n"
 
             b = InlineKeyboardBuilder()
             b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
-            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"))
+            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="tier_select:plus"))
             await callback.message.edit_text(
                 text, parse_mode="HTML", reply_markup=b.as_markup()
             )
@@ -294,12 +333,12 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
     # ------------------------------------------------------------------
     # Promo discount handlers (from engagement notifications)
     # ------------------------------------------------------------------
-    @dp.callback_query(F.data == "promo_lite_30")
-    async def handle_promo_lite_30(callback: CallbackQuery):
-        """30% discount on Lite from engagement notification."""
+    @dp.callback_query(F.data == "promo_plus_30")
+    async def handle_promo_plus_30(callback: CallbackQuery):
+        """30% discount on Plus from engagement notification."""
         user_id = callback.from_user.id
         plans = await get_tier_plans()
-        plan = plans.get("lite_1m")
+        plan = plans.get("plus_1m")
         if not plan:
             await callback.answer("❌ План не найден", show_alert=True)
             return
@@ -312,11 +351,11 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             amount_rub = price / 100.0
             payment_data = yk.create_payment(
                 amount=amount_rub,
-                description="VPN Lite — скидка 30%",
+                description="VPN Plus — скидка 30%",
                 return_url=f"https://t.me/{bot_info.username}?start=payment_success",
                 metadata={
                     "user_id": str(user_id),
-                    "plan_id": "lite_1m",
+                    "plan_id": "plus_1m",
                     "method_id": "yookassa",
                     "product_type": "tier",
                 },
@@ -327,7 +366,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                 await conn.execute(
                     """INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
                     VALUES ($1, $2, $3, $4, $5, $6, $7)""",
-                    user_id, price, "RUB", "lite_1m", "tier", "pending",
+                    user_id, price, "RUB", "plus_1m", "tier", "pending",
                     payment_data["id"],
                 )
             b = InlineKeyboardBuilder()
@@ -335,70 +374,15 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             b.row(InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers"))
             full_price = plan["price_rub"] / 100.0
             await callback.message.edit_text(
-                f"🔥 <b>Lite со скидкой 30%</b>\n\n"
+                f"🔥 <b>Plus со скидкой 30%</b>\n\n"
                 f"<s>{full_price:.0f}₽</s> → <b>{amount_rub:.0f}₽/мес</b>\n\n"
-                f"• 30 ГБ bypass\n• Безлимит VPN\n• До 3 устройств",
+                f"• 50 ГБ bypass/мес\n• YouTube / TikTok / AI работают\n• Безлимит устройств",
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
             )
             await callback.answer()
         except Exception as e:
-            logger.error("promo_lite_30 error: %s", e, exc_info=True)
-            await callback.answer("❌ Ошибка", show_alert=True)
-
-    @dp.callback_query(F.data.startswith("promo_referral_10:"))
-    async def handle_promo_referral_10(callback: CallbackQuery):
-        """10% discount from referral engagement notification."""
-        tier_id = callback.data.split(":")[1]
-        user_id = callback.from_user.id
-        plan_id = f"{tier_id}_1m"
-        plans = await get_tier_plans()
-        plan = plans.get(plan_id)
-        if not plan:
-            await callback.answer("❌ План не найден", show_alert=True)
-            return
-        price = int(plan["price_rub"] * 0.9)
-        if price < 100:
-            price = 100
-        try:
-            yk = YooKassaClient(config.yookassa)
-            bot_info = await bot.get_me()
-            amount_rub = price / 100.0
-            payment_data = yk.create_payment(
-                amount=amount_rub,
-                description=f"VPN {plan['title']} — скидка 10%",
-                return_url=f"https://t.me/{bot_info.username}?start=payment_success",
-                metadata={
-                    "user_id": str(user_id),
-                    "plan_id": plan_id,
-                    "method_id": "yookassa",
-                    "product_type": "tier",
-                },
-                save_payment_method=True,
-                merchant_customer_id=str(user_id),
-            )
-            async with get_connection() as conn:
-                await conn.execute(
-                    """INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)""",
-                    user_id, price, "RUB", plan_id, "tier", "pending",
-                    payment_data["id"],
-                )
-            t = TIERS.get(tier_id, {})
-            b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
-            b.row(InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers"))
-            full_price = plan["price_rub"] / 100.0
-            await callback.message.edit_text(
-                f"🔥 <b>{t.get('name', tier_id)} со скидкой 10%</b>\n\n"
-                f"<s>{full_price:.0f}₽</s> → <b>{amount_rub:.0f}₽/мес</b>\n\n"
-                + "\n".join(f"• {f}" for f in t.get("features", [])),
-                parse_mode="HTML",
-                reply_markup=b.as_markup(),
-            )
-            await callback.answer()
-        except Exception as e:
-            logger.error("promo_referral_10 error: %s", e, exc_info=True)
+            logger.error("promo_plus_30 error: %s", e, exc_info=True)
             await callback.answer("❌ Ошибка", show_alert=True)
 
     # ------------------------------------------------------------------
@@ -408,19 +392,52 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_tier_info(callback: CallbackQuery):
         """Show current tier details with bypass usage."""
         user_id = callback.from_user.id
+        requested_tier = callback.data.split(":", 1)[1] if ":" in (callback.data or "") else ""
 
         async with get_connection() as conn:
             snap = await user_bypass_traffic_snapshot(conn, user_id)
             row = await conn.fetchrow(
-                "SELECT subscription_end FROM users WHERE user_id = $1", user_id
+                """
+                SELECT subscription_end, subscription_tier,
+                       yookassa_recurring_payment_method_id, pay_subscribed
+                FROM users WHERE user_id = $1
+                """,
+                user_id,
             )
 
-        tier_id = snap["tier"]
+        tier_id = requested_tier if requested_tier in TIERS else snap["tier"]
         tier_info = TIERS.get(tier_id, {})
+        has_card = bool(row and row.get("yookassa_recurring_payment_method_id"))
+        actual_tier = snap.get("tier") or (row["subscription_tier"] if row else FREE_TIER_ID)
+
+        if tier_id == FREE_TIER_ID and actual_tier in ALL_PAID_TIER_IDS:
+            free_t = TIERS[FREE_TIER_ID]
+            preview = (
+                f"🆓 <b>{free_t['name']}</b>\n\n"
+                "Переход на бесплатный тариф — через <b>отмену</b> платной подписки. "
+                "До конца оплаченного периода останется текущий тариф.\n\n"
+                + "\n".join(f"• {f}" for f in free_t["features"])
+            )
+            b = InlineKeyboardBuilder()
+            if has_card:
+                b.row(
+                    InlineKeyboardButton(
+                        text="❌ Отменить подписку",
+                        callback_data="cancel_sub_start",
+                    )
+                )
+            b.row(InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers"))
+            await callback.message.edit_text(
+                preview, parse_mode="HTML", reply_markup=b.as_markup()
+            )
+            await callback.answer()
+            return
 
         end_str = "—"
         if row and row["subscription_end"]:
-            end_str = row["subscription_end"].strftime("%d.%m.%Y")
+            end_str = (
+                format_subscription_end_for_display(row["subscription_end"]) or "—"
+            )
 
         used_gb = snap["bypassUsedGb"]
         limit_gb = snap["bypassLimitGb"]
@@ -431,45 +448,55 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             f"📊 <b>Ваш тариф: {tier_info.get('name', tier_id)}</b>\n\n"
             f"📅 Подписка до: <b>{end_str}</b>\n\n"
             f"🔓 <b>Bypass трафик:</b>\n"
-            f"  Использовано: {used_gb:.1f} / {limit_gb:.0f} ГБ ({percent:.0f}%)\n"
-            f"  Осталось: <b>{remaining_gb:.1f} ГБ</b>\n"
+            f"  Использовано: {used_gb:.1f} / {limit_gb:.0f} ГБ ({percent:.0f}%)"
         )
+        from ..help_urls import bypass_help_link_html
         if snap["bypassBonusGb"] > 0:
-            text += f"  Бонус (докупка): +{snap['bypassBonusGb']} ГБ\n"
+            text += f" (+{snap['bypassBonusGb']} ГБ пакет)"
+        text += bypass_help_link_html() + (
+            f"\n  Осталось: <b>{remaining_gb:.1f} ГБ</b>\n"
+        )
+        max_dev = tier_info.get("max_devices", 1)
+        devices_display = "безлимит" if max_dev >= 999 else f"до {max_dev}"
         text += f"\n🌐 Обычный VPN: <b>безлимит</b>\n"
-        text += f"📱 Устройств: до {tier_info.get('max_devices', '?')}\n"
+        text += f"📱 Устройств: {devices_display}\n"
 
         if snap["bypassExceeded"]:
-            text += "\n⚠️ <b>Bypass лимит исчерпан!</b> Докупите ГБ или повысьте тариф.\n"
+            text += "\n⚠️ <b>Bypass лимит исчерпан!</b> Докупите ГБ или перейдите на Plus.\n"
+
+        is_paid_active = tier_id in ALL_PAID_TIER_IDS and has_card
 
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(
-                text="📶 Лимиты",
-                callback_data="open_bypass_packs",
-            )
-        )
-        # Show upgrade button if possible
-        if tier_id in TIER_ORDER:
-            idx = TIER_ORDER.index(tier_id)
-            if idx < len(TIER_ORDER) - 1:
-                next_tier = TIER_ORDER[idx + 1]
-                next_name = TIERS[next_tier]["name"]
-                builder.row(
-                    InlineKeyboardButton(
-                        text=f"⬆️ Повысить до {next_name}",
-                        callback_data=f"tier_upgrade:{next_tier}",
-                    )
+        if tier_id != FREE_TIER_ID:
+            builder.row(
+                InlineKeyboardButton(
+                    text="📶 Лимиты",
+                    callback_data="open_bypass_packs",
                 )
-        builder.row(
-            InlineKeyboardButton(text="❌ Отменить подписку", callback_data="cancel_sub_start")
-        )
+            )
+        elif tier_id == FREE_TIER_ID:
+            builder.row(
+                InlineKeyboardButton(
+                    text="🚀 Перейти на Plus",
+                    callback_data="open_tiers",
+                )
+            )
+        if is_paid_active:
+            builder.row(
+                InlineKeyboardButton(
+                    text="❌ Отменить подписку",
+                    callback_data="cancel_sub_start",
+                )
+            )
         builder.row(
             InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers")
         )
 
         await callback.message.edit_text(
-            text, parse_mode="HTML", reply_markup=builder.as_markup()
+            text,
+            parse_mode="HTML",
+            reply_markup=builder.as_markup(),
+            disable_web_page_preview=True,
         )
         await callback.answer()
 
@@ -505,34 +532,21 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             b.row(InlineKeyboardButton(text="❌ Всё равно отменить", callback_data="cancel_sub_final"))
             b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_info:{current_tier}"))
         else:
-            # First time — offer 50% discount
+            # First time — offer 50% discount on Plus
             text = (
                 "😢 <b>Жаль, что вы хотите уйти</b>\n\n"
                 "Специально для вас — <b>скидка 50%</b> на следующий месяц!\n"
             )
             b = InlineKeyboardBuilder()
             plans = await get_tier_plans()
-            current_plan_id = f"{current_tier}_1m"
-            if current_plan_id in plans:
-                plan = plans[current_plan_id]
+            plan_id = "plus_1m"
+            plan = plans.get(plan_id)
+            if plan:
                 half_price = plan["price_rub"] // 2
                 b.row(InlineKeyboardButton(
-                    text=f"🔥 {TIERS[current_tier]['name']} за {format_price_rub(half_price)}",
-                    callback_data=f"cancel_offer_50:{current_plan_id}",
+                    text=f"🔥 Plus за {format_price_rub(half_price)}",
+                    callback_data=f"cancel_offer_50:{plan_id}",
                 ))
-
-            # Offer upgrades at 50% too
-            if current_tier in TIER_ORDER:
-                idx = TIER_ORDER.index(current_tier)
-                for higher_tier in TIER_ORDER[idx + 1:]:
-                    higher_plan_id = f"{higher_tier}_1m"
-                    if higher_plan_id in plans:
-                        hp = plans[higher_plan_id]
-                        half = hp["price_rub"] // 2
-                        b.row(InlineKeyboardButton(
-                            text=f"⬆️ {TIERS[higher_tier]['name']} за {format_price_rub(half)}",
-                            callback_data=f"cancel_offer_50:{higher_plan_id}",
-                        ))
 
             b.row(InlineKeyboardButton(text="❌ Всё равно отменить", callback_data="cancel_sub_step2"))
             b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_info:{current_tier}"))
@@ -662,18 +676,19 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
 
     @dp.callback_query(F.data == "cancel_sub_step3")
     async def handle_cancel_sub_step3(callback: CallbackQuery):
-        """Step 3: Offer any tier for 1₽/month."""
+        """Step 3: Offer Plus for 1₽/month."""
         text = (
             "💰 <b>Последнее предложение!</b>\n\n"
-            "Любой тариф всего за <b>1₽</b> на следующий месяц:"
+            "Тариф <b>Plus</b> всего за <b>1₽</b> на следующий месяц:\n\n"
+            "• 50 ГБ bypass/мес\n"
+            "• YouTube / TikTok / AI работают\n"
+            "• Безлимит устройств"
         )
         b = InlineKeyboardBuilder()
-        for tier_id in TIER_ORDER:
-            t = TIERS[tier_id]
-            b.row(InlineKeyboardButton(
-                text=f"{t['name']} за 1₽",
-                callback_data=f"cancel_offer_1rub:{tier_id}_1m",
-            ))
+        b.row(InlineKeyboardButton(
+            text="💎 Plus за 1₽",
+            callback_data="cancel_offer_1rub:plus_1m",
+        ))
         b.row(InlineKeyboardButton(text="❌ Нет, отменить подписку", callback_data="cancel_sub_final"))
         b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="cancel_sub_step2"))
 
@@ -765,244 +780,6 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         await callback.answer()
 
     # ------------------------------------------------------------------
-    # Tier downgrade (no immediate payment, applies on next billing)
-    # ------------------------------------------------------------------
-    @dp.callback_query(F.data.startswith("tier_downgrade:"))
-    async def handle_tier_downgrade(callback: CallbackQuery):
-        """Ask user to confirm downgrade."""
-        target_tier = callback.data.split(":")[1]
-        user_id = callback.from_user.id
-
-        if target_tier not in TIERS:
-            await callback.answer("❌ Тариф не найден", show_alert=True)
-            return
-
-        async with get_connection() as conn:
-            row = await conn.fetchrow(
-                "SELECT subscription_tier, subscription_end FROM users WHERE user_id = $1",
-                user_id,
-            )
-        current_tier = (row["subscription_tier"] if row else None) or "none"
-        current_name = TIERS.get(current_tier, {}).get("name", current_tier)
-        target_name = TIERS[target_tier]["name"]
-
-        plans = await get_tier_plans_for_tier(target_tier)
-        if not plans:
-            await callback.answer("❌ Нет доступных планов", show_alert=True)
-            return
-        plan_id, plan_data = next(iter(plans.items()))
-        new_price = format_price_rub(plan_data["price_rub"])
-
-        end_str = row["subscription_end"].strftime("%d.%m.%Y") if row and row["subscription_end"] else "—"
-
-        text = (
-            f"⬇️ <b>Смена тарифа: {current_name} → {target_name}</b>\n\n"
-            f"Текущий тариф <b>{current_name}</b> останется до <b>{end_str}</b>.\n"
-            f"После этого автоматически перейдёте на <b>{target_name}</b> "
-            f"за <b>{new_price}/мес</b>.\n\n"
-            f"Подтвердить смену тарифа?"
-        )
-
-        b = InlineKeyboardBuilder()
-        b.row(InlineKeyboardButton(
-            text=f"✅ Перейти на {target_name}",
-            callback_data=f"tier_downgrade_confirm:{target_tier}",
-        ))
-        b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"))
-        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
-        await callback.answer()
-
-    @dp.callback_query(F.data.startswith("tier_downgrade_confirm:"))
-    async def handle_tier_downgrade_confirm(callback: CallbackQuery):
-        """Save pending downgrade — will apply on next autopay renewal."""
-        target_tier = callback.data.split(":")[1]
-        user_id = callback.from_user.id
-
-        if target_tier not in TIERS:
-            await callback.answer("❌ Тариф не найден", show_alert=True)
-            return
-
-        target_name = TIERS[target_tier]["name"]
-
-        async with get_connection() as conn:
-            await conn.execute(
-                "UPDATE users SET pending_downgrade_tier = $1 WHERE user_id = $2",
-                target_tier,
-                user_id,
-            )
-
-        b = InlineKeyboardBuilder()
-        b.row(InlineKeyboardButton(text="🏠 На главную", callback_data="go_back"))
-        await callback.message.edit_text(
-            f"✅ <b>Смена тарифа запланирована</b>\n\n"
-            f"Со следующего списания ваш тариф изменится на <b>{target_name}</b>.\n"
-            f"До конца текущего периода всё остаётся без изменений.",
-            parse_mode="HTML",
-            reply_markup=b.as_markup(),
-        )
-        await callback.answer()
-
-    @dp.callback_query(F.data.startswith("tier_downgrade_cancel:"))
-    async def handle_tier_downgrade_cancel(callback: CallbackQuery):
-        """Cancel a previously scheduled downgrade."""
-        user_id = callback.from_user.id
-        async with get_connection() as conn:
-            await conn.execute(
-                "UPDATE users SET pending_downgrade_tier = NULL WHERE user_id = $1",
-                user_id,
-            )
-        await callback.answer("✅ Смена тарифа отменена", show_alert=True)
-        text, markup = await build_tiers_message(user_id)
-        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
-
-    # ------------------------------------------------------------------
-    # Tier upgrade
-    # ------------------------------------------------------------------
-    @dp.callback_query(F.data.startswith("tier_upgrade:"))
-    async def handle_tier_upgrade(callback: CallbackQuery):
-        """Show upgrade options to a higher tier."""
-        target_tier = callback.data.split(":")[1]
-        user_id = callback.from_user.id
-
-        if target_tier not in TIERS:
-            await callback.answer("❌ Тариф не найден", show_alert=True)
-            return
-
-        t = TIERS[target_tier]
-        plans = await get_tier_plans_for_tier(target_tier)
-
-        async with get_connection() as conn:
-            row = await conn.fetchrow(
-                "SELECT subscription_tier, tier_duration_months FROM users WHERE user_id = $1",
-                user_id,
-            )
-
-        current_tier = (row["subscription_tier"] if row else None) or "none"
-        current_duration = (row["tier_duration_months"] if row else None) or 1
-        current_name = TIERS.get(current_tier, {}).get("name", current_tier)
-
-        text = (
-            f"⬆️ <b>Апгрейд: {current_name} → {t['name']}</b>\n\n"
-            f"Что получите:\n"
-        )
-        for feat in t["features"]:
-            text += f"  • {feat}\n"
-        text += (
-            f"\n💡 Срок подписки НЕ меняется.\n"
-            f"Bypass-лимит обновляется сразу.\n"
-            f"Оплата = разница между тарифами.\n\n"
-            f"Оформление апгрейда:"
-        )
-
-        builder = InlineKeyboardBuilder()
-        for plan_id, plan_data in plans.items():
-            result = await calculate_upgrade_price(
-                user_id, target_tier, plan_data["duration"]
-            )
-            if result["valid"]:
-                diff_text = format_price_both(result["price_rub"], result["price_stars"])
-                builder.row(
-                    InlineKeyboardButton(
-                        text=f"{plan_data['title']} — доплата {diff_text}",
-                        callback_data=f"tier_upgrade_pay:{plan_id}",
-                    )
-                )
-            else:
-                builder.row(
-                    InlineKeyboardButton(
-                        text=f"{plan_data['title']} — {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
-                        callback_data=f"tier_buy:{plan_id}",
-                    )
-                )
-
-        builder.row(
-            InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers")
-        )
-
-        await callback.message.edit_text(
-            text, parse_mode="HTML", reply_markup=builder.as_markup()
-        )
-        await callback.answer()
-
-    @dp.callback_query(F.data.startswith("tier_upgrade_pay:"))
-    async def handle_tier_upgrade_pay(callback: CallbackQuery):
-        """Redirect upgrade payment directly to tier_upgrade_do."""
-        plan_id = callback.data.split(":")[1]
-        await _do_tier_upgrade(callback, plan_id)
-
-    async def _do_tier_upgrade(callback: CallbackQuery, plan_id: str):
-        """Create YooKassa payment for tier upgrade with save_payment_method."""
-        user_id = callback.from_user.id
-
-        plans = await get_tier_plans()
-        if plan_id not in plans:
-            await callback.answer("❌ План не найден", show_alert=True)
-            return
-
-        plan = plans[plan_id]
-        result = await calculate_upgrade_price(user_id, plan["tier"], plan["duration"])
-        if not result["valid"]:
-            await callback.answer(f"❌ {result['reason']}", show_alert=True)
-            return
-
-        if not config.yookassa.enabled:
-            await callback.answer("❌ ЮKassa не настроена", show_alert=True)
-            return
-
-        price_rub = result["price_rub"]
-        if price_rub < 100:
-            await callback.answer("❌ Минимальная сумма 1₽", show_alert=True)
-            return
-        try:
-            yk = YooKassaClient(config.yookassa)
-            bot_info = await bot.get_me()
-            payment_data = yk.create_payment(
-                amount=price_rub / 100.0,
-                description=f"Апгрейд VPN → {plan['title']}",
-                return_url=f"https://t.me/{bot_info.username}?start=payment_success",
-                metadata={
-                    "user_id": str(user_id),
-                    "plan_id": plan_id,
-                    "method_id": "yookassa",
-                    "product_type": "tier_upgrade",
-                },
-                save_payment_method=True,
-                merchant_customer_id=str(user_id),
-            )
-            async with get_connection() as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    """,
-                    user_id, price_rub, "RUB", plan_id, "tier_upgrade", "pending",
-                    payment_data["id"],
-                )
-            b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(text="💳 Оплатить", url=payment_data["confirmation_url"]))
-            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_upgrade:{plan['tier']}"))
-            await callback.message.edit_text(
-                f"💳 <b>Апгрейд → {plan['title']}</b>\n\n"
-                f"Доплата: <b>{format_price_rub(price_rub)}</b>",
-                parse_mode="HTML",
-                reply_markup=b.as_markup(),
-            )
-            await callback.answer()
-        except Exception as e:
-            logger.error("upgrade yookassa: %s", e, exc_info=True)
-            await callback.answer("❌ Ошибка", show_alert=True)
-
-    @dp.callback_query(F.data.startswith("tier_upgrade_do:"))
-    async def handle_tier_upgrade_do(callback: CallbackQuery):
-        """Router for tier_upgrade_do: callbacks."""
-        parts = callback.data.split(":")
-        if len(parts) < 2:
-            await callback.answer("❌ Ошибка", show_alert=True)
-            return
-        plan_id = parts[1]
-        await _do_tier_upgrade(callback, plan_id)
-
-    # ------------------------------------------------------------------
     # Bypass GB pack purchase
     # ------------------------------------------------------------------
     @dp.callback_query(F.data == "open_bypass_packs")
@@ -1061,21 +838,6 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                     InlineKeyboardButton(
                         text=f"+{p['gb_amount']} ГБ — {format_price_both(p['price_rub'], p['price_stars'])}",
                         callback_data=f"bypass_pack_choose:{p['id']}",
-                    )
-                )
-
-        # Suggest upgrade if applicable
-        tier = snap.get("tier", "none")
-        if tier in TIER_ORDER:
-            idx = TIER_ORDER.index(tier)
-            if idx < len(TIER_ORDER) - 1:
-                next_tier = TIER_ORDER[idx + 1]
-                next_name = TIERS[next_tier]["name"]
-                next_gb = get_tier_bypass_gb(next_tier)
-                builder.row(
-                    InlineKeyboardButton(
-                        text=f"⬆️ Апгрейд до {next_name} ({next_gb} ГБ/мес)",
-                        callback_data=f"tier_upgrade:{next_tier}",
                     )
                 )
 

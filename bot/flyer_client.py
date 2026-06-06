@@ -1,144 +1,198 @@
 """
-Клиент для работы с Flyer Service API
-Документация: https://api.flyerservice.io/redoc
+Клиент Flyer API (api.flyerhubs.com).
+Документация: https://api.flyerhubs.com/redoc
 """
-import httpx
+from __future__ import annotations
+
 import logging
-from typing import Dict, Any, Optional
+import time
+from typing import Any
+
+import httpx
+
 from .config import FlyerConfig
 
 logger = logging.getLogger(__name__)
 
+SERVICE_SHUTDOWN_SEC = 5
+CHECK_CACHE_TTL_SEC = 60
+
+
+class FlyerAPIError(Exception):
+    pass
+
 
 class FlyerClient:
-    """Клиент для работы с Flyer Service API"""
-    
+    """HTTP-клиент Flyer API."""
+
     def __init__(self, config: FlyerConfig):
         self.config = config
         self.api_url = config.api_url.rstrip("/")
         self.api_key = config.api_key
-        self.enabled = config.enabled
-        
-        if not self.enabled:
-            logger.warning("Flyer Service integration is disabled")
+        self.enabled = config.enabled and bool(config.api_key)
+        self._service_down_until = 0.0
+        self._check_cache: dict[int, tuple[bool, float]] = {}
+        self._client: httpx.AsyncClient | None = None
+
+        if not config.enabled:
+            logger.info("Flyer integration disabled (FLYER_ENABLED=false)")
             return
-            
-        if not self.api_key:
-            logger.warning("Flyer API key is not set")
-            
+        if not config.api_key:
+            logger.warning("Flyer enabled but FLYER_API_KEY is not set")
+            return
+
         self._client = httpx.AsyncClient(
             base_url=self.api_url,
-            headers={
-                "Authorization": f"Bearer {self.api_key}" if self.api_key else "",
-                "Content-Type": "application/json",
-            },
-            timeout=30.0,
+            headers={"Content-Type": "application/json"},
+            timeout=httpx.Timeout(5.0),
         )
-    
-    async def close(self):
-        """Закрыть HTTP клиент"""
-        if hasattr(self, '_client'):
+
+    async def close(self) -> None:
+        if self._client:
             await self._client.aclose()
-    
-    async def check_user(self, user_id: int, language_code: str = "ru") -> bool:
-        """
-        Проверить, прошёл ли пользователь обязательную подписку
-        
-        Args:
-            user_id: ID пользователя Telegram
-            language_code: Код языка (по умолчанию ru)
-            
-        Returns:
-            True если пользователь прошёл подписку, False иначе
-        """
-        if not self.enabled or not self.api_key:
-            return True  # Если сервис отключен, пропускаем проверку
-        
+            self._client = None
+
+    def _service_unavailable(self) -> bool:
+        return time.time() < self._service_down_until
+
+    def _mark_service_down(self) -> None:
+        self._service_down_until = time.time() + SERVICE_SHUTDOWN_SEC
+
+    def _cache_get(self, user_id: int) -> bool | None:
+        entry = self._check_cache.get(user_id)
+        if not entry:
+            return None
+        subscribed, expires_at = entry
+        if time.time() >= expires_at:
+            self._check_cache.pop(user_id, None)
+            return None
+        return subscribed
+
+    def _cache_set(self, user_id: int, subscribed: bool) -> None:
+        if subscribed:
+            self._check_cache[user_id] = (True, time.time() + CHECK_CACHE_TTL_SEC)
+
+    async def _request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        if not self._client or not self.api_key:
+            raise FlyerAPIError("Flyer client is not configured")
+
+        payload = {"key": self.api_key, **(params or {})}
         try:
-            response = await self._client.post(
-                "/api/check",
-                json={
-                    "user_id": user_id,
-                    "language_code": language_code,
-                }
-            )
+            response = await self._client.post(f"/{method}", json=payload)
             response.raise_for_status()
             data = response.json()
-            return data.get("subscribed", False)
-        except Exception as e:
-            logger.error(f"Error checking user {user_id} in Flyer Service: {e}")
-            return True  # В случае ошибки пропускаем проверку
-    
-    async def create_task(
+        except httpx.RequestError as e:
+            self._mark_service_down()
+            logger.error("Flyer %s request failed: %s", method, e)
+            raise FlyerAPIError(str(e)) from e
+        except httpx.HTTPStatusError as e:
+            logger.error("Flyer %s HTTP error: %s", method, e)
+            raise FlyerAPIError(str(e)) from e
+
+        if data.get("error"):
+            logger.error("Flyer %s error: %s", method, data["error"])
+        elif data.get("warning"):
+            logger.warning("Flyer %s warning: %s", method, data["warning"])
+        elif data.get("info"):
+            logger.info("Flyer %s info: %s", method, data["info"])
+
+        return data
+
+    async def get_me(self) -> dict[str, Any]:
+        """Информация о ключе бота."""
+        return await self._request("get_me")
+
+    async def check(
         self,
         user_id: int,
-        channel_username: str,
-        key_number: Optional[int] = None,
-        **kwargs
-    ) -> Optional[Dict[str, Any]]:
+        language_code: str | None = None,
+        message: dict[str, Any] | None = None,
+    ) -> bool:
         """
-        Создать задание для пользователя
-        
-        Args:
-            user_id: ID пользователя Telegram
-            channel_username: Username канала (без @)
-            key_number: Номер ключа в сервисе (опционально)
-            **kwargs: Дополнительные параметры
-            
-        Returns:
-            Данные созданного задания или None в случае ошибки
+        Проверка обязательной подписки.
+        True — пользователь прошёл проверку (skip), False — нужно подписаться.
         """
-        if not self.enabled or not self.api_key:
-            logger.warning("Flyer Service is not enabled or API key is missing")
-            return None
-        
+        if not self.enabled:
+            return True
+        if user_id < 0:
+            return True
+        if self._service_unavailable():
+            return True
+
+        cached = self._cache_get(user_id)
+        if cached is True:
+            return True
+
+        params: dict[str, Any] = {"user_id": user_id}
+        if language_code:
+            params["language_code"] = language_code
+        if message:
+            params["message"] = message
+
         try:
-            payload = {
-                "user_id": user_id,
-                "channel_username": channel_username,
-                **kwargs
-            }
-            
-            if key_number:
-                payload["key_number"] = key_number
-            
-            response = await self._client.post(
-                "/api/tasks",
-                json=payload
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Error creating task in Flyer Service: {e}")
-            return None
-    
-    async def get_task_status(self, task_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Получить статус задания
-        
-        Args:
-            task_id: ID задания
-            
-        Returns:
-            Данные задания или None в случае ошибки
-        """
-        if not self.enabled or not self.api_key:
-            return None
-        
+            result = await self._request("check", params)
+        except FlyerAPIError:
+            return True
+
+        if "skip" not in result and result.get("error"):
+            raise FlyerAPIError(result["error"])
+
+        subscribed = bool(result.get("skip"))
+        if subscribed and "error" not in result:
+            self._cache_set(user_id, True)
+        return subscribed
+
+    async def get_tasks(
+        self,
+        user_id: int,
+        language_code: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Задания для пользователя (каналы, боты, ссылки)."""
+        if not self.enabled or user_id < 0 or self._service_unavailable():
+            return []
+
+        params: dict[str, Any] = {"user_id": user_id}
+        if language_code:
+            params["language_code"] = language_code
+        if limit is not None:
+            params["limit"] = limit
+
         try:
-            response = await self._client.get(f"/api/tasks/{task_id}")
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Error getting task status {task_id}: {e}")
+            result = await self._request("get_tasks", params)
+        except FlyerAPIError:
+            return []
+
+        if "result" not in result and result.get("error"):
+            raise FlyerAPIError(result["error"])
+        tasks = result.get("result")
+        return tasks if isinstance(tasks, list) else []
+
+    async def check_task(self, signature: str) -> str | None:
+        """Статус задания: complete, incomplete, waiting, unavailable, abort."""
+        if not self.enabled:
             return None
 
+        try:
+            result = await self._request("check_task", {"signature": signature})
+        except FlyerAPIError:
+            return None
 
+        if "result" not in result and result.get("error"):
+            raise FlyerAPIError(result["error"])
+        return result.get("result")
 
+    async def get_completed_tasks(self, user_id: int) -> dict[str, Any] | None:
+        """Выполненные задания пользователя."""
+        if not self.enabled or user_id < 0 or self._service_unavailable():
+            return None
 
+        try:
+            result = await self._request("get_completed_tasks", {"user_id": user_id})
+        except FlyerAPIError:
+            return None
 
-
-
-
-
-
+        if "result" not in result and result.get("error"):
+            raise FlyerAPIError(result["error"])
+        data = result.get("result")
+        return data if isinstance(data, dict) else None

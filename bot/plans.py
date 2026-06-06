@@ -1,14 +1,14 @@
 """
 Модуль для работы с планами подписки.
 
-Новая система тарифов: Lite / Standard / Pro с bypass-лимитами.
-Legacy-планы сохранены для обратной совместимости.
+Тарифы: Free (бесплатный) и Plus (платный).
+Legacy-тарифы lite/standard/pro сохранены только для исторических записей в БД.
 """
 from __future__ import annotations
 
 import copy
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict
 
 from .database import get_connection
@@ -19,61 +19,86 @@ logger = logging.getLogger(__name__)
 # Tier definitions (new system)
 # ---------------------------------------------------------------------------
 
+FREE_TIER_ID = "free"
+PAID_TIER_IDS = ("plus",)
+# Исторические тарифы (lite/standard/pro) — только для legacy-записей в БД.
+LEGACY_TIER_IDS = ("lite", "standard", "pro")
+# Все платные ID включая legacy — для SQL-фильтров исторических данных.
+ALL_PAID_TIER_IDS = PAID_TIER_IDS + LEGACY_TIER_IDS
+
+FREE_SUBSCRIPTION_END = date(2099, 12, 31)
+# Даты >= порога — «бессрочный» sentinel (Free), не продлеваем при покупке тарифа.
+SENTINEL_SUBSCRIPTION_END_THRESHOLD = date(2090, 1, 1)
+
 TIERS = {
-    "lite": {
-        "name": "Lite",
-        "bypass_gb": 30,
-        "max_devices": 3,
+    "free": {
+        "name": "Free",
+        "bypass_gb": 5,
+        "max_devices": 1,
         "priority": "normal",
-        "features": ["30 ГБ bypass", "Безлимит обычного VPN", "До 3 устройств"],
+        "features": [
+            "5 ГБ bypass в месяц",
+            "Один безлимитный сервер VPN",
+            "1 устройство",
+        ],
+    },
+    "plus": {
+        "name": "Plus",
+        "bypass_gb": 50,
+        "max_devices": 999,  # безлимит устройств
+        "priority": "high",
+        "features": [
+            "50 ГБ bypass в месяц",
+            "YouTube / TikTok / AI работают",
+            "Подключение за 30 сек",
+            "Безлимит устройств",
+        ],
+    },
+    # Legacy-тарифы: отображение для старых записей в БД
+    "lite": {
+        "name": "Plus",  # показываем как Plus в UI
+        "bypass_gb": 50,
+        "max_devices": 999,
+        "priority": "high",
+        "features": ["50 ГБ bypass в месяц", "YouTube / TikTok / AI работают", "Безлимит устройств"],
     },
     "standard": {
-        "name": "Standard",
-        "bypass_gb": 100,
-        "max_devices": 5,
+        "name": "Plus",
+        "bypass_gb": 50,
+        "max_devices": 999,
         "priority": "high",
-        "features": ["100 ГБ bypass", "Приоритет bypass", "Безлимит обычного VPN", "До 5 устройств"],
+        "features": ["50 ГБ bypass в месяц", "YouTube / TikTok / AI работают", "Безлимит устройств"],
     },
     "pro": {
-        "name": "Pro",
-        "bypass_gb": 300,
-        "max_devices": 10,
-        "priority": "highest",
-        "features": ["300 ГБ bypass", "Высокий приоритет bypass", "Безлимит обычного VPN", "До 10 устройств"],
+        "name": "Plus",
+        "bypass_gb": 50,
+        "max_devices": 999,
+        "priority": "high",
+        "features": ["50 ГБ bypass в месяц", "YouTube / TikTok / AI работают", "Безлимит устройств"],
     },
 }
 
-# Base prices for tiers (price_rub in kopecks, price_stars = face value)
+# Цены тарифов (price_rub в копейках, price_stars — номинал)
 TIER_PLANS_BASE: Dict[str, Dict[str, Any]] = {
-    # Lite
-    "lite_1m": {
-        "tier": "lite",
-        "title": "Lite · 1 месяц",
+    # Plus — 1 месяц (30 дней)
+    "plus_1m": {
+        "tier": "plus",
+        "title": "Plus · 1 месяц",
         "duration": 1,
-        "bypass_gb": 30,
-        "max_devices": 3,
-        "price_rub": 9900,      # 99₽
-        "price_stars": 99,
+        "bypass_gb": 50,
+        "max_devices": 999,
+        "price_rub": 14900,     # 149₽/мес
+        "price_stars": 149,
     },
-    # Standard (ЮKassa: сохранение карты для автопродления — см. recurring)
-    "standard_1m": {
-        "tier": "standard",
-        "title": "Standard · 1 месяц",
-        "duration": 1,
-        "bypass_gb": 100,
-        "max_devices": 5,
-        "price_rub": 19900,     # 199₽
-        "price_stars": 199,
-    },
-    # Pro
-    "pro_1m": {
-        "tier": "pro",
-        "title": "Pro · 1 месяц",
-        "duration": 1,
-        "bypass_gb": 300,
-        "max_devices": 10,
-        "price_rub": 39900,     # 399₽
-        "price_stars": 399,
+    # Plus — 12 месяцев (365 дней, ~83₽/мес)
+    "plus_12m": {
+        "tier": "plus",
+        "title": "Plus · 12 месяцев",
+        "duration": 12,
+        "bypass_gb": 50,
+        "max_devices": 999,
+        "price_rub": 99900,     # 999₽/год
+        "price_stars": 999,
     },
 }
 
@@ -85,15 +110,12 @@ BYPASS_PACKS_DEFAULT = [
     {"gb": 300, "price_rub": 69900, "price_stars": 699},
 ]
 
-# Legacy fair-use limit (hidden, for old subscribers)
-LEGACY_FAIR_USE_GB = 500
-
-# Tier priority order for upgrades
-TIER_ORDER = ["lite", "standard", "pro"]
+# Порядок тарифов (один платный тариф)
+TIER_ORDER = ["plus"]
 
 
 def tier_plan_uses_yookassa_autopay_binding(plan_id: str) -> bool:
-    """Любой tier-план (lite/standard/pro) оплачивается с save_payment_method для автосписания."""
+    """Любой tier-план оплачивается с save_payment_method для автосписания."""
     return plan_id in TIER_PLANS_BASE
 
 # ---------------------------------------------------------------------------
@@ -218,6 +240,13 @@ async def get_tier_plans_for_tier(tier: str) -> Dict[str, Dict[str, Any]]:
     return {k: v for k, v in all_plans.items() if v.get("tier") == tier}
 
 
+async def get_plus_per_month_from_yearly() -> int:
+    """₽/мес при оплате Plus на год (годовая цена из БД ÷ 12, как в экране тарифов)."""
+    plans = await get_tier_plans()
+    plan = plans.get("plus_12m") or TIER_PLANS_BASE["plus_12m"]
+    return int(plan["price_rub"]) // 1200
+
+
 async def get_bypass_packs() -> list[Dict[str, Any]]:
     """Get bypass GB packs from DB."""
     try:
@@ -251,62 +280,88 @@ def get_tier_priority(tier: str) -> str:
     return t["priority"] if t else "normal"
 
 
+def is_paid_tier(tier: str | None) -> bool:
+    """Возвращает True для активного платного тарифа (plus) и legacy-тарифов."""
+    return tier in ALL_PAID_TIER_IDS
+
+
+def subscription_end_date(subscription_end: object) -> date | None:
+    if subscription_end is None:
+        return None
+    if isinstance(subscription_end, datetime):
+        return subscription_end.date()
+    if isinstance(subscription_end, date):
+        return subscription_end
+    if isinstance(subscription_end, str):
+        return datetime.strptime(subscription_end.split()[0], "%Y-%m-%d").date()
+    return None
+
+
+def is_subscription_active(
+    pay_subscribed: bool | None,
+    subscription_end: object,
+) -> bool:
+    if not pay_subscribed or subscription_end is None:
+        return False
+    end = subscription_end_date(subscription_end)
+    if end is None:
+        return False
+    return end >= datetime.now().date()
+
+
+def is_sentinel_subscription_end(subscription_end: object) -> bool:
+    """Бессрочная/служебная дата (Free до 2099), не реальный срок платной подписки."""
+    end = subscription_end_date(subscription_end)
+    if end is None:
+        return False
+    return end >= SENTINEL_SUBSCRIPTION_END_THRESHOLD
+
+
+def should_reset_subscription_period_on_purchase(
+    *,
+    pay_subscribed: bool | None,
+    subscription_end: object,
+    subscription_tier: str | None,
+) -> bool:
+    """
+    Новая платная подписка считается от сегодня, если:
+    - нет активной подписки;
+    - тариф Free;
+    - дата окончания — sentinel (2099 и т.п.).
+    Иначе — продление от текущей даты окончания.
+    """
+    if not pay_subscribed or subscription_end is None:
+        return True
+    tier = (subscription_tier or "").strip() or FREE_TIER_ID
+    if tier == FREE_TIER_ID:
+        return True
+    if is_sentinel_subscription_end(subscription_end):
+        return True
+    end = subscription_end_date(subscription_end)
+    if end is None:
+        return True
+    return end < datetime.now().date()
+
+
+def format_subscription_end_for_display(subscription_end: object) -> str | None:
+    """Дата для UI; sentinel не показываем как «до 2099/2100»."""
+    if is_sentinel_subscription_end(subscription_end):
+        return None
+    end = subscription_end_date(subscription_end)
+    if end is None:
+        return None
+    return end.strftime("%d.%m.%Y")
+
+
 # ---------------------------------------------------------------------------
-# Upgrade logic
+# Upgrade logic (упрощено: один платный тариф Plus, upgrade не нужен)
 # ---------------------------------------------------------------------------
 
 def can_upgrade(current_tier: str, target_tier: str) -> bool:
-    """Check if upgrade from current to target tier is valid."""
-    if current_tier not in TIER_ORDER or target_tier not in TIER_ORDER:
-        return False
-    return TIER_ORDER.index(target_tier) > TIER_ORDER.index(current_tier)
-
-
-async def calculate_upgrade_price(
-    user_id: int, target_tier: str, target_duration: int
-) -> Dict[str, Any]:
-    """
-    Calculate upgrade cost: new tier price - already paid amount.
-    Returns {'price_rub': int, 'price_stars': int, 'valid': bool, 'reason': str}.
-    """
-    plans = await get_tier_plans()
-    target_key = f"{target_tier}_{target_duration}m"
-    if target_key not in plans:
-        return {"valid": False, "reason": "Целевой тариф не найден", "price_rub": 0, "price_stars": 0}
-
-    target_plan = plans[target_key]
-
-    async with get_connection() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT subscription_tier, tier_price_paid, tier_duration_months,
-                   subscription_end, pay_subscribed
-            FROM users WHERE user_id = $1
-            """,
-            user_id,
-        )
-    if not row or not row["pay_subscribed"]:
-        return {"valid": False, "reason": "Нет активной подписки", "price_rub": 0, "price_stars": 0}
-
-    current_tier = row["subscription_tier"] or "legacy"
-    if current_tier == "legacy":
-        return {"valid": False, "reason": "Legacy подписки не поддерживают апгрейд через эту систему", "price_rub": 0, "price_stars": 0}
-
-    if not can_upgrade(current_tier, target_tier):
-        return {"valid": False, "reason": "Невозможно понизить тариф", "price_rub": 0, "price_stars": 0}
-
-    paid = int(row["tier_price_paid"] or 0)
-    diff_rub = max(0, target_plan["price_rub"] - paid)
-    diff_stars = max(0, target_plan["price_stars"] - int(paid / 100))
-
-    return {
-        "valid": True,
-        "reason": "",
-        "price_rub": diff_rub,
-        "price_stars": diff_stars,
-        "target_plan": target_plan,
-        "current_tier": current_tier,
-    }
+    """Переход с Free на Plus разрешён; нет многоуровневых апгрейдов."""
+    if current_tier == FREE_TIER_ID and target_tier in TIER_ORDER:
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +483,60 @@ async def get_user_tariffs(user_id: int) -> tuple[Dict[str, Dict[str, Any]], boo
     return active_plans, is_renew, show_discount
 
 
+async def build_expiry_reminder_markup(user_id: int):
+    """
+    Клавиатура для напоминаний о скором окончании подписки.
+    Plus/legacy — продление Plus и меню тарифов.
+    """
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT subscription_tier, tier_duration_months FROM users WHERE user_id = $1",
+            user_id,
+        )
+    tier = (row["subscription_tier"] if row else None) or "legacy"
+    duration = int((row["tier_duration_months"] if row else None) or 1)
+    builder = InlineKeyboardBuilder()
+
+    if tier in ALL_PAID_TIER_IDS:
+        plans = await get_tier_plans()
+        # Обновляем: legacy-пользователи продлеваются как Plus
+        effective_tier = "plus" if tier in LEGACY_TIER_IDS else tier
+        plan_id = f"{effective_tier}_{duration}m" if f"{effective_tier}_{duration}m" in plans else "plus_1m"
+        plan = plans.get(plan_id) or plans.get("plus_1m")
+        tier_name = "Plus"
+        if plan:
+            builder.row(
+                InlineKeyboardButton(
+                    text=(
+                        f"💳 Продлить Plus — "
+                        f"{format_price_both(plan['price_rub'], plan['price_stars'])}"
+                    ),
+                    callback_data=f"tier_pay:{plan_id}",
+                )
+            )
+        builder.row(
+            InlineKeyboardButton(text="💎 Тарифы", callback_data="open_tiers"),
+            InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
+        )
+        return builder, tier_name
+
+    current_tariffs, _, _ = await get_user_tariffs(user_id)
+    for plan_id, plan_data in current_tariffs.items():
+        builder.button(
+            text=f"{plan_data['title']} - {format_price_both(plan_data['price_rub'], plan_data['price_stars'])}",
+            callback_data=f"plan:{plan_id}",
+        )
+    builder.adjust(1)
+    builder.row(
+        InlineKeyboardButton(text="💎 Тарифы", callback_data="open_tiers"),
+        InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
+    )
+    return builder, None
+
+
 # ---------------------------------------------------------------------------
 # Formatting helpers
 # ---------------------------------------------------------------------------
@@ -445,6 +554,32 @@ def format_price_stars(price_stars: int) -> str:
 def format_price_both(price_rub: int, price_stars: int) -> str:
     """Форматирует цену в рублях и звездах"""
     return f"{format_price_rub(price_rub)} | {format_price_stars(price_stars)}"
+
+
+def _strikethrough_plain(text: str) -> str:
+    """Зачёркивание для текста кнопок (Telegram не поддерживает HTML в кнопках)."""
+    return "".join(c + "\u0336" for c in text)
+
+
+def format_tier_monthly_price_html(
+    price_cents: int, base_cents: int | None = None
+) -> str:
+    """HTML: 199₽/мес или <s>199₽</s> <b>149₽</b>/мес"""
+    rub = price_cents // 100
+    if base_cents and base_cents > price_cents:
+        return f"<s>{base_cents // 100}₽</s> <b>{rub}₽</b>/мес"
+    return f"<b>{rub}₽</b>/мес"
+
+
+def format_tier_monthly_price_button(
+    price_cents: int, base_cents: int | None = None
+) -> str:
+    """Подпись цены для inline-кнопки."""
+    rub = price_cents // 100
+    if base_cents and base_cents > price_cents:
+        old = _strikethrough_plain(f"{base_cents // 100}₽")
+        return f"{old} {rub}₽/мес"
+    return f"{rub}₽/мес"
 
 
 # ---------------------------------------------------------------------------

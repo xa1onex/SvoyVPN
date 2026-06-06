@@ -472,6 +472,86 @@ async def init_db() -> None:
                 ''')
         except Exception as e:
             logging.warning(f"Could not initialize referral_settings: {e}")
+
+        try:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS referral_invite_rewards (
+                    invited_user_id BIGINT PRIMARY KEY,
+                    inviter_id BIGINT NOT NULL,
+                    invited_reward_at TIMESTAMP,
+                    inviter_reward_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        except Exception as e:
+            logging.warning(f"Could not create referral_invite_rewards table: {e}")
+
+        try:
+            rs_cols = await conn.fetch(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'referral_settings'
+                """
+            )
+            rs_existing = {r["column_name"] for r in rs_cols}
+            if "purchase_bonus_percent" not in rs_existing:
+                await conn.execute(
+                    """
+                    ALTER TABLE referral_settings
+                    ADD COLUMN purchase_bonus_percent INTEGER DEFAULT 10
+                    """
+                )
+                logging.info("Added purchase_bonus_percent to referral_settings")
+            if "yearly_gift_every_n" not in rs_existing:
+                await conn.execute(
+                    """
+                    ALTER TABLE referral_settings
+                    ADD COLUMN yearly_gift_every_n INTEGER DEFAULT 3
+                    """
+                )
+                logging.info("Added yearly_gift_every_n to referral_settings")
+        except Exception as e:
+            logging.warning(f"Could not migrate referral_settings columns: {e}")
+
+        try:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS referral_purchase_rewards (
+                    id SERIAL PRIMARY KEY,
+                    payment_id BIGINT NOT NULL UNIQUE,
+                    referrer_id BIGINT NOT NULL,
+                    payer_user_id BIGINT NOT NULL,
+                    reward_days INTEGER NOT NULL,
+                    base_days INTEGER NOT NULL,
+                    bonus_percent INTEGER NOT NULL,
+                    is_yearly_plus BOOLEAN DEFAULT FALSE,
+                    product_label TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        except Exception as e:
+            logging.warning(f"Could not create referral_purchase_rewards table: {e}")
+
+        try:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS referral_tg_gift_claims (
+                    id SERIAL PRIMARY KEY,
+                    referrer_id BIGINT NOT NULL,
+                    payment_id BIGINT NOT NULL UNIQUE,
+                    milestone_no INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    admin_note TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    fulfilled_at TIMESTAMP
+                )
+                """
+            )
+        except Exception as e:
+            logging.warning(f"Could not create referral_tg_gift_claims table: {e}")
         
         # Таблица для настроек скидок
         await conn.execute(

@@ -1240,7 +1240,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
 
     @dp.callback_query(F.data == "activate_trial")
     async def handle_activate_trial(callback: CallbackQuery, state: FSMContext):
-        """Пробный период: Standard за 1₽ с привязкой карты для автосписания."""
+        """Пробный период: Plus за 1₽ с привязкой карты для автосписания."""
         user_id = callback.from_user.id
 
         async with get_connection() as conn:
@@ -1266,11 +1266,11 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             bot_info = await bot.get_me()
             payment_data = yk.create_payment(
                 amount=1.00,
-                description=f"VPN Standard — пробный период ({trial_days} дн.)",
+                description=f"VPN Plus — пробный период ({trial_days} дн.)",
                 return_url=f"https://t.me/{bot_info.username}?start=payment_success",
                 metadata={
                     "user_id": str(user_id),
-                    "plan_id": "standard_1m",
+                    "plan_id": "plus_1m",
                     "method_id": "yookassa",
                     "product_type": "tier",
                     "is_trial": "true",
@@ -1285,7 +1285,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                     INSERT INTO payments (user_id, amount, currency, plan_id, plan_type, status, yookassa_payment_id)
                     VALUES ($1, $2, $3, $4, $5, $6, $7)
                     """,
-                    user_id, 100, "RUB", "standard_1m", "tier", "pending",
+                    user_id, 100, "RUB", "plus_1m", "tier", "pending",
                     payment_data["id"],
                 )
                 await conn.execute(
@@ -1298,10 +1298,10 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             b.row(InlineKeyboardButton(text="💳 Перейти к оплате (1₽)", url=payment_data["confirmation_url"]))
             b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
             await callback.message.edit_text(
-                f"🆓 <b>Пробный период — Standard</b>\n\n"
+                f"🆓 <b>Пробный период — Plus</b>\n\n"
                 f"Период: <b>{trial_days} дней</b>\n"
                 f"Стоимость: <b>1₽</b>\n\n"
-                f"100 ГБ bypass · До 5 устройств · Безлимит VPN",
+                f"50 ГБ bypass · Безлимит устройств · Безлимит VPN",
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
             )

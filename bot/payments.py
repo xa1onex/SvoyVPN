@@ -311,6 +311,18 @@ async def process_gb_pack_webhook_payment(
             logger.error("gb_pack notify user %s: %s", user_id, e, exc_info=True)
 
     logger.info("gb_pack webhook %s completed for user %s", payment_id, user_id)
+
+    from .referral_purchases import referral_reward_after_payment
+
+    await referral_reward_after_payment(
+        bot,
+        payer_user_id=user_id,
+        plan_type="gb_pack",
+        plan_id=plan_key,
+        amount_cents=amount_cents,
+        yookassa_payment_id=payment_id,
+    )
+
     return True
 
 
@@ -434,6 +446,18 @@ async def process_telegram_gb_pack_payment(
         ),
         parse_mode="HTML",
     )
+
+    from .referral_purchases import referral_reward_after_payment
+
+    await referral_reward_after_payment(
+        bot,
+        payer_user_id=user_id,
+        plan_type="gb_pack",
+        plan_id=plan_key,
+        amount_cents=int(total_amount or 0),
+        telegram_payment_charge_id=charge_id,
+    )
+
     return True
 
 
@@ -752,7 +776,19 @@ async def process_telegram_stars_payment(
                     )
                 except Exception as e:
                     logger.error(f"Failed to send admin notification to {admin_id}: {e}")
-        
+
+        from .referral_purchases import referral_reward_after_payment
+
+        amount_cents = int(plan_data.get("price_rub") or total_amount or 0)
+        await referral_reward_after_payment(
+            bot,
+            payer_user_id=user_id,
+            plan_type="subscription",
+            plan_id=plan_id,
+            amount_cents=amount_cents,
+            telegram_payment_charge_id=charge_id,
+        )
+
         return True
 
 
@@ -1012,6 +1048,18 @@ async def process_webhook_payment(
                             logger.error(f"Failed to send admin notification to {admin_id}: {e}")
             
             logger.info(f"Successfully processed webhook payment {payment_id} for user {user_id}")
+
+            from .referral_purchases import referral_reward_after_payment
+
+            await referral_reward_after_payment(
+                bot,
+                payer_user_id=user_id,
+                plan_type="subscription",
+                plan_id=plan_id,
+                amount_cents=amount_cents,
+                yookassa_payment_id=payment_id,
+            )
+
             return True
         
     except Exception as e:

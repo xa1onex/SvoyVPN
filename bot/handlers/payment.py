@@ -16,7 +16,6 @@ from ..payments import (
 )
 from ..tier_payments import (
     process_tier_stars_payment,
-    process_tier_upgrade_stars_payment,
     process_bypass_pack_stars_payment,
 )
 from ..plans import get_subscription_plans, get_renewal_plans, PAYMENT_METHODS
@@ -68,9 +67,10 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
                 return
 
             if raw_pl.startswith("tier_upgrade|"):
+                # Upgrade flow removed (single Plus tier); treat as regular tier purchase
                 parts = raw_pl.split("|")
                 plan_id = parts[1] if len(parts) > 1 else ""
-                await process_tier_upgrade_stars_payment(message, bot, plan_id, config, source="bot")
+                await process_tier_stars_payment(message, bot, plan_id, config, source="bot")
                 return
 
             if raw_pl.startswith("bypass_pack|"):
