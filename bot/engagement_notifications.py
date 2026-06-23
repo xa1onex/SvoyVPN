@@ -43,32 +43,100 @@ async def run_engagement_notifications(bot: Bot, config: AppConfig) -> None:
         logger.error("engagement: lapsed_paid_trial_reset error: %s", e, exc_info=True)
 
 
+async def run_referral_trial_backfill(bot: Bot) -> None:
+    """
+    Разовая рассылка: реферал/UTM пользователи, кому доступен Plus за 1₽,
+    но ещё не получали это предложение.
+    """
+    from .trial_usage import get_trial_days, referral_trial_offer_text, user_show_referral_trial_offer
+
+    async with get_connection() as conn:
+        trial_days = await get_trial_days(conn)
+        if trial_days <= 0:
+            return
+        rows = await conn.fetch(
+            """
+            SELECT u.user_id
+            FROM users u
+            WHERE u.blacklisted = FALSE
+              AND (
+                  u.invited_by IS NOT NULL
+                  OR NULLIF(TRIM(u.utm_source), '') IS NOT NULL
+                  OR EXISTS (
+                      SELECT 1 FROM utm_visits v WHERE v.user_id = u.user_id
+                  )
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_notifications n
+                  WHERE n.user_id = u.user_id
+                    AND n.notification_type = 'referral_trial_1rub_offer'
+              )
+            LIMIT 300
+            """
+        )
+
+    sent = 0
+    for row in rows:
+        user_id = row["user_id"]
+        try:
+            async with get_connection() as conn:
+                if not await user_show_referral_trial_offer(conn, user_id):
+                    continue
+                await conn.execute(
+                    """
+                    INSERT INTO user_notifications (user_id, notification_type)
+                    VALUES ($1, $2)
+                    """,
+                    user_id,
+                    "referral_trial_1rub_offer",
+                )
+            b = InlineKeyboardBuilder()
+            b.row(InlineKeyboardButton(
+                text="🎁 Plus за 1₽ — попробовать",
+                callback_data="activate_trial",
+            ))
+            await bot.send_message(
+                user_id,
+                referral_trial_offer_text(trial_days),
+                parse_mode="HTML",
+                reply_markup=b.as_markup(),
+            )
+            sent += 1
+        except Exception as e:
+            logger.debug("referral trial backfill: user=%s err=%s", user_id, e)
+    if sent:
+        logger.info("referral trial backfill: sent=%s", sent)
+
+
 # ---------------------------------------------------------------------------
 # 1. Registered but idle — send gift + trial button
 # ---------------------------------------------------------------------------
 
 async def _notify_idle_new_users(bot: Bot) -> None:
-    """Users who registered 1+ day ago, on Free tier, never used trial,
-    and haven't been notified yet."""
+    """Free-пользователи 1–7 дней после регистрации с рефералом/UTM и доступным триалом 1₽."""
     async with get_connection() as conn:
+        from .trial_usage import user_show_referral_trial_offer
+
         rows = await conn.fetch(
             """
             SELECT u.user_id
             FROM users u
-            WHERE u.trial_used = FALSE
-              AND COALESCE(u.subscription_tier, 'free') NOT IN ('plus', 'lite', 'standard', 'pro')
-              AND u.registration_date < NOW() - INTERVAL '1 day'
+            WHERE u.registration_date < NOW() - INTERVAL '1 day'
               AND u.registration_date > NOW() - INTERVAL '7 days'
+              AND u.blacklisted = FALSE
               AND NOT EXISTS (
                   SELECT 1 FROM user_notifications n
                   WHERE n.user_id = u.user_id AND n.notification_type = 'idle_new_gift'
               )
-            LIMIT 50
+            LIMIT 80
             """
         )
 
     for row in rows:
         user_id = row["user_id"]
+        async with get_connection() as conn:
+            if not await user_show_referral_trial_offer(conn, user_id):
+                continue
         try:
             b = InlineKeyboardBuilder()
             b.row(InlineKeyboardButton(
@@ -237,48 +305,54 @@ async def _notify_cancelled_users(bot: Bot, config: AppConfig) -> None:
 
 async def _reset_trial_for_lapsed_paid_users(bot: Bot) -> None:
     """
-    Если пользователь имел платный тариф (lite/standard/pro), он истёк
-    30+ дней назад и за это время не было новой покупки — сбрасываем
-    trial_used обратно в FALSE и отправляем уведомление с предложением Pro за 1₽.
+    Plus закончился 30+ дней назад (триал, покупка, UTM, реферал — без разницы),
+    карта не привязана — снова предлагаем Plus за 1₽ для привязки карты.
     """
+    from .trial_usage import can_retry_trial_after_lapse, sync_trial_used_flag, user_show_referral_trial_offer
+
     async with get_connection() as conn:
-        rows = await conn.fetch(
+        candidates = await conn.fetch(
             """
-            SELECT u.user_id
-            FROM users u
-            WHERE u.last_paid_sub_ended_at IS NOT NULL
-              AND u.last_paid_sub_ended_at < NOW() - INTERVAL '30 days'
-              AND COALESCE(u.subscription_tier, 'free') NOT IN ('plus', 'lite', 'standard', 'pro')
-              AND u.trial_used = TRUE
-              AND u.blacklisted = FALSE
-              AND NOT EXISTS (
-                  SELECT 1 FROM payments p
-                  WHERE p.user_id = u.user_id
-                    AND p.status = 'completed'
-                    AND p.amount > 100
-                    AND p.timestamp > u.last_paid_sub_ended_at
+            SELECT user_id FROM users
+            WHERE blacklisted = FALSE
+              AND yookassa_recurring_payment_method_id IS NULL
+              AND (
+                  last_plus_ended_at IS NOT NULL
+                  OR EXISTS (
+                      SELECT 1 FROM payments p
+                      WHERE p.user_id = users.user_id
+                        AND p.status = 'completed'
+                        AND p.currency = 'RUB'
+                  )
               )
-              AND NOT EXISTS (
-                  SELECT 1 FROM user_notifications n
-                  WHERE n.user_id = u.user_id
-                    AND n.notification_type = 'lapsed_paid_trial_reset'
-                    AND n.created_at > NOW() - INTERVAL '30 days'
-              )
-            LIMIT 50
+            LIMIT 200
             """
         )
 
-    for row in rows:
+    for row in candidates:
         user_id = row["user_id"]
         try:
             async with get_connection() as conn:
-                await conn.execute(
-                    "UPDATE users SET trial_used = FALSE WHERE user_id = $1",
+                if not await can_retry_trial_after_lapse(conn, user_id):
+                    continue
+                if not await user_show_referral_trial_offer(conn, user_id):
+                    continue
+                already = await conn.fetchval(
+                    """
+                    SELECT 1 FROM user_notifications
+                    WHERE user_id = $1
+                      AND notification_type = 'lapsed_paid_trial_reset'
+                      AND created_at > NOW() - INTERVAL '30 days'
+                    """,
                     user_id,
                 )
+                if already:
+                    continue
+                await sync_trial_used_flag(conn, user_id)
                 await conn.execute(
                     "INSERT INTO user_notifications (user_id, notification_type) VALUES ($1, $2)",
-                    user_id, "lapsed_paid_trial_reset",
+                    user_id,
+                    "lapsed_paid_trial_reset",
                 )
 
             b = InlineKeyboardBuilder()

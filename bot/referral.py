@@ -178,12 +178,11 @@ def format_earn_screen(ctx: dict[str, Any]) -> str:
     )
 
     rewards = (
-        "<b>Бонусы за оплаты друзей</b>\n"
+        "<b>Как получить до 2000₽ в подарок?</b>\n"
         "<blockquote>"
         f"• За каждую оплату друга — <b>{pct}%</b> дней подписки Plus вам\n"
         f"• За каждую <b>{every_n}-ю</b> годовую Plus — подарок в TG "
-        f"<b>{TG_GIFT_RUB_RANGE}</b> (свяжемся с вами)\n"
-        f"• До следующего подарка: <b>{until_gift}</b> × Plus год"
+        f"<b>{TG_GIFT_RUB_RANGE}</b>\n"
         "</blockquote>"
     )
 

@@ -19,6 +19,8 @@ from ..admin_panel import build_admin_stats_text, get_admin_panel_keyboard
 from ..config import AppConfig
 from ..plans import SUBSCRIPTION_PLANS_BASE, RENEWAL_PLANS_BASE, format_price_rub, format_price_stars, format_price_both, get_renewal_plans
 from ..subscriptions import create_or_activate_keys_for_all_servers, create_keys_for_specific_server, update_vless_links_for_server
+from ..user_block import block_user, unblock_user, invalidate_blacklist_cache
+from ..remnawave_client import build_remnawave_client
 from ..xui_client import XUIClient
 from ..webhook_server import WebhookServer
 
@@ -112,6 +114,7 @@ class AdminStates(StatesGroup):
     UTM_DESCRIPTION = State()
     UTM_BONUS_DAYS = State()
     USER_INFO_ID = State()
+    BLOCK_REASON = State()
 
 
 class AdminEditStates(StatesGroup):
@@ -124,10 +127,14 @@ class AdminManualReminderStates(StatesGroup):
 
 class AddServerSteps(StatesGroup):
     WAITING_NAME = State()
+    WAITING_PANEL_TYPE = State()
     WAITING_PANEL_URL = State()
     WAITING_USERNAME = State()
     WAITING_PASSWORD = State()
     WAITING_INBOUND_ID = State()
+    WAITING_NODE_IP = State()
+    WAITING_HOST_ADDRESS = State()
+    WAITING_HOST_PORT = State()
     WAITING_ORDER = State()
     WAITING_SYSTEM = State()
     CONFIRMING = State()
@@ -226,6 +233,195 @@ async def get_broadcast_constructor_menu(state_data: dict):
     builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back"))
     
     return status_text, builder.as_markup()
+
+
+async def _build_admin_user_card(target_user_id: int) -> tuple[str, InlineKeyboardBuilder] | None:
+    """Карточка пользователя для админки."""
+    from ..trial_usage import trial_status_for_admin
+    from ..plans import TIERS, FREE_TIER_ID, is_sentinel_subscription_end
+    from ..activity_log import format_activity_label
+
+    async with get_connection() as conn:
+        user = await conn.fetchrow(
+            """
+            SELECT user_id, username, first_name, registration_date, last_activity,
+                   pay_subscribed, subscription_end, subscription_tier,
+                   invited_by, referral_count, balance, trial_used, utm_source,
+                   yookassa_recurring_payment_method_id, autopay_grace_until,
+                   blacklisted, blacklist_reason, blacklisted_at
+            FROM users WHERE user_id = $1
+            """,
+            target_user_id,
+        )
+        if not user:
+            return None
+
+        payments = await conn.fetch(
+            """
+            SELECT amount, currency, timestamp, status, plan_id
+            FROM payments
+            WHERE user_id = $1
+            ORDER BY timestamp DESC LIMIT 10
+            """,
+            target_user_id,
+        )
+
+        inviter_name = "Никто"
+        if user["invited_by"]:
+            inviter = await conn.fetchrow(
+                "SELECT first_name, username FROM users WHERE user_id = $1",
+                user["invited_by"],
+            )
+            if inviter:
+                inviter_name = (
+                    f"{inviter['first_name']} (@{inviter['username'] or '—'}) "
+                    f"[<code>{user['invited_by']}</code>]"
+                )
+
+        trial_label = await trial_status_for_admin(conn, target_user_id)
+        tier_id = (user.get("subscription_tier") or FREE_TIER_ID).strip() or FREE_TIER_ID
+        tier_name = TIERS.get(tier_id, {}).get("name", tier_id)
+        has_card = bool(user.get("yookassa_recurring_payment_method_id"))
+        grace_until = user.get("autopay_grace_until")
+        grace_str = grace_until.strftime("%d.%m.%Y") if grace_until else "—"
+
+        sub_status = (
+            "✅ Активна"
+            if user["pay_subscribed"]
+            and user["subscription_end"]
+            and user["subscription_end"] >= datetime.now()
+            else "❌ Неактивна"
+        )
+        if is_sentinel_subscription_end(user["subscription_end"]):
+            sub_end = "бессрочно (Free)"
+        else:
+            sub_end = (
+                user["subscription_end"].strftime("%d.%m.%Y %H:%M")
+                if user["subscription_end"]
+                else "—"
+            )
+        reg_date = (
+            user["registration_date"].strftime("%d.%m.%Y %H:%M")
+            if user["registration_date"]
+            else "—"
+        )
+        last_act = (
+            user["last_activity"].strftime("%d.%m.%Y %H:%M")
+            if user["last_activity"]
+            else "—"
+        )
+        username_display = f"@{user['username']}" if user["username"] else "—"
+
+        if user.get("blacklisted"):
+            bl_at = user["blacklisted_at"]
+            bl_at_str = bl_at.strftime("%d.%m.%Y %H:%M") if bl_at else "—"
+            bl_reason = html_std.escape(str(user.get("blacklist_reason") or "—"))
+            block_line = (
+                f"🚫 <b>Статус:</b> <b>ЗАБЛОКИРОВАН</b> с <code>{bl_at_str}</code>\n"
+                f"📝 <b>Причина:</b> {bl_reason}\n"
+            )
+        else:
+            block_line = "✅ <b>Статус:</b> активен (не в чёрном списке)\n"
+
+        report = (
+            f"👤 <b>Карточка пользователя</b> <code>{target_user_id}</code>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>Имя:</b> {user['first_name'] or '—'}\n"
+            f"🔗 <b>Username:</b> {username_display}\n"
+            f"📅 <b>Регистрация:</b> <code>{reg_date}</code>\n"
+            f"🕒 <b>Активность:</b> <code>{last_act}</code>\n"
+            f"📍 <b>Источник (UTM):</b> <code>{user['utm_source'] or 'Прямой вход'}</code>\n"
+            f"{block_line}"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"💎 <b>Тариф:</b> {tier_name} (<code>{tier_id}</code>)\n"
+            f"📋 <b>Подписка:</b> {sub_status}\n"
+            f"⏳ <b>Истекает:</b> <code>{sub_end}</code>\n"
+            f"💳 <b>Карта:</b> {'✅ привязана' if has_card else '❌ нет'}\n"
+            f"⏸ <b>Отсрочка автоплатежа:</b> <code>{grace_str}</code>\n"
+            f"🎁 <b>Триал 1₽:</b> {trial_label}\n"
+            f"💰 <b>Баланс:</b> <code>{user['balance'] or 0}</code> коп.\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👥 <b>Рефералы:</b> {user['referral_count']} чел.\n"
+            f"🤝 <b>Кто пригласил:</b> {inviter_name}\n"
+        )
+
+        activity_rows = await conn.fetch(
+            """
+            SELECT event_kind, action, detail, created_at
+            FROM bot_activity_logs
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT 12
+            """,
+            target_user_id,
+        )
+        if activity_rows:
+            report += "━━━━━━━━━━━━━━━━━━\n📋 <b>Последние действия в боте:</b>\n"
+            for a in activity_rows:
+                ts = a["created_at"].strftime("%d.%m %H:%M") if a["created_at"] else "—"
+                label = format_activity_label(a["event_kind"] or "bot", a["action"] or "")
+                extra = f" <i>{a['detail'][:30]}</i>" if a["detail"] else ""
+                report += f"• {ts}: {label}{extra}\n"
+        else:
+            report += "━━━━━━━━━━━━━━━━━━\n📋 <b>Действия в боте:</b> пока нет записей\n"
+
+        has_sub = await conn.fetchval(
+            "SELECT 1 FROM subscription_usage_logs WHERE user_id = $1 LIMIT 1",
+            target_user_id,
+        )
+        report += f"\n🔌 <b>/sub в Happ:</b> {'✅ был' if has_sub else '❌ не было'}\n"
+
+        if payments:
+            report += "━━━━━━━━━━━━━━━━━━\n💳 <b>Последние 10 платежей:</b>\n"
+            for p in payments:
+                p_status = (
+                    "✅"
+                    if p["status"] == "completed"
+                    else "⏳"
+                    if p["status"] == "pending"
+                    else "❌"
+                )
+                if p["currency"] == "RUB":
+                    rub_amount = p["amount"] / 100
+                    p_sum = f"{rub_amount:.2f}".rstrip("0").rstrip(".")
+                else:
+                    p_sum = str(p["amount"])
+                p_curr = "₽" if p["currency"] == "RUB" else "⭐"
+                p_date = p["timestamp"].strftime("%d.%m.%y")
+                report += (
+                    f"• {p_date}: <b>{p_sum}{p_curr}</b> {p_status} "
+                    f"(<i>{p['plan_id']}</i>)\n"
+                )
+        else:
+            report += "━━━━━━━━━━━━━━━━━━\n💳 <b>Платежи:</b> отсутствуют\n"
+
+    builder = InlineKeyboardBuilder()
+    if user.get("blacklisted"):
+        builder.row(
+            InlineKeyboardButton(
+                text="✅ Разблокировать",
+                callback_data=f"admin_unblock:{target_user_id}",
+            )
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(
+                text="🚫 Заблокировать",
+                callback_data=f"admin_block_confirm:{target_user_id}",
+            )
+        )
+        if int(user.get("referral_count") or 0) > 0:
+            builder.row(
+                InlineKeyboardButton(
+                    text="🚫 Блок + откат рефералов",
+                    callback_data=f"admin_block_fraud:{target_user_id}",
+                )
+            )
+    builder.row(
+        InlineKeyboardButton(text="◀️ Назад к поиску", callback_data="admin_user_info")
+    )
+    builder.row(InlineKeyboardButton(text="🏠 В админку", callback_data="admin_back"))
+    return report, builder
 
 
 async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
@@ -369,37 +565,47 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
             return
         
+        from ..activity_log import format_activity_label
+
         async with get_connection() as conn:
             logs = await conn.fetch('''
-                SELECT l.user_id, l.type, l.detail, l.timestamp, u.username, u.first_name 
+                SELECT l.user_id, l.type, l.event_kind, l.action, l.detail, l.timestamp,
+                       u.username, u.first_name
                 FROM (
-                    SELECT user_id, 'vpn' as type, user_agent as detail, timestamp FROM subscription_usage_logs
+                    SELECT user_id, 'vpn' AS type, NULL::text AS event_kind,
+                           user_agent AS action, user_agent AS detail, timestamp
+                    FROM subscription_usage_logs
                     UNION ALL
-                    SELECT user_id, 'miniapp' as type, action as detail, timestamp FROM miniapp_usage_logs
+                    SELECT user_id, 'miniapp', NULL, action, action, timestamp
+                    FROM miniapp_usage_logs
+                    UNION ALL
+                    SELECT user_id, 'bot', event_kind, action, detail, created_at
+                    FROM bot_activity_logs
                 ) l
                 LEFT JOIN users u ON l.user_id = u.user_id
-                ORDER BY l.timestamp DESC 
-                LIMIT 20
+                ORDER BY l.timestamp DESC
+                LIMIT 35
             ''')
         
         if not logs:
-            text = "🔔 <b>Логи активности</b>\n\nЛоги пока пусты. Дождитесь подключений пользователей."
+            text = "🔔 <b>Логи активности</b>\n\nЛоги пока пусты. Дождитесь действий пользователей."
         else:
             text = "🔔 <b>Последние действия (реальное время):</b>\n\n"
             for log in logs:
                 user_id = log['user_id']
                 name = log['first_name'] or log['username'] or f"ID:{user_id}"
                 ltype = log['type']
-                detail = log['detail'] or "Unknown"
                 
-                # Иконка и текст в зависимости от типа
                 if ltype == 'vpn':
-                    ua = detail.split('/')[0].split(' ')[0][:12]
-                    action_text = f"🔌 Подключился через: <code>{ua}</code>"
+                    ua = (log['action'] or "Unknown").split('/')[0].split(' ')[0][:12]
+                    action_text = f"🔌 /sub Happ: <code>{ua}</code>"
+                elif ltype == 'miniapp':
+                    action_text = f"📱 Мини-апп: <code>{(log['action'] or 'open').capitalize()}</code>"
                 else:
-                    action_text = f"📱 Мини-апп: <code>{detail.capitalize()}</code>"
+                    action_text = format_activity_label(log['event_kind'] or 'bot', log['action'] or '')
+                    if log['detail']:
+                        action_text += f" <i>{log['detail'][:40]}</i>"
                 
-                # Форматирование времени (МСК)
                 ts = log['timestamp']
                 if ts.tzinfo is None:
                     ts = pytz.utc.localize(ts).astimezone(pytz.timezone('Europe/Moscow'))
@@ -1927,16 +2133,154 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_server_name_cmd(message: Message, state: FSMContext):
         """Обработка названия сервера"""
         await state.update_data(name=message.text)
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🌊 Remnawave (новая панель)", callback_data="panel:remnawave")
+        builder.button(text="📦 3x-ui (старая панель)", callback_data="panel:3x-ui")
+        builder.adjust(1)
         await message.answer(
+            "🔧 <b>Тип панели:</b>\n\n"
+            "• <b>Remnawave</b> — центральная панель, нода уже должна быть установлена и подключена\n"
+            "• <b>3x-ui</b> — отдельная панель на каждом сервере (как раньше)",
+            parse_mode="HTML",
+            reply_markup=builder.as_markup(),
+        )
+        await state.set_state(AddServerSteps.WAITING_PANEL_TYPE)
+
+    @dp.callback_query(AddServerSteps.WAITING_PANEL_TYPE, F.data.startswith("panel:"))
+    async def process_server_panel_type(callback: CallbackQuery, state: FSMContext):
+        panel_type = callback.data.split(":", 1)[1]
+        if panel_type not in ("remnawave", "3x-ui"):
+            await callback.answer("Неизвестный тип панели", show_alert=True)
+            return
+
+        await state.update_data(panel_type=panel_type)
+
+        if panel_type == "remnawave":
+            if not config.remnawave.enabled:
+                await callback.message.edit_text(
+                    "❌ Remnawave не настроен в .env.\n\n"
+                    "Добавьте:\n"
+                    "<code>REMNAWAVE_ENABLED=true</code>\n"
+                    "<code>REMNAWAVE_PANEL_URL=https://www.xdoublegroup.online</code>\n"
+                    "<code>REMNAWAVE_API_TOKEN=...</code>",
+                    parse_mode="HTML",
+                )
+                await state.clear()
+                await callback.answer()
+                return
+
+            await callback.message.edit_text(
+                "🖥 <b>Remnawave: IP ноды</b>\n\n"
+                "Введите IP-адрес VPS, где уже установлен <b>remnanode</b> и он "
+                "<b>подключён</b> к панели (зелёный статус в Nodes → Management).\n\n"
+                "Пример: <code>144.31.113.69</code>",
+                parse_mode="HTML",
+            )
+            await state.set_state(AddServerSteps.WAITING_NODE_IP)
+            await callback.answer()
+            return
+
+        await callback.message.edit_text(
             "🔗 Введите полную ссылку на панель 3x-ui:\n\n"
             "Примеры:\n"
             "• <code>http://79.137.204.85:8080/</code>\n"
             "• <code>https://example.com:54321/</code>\n\n"
             "⚠️ Важно: Укажите полную ссылку, включая протокол (http:// или https://), "
             "адрес, порт и путь (если есть).",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         await state.set_state(AddServerSteps.WAITING_PANEL_URL)
+        await callback.answer()
+
+    @dp.message(AddServerSteps.WAITING_NODE_IP)
+    async def process_remnawave_node_ip(message: Message, state: FSMContext):
+        node_ip = message.text.strip()
+        rw_client = None
+        try:
+            rw_client = build_remnawave_client(config)
+            node = await rw_client.find_connected_node(node_ip)
+            if not node:
+                nodes = await rw_client.list_nodes()
+                known = ", ".join(
+                    f"{n.get('name')} ({n.get('address')})"
+                    for n in nodes
+                ) or "нет нод"
+                await message.answer(
+                    f"❌ Нода с IP <code>{node_ip}</code> не найдена или не подключена.\n\n"
+                    f"Доступные ноды: {known}\n\n"
+                    "Сначала установите remnanode на VPS и дождитесь зелёного статуса в панели.",
+                    parse_mode="HTML",
+                )
+                return
+
+            await state.update_data(
+                node_ip=node_ip,
+                node_uuid=node["uuid"],
+                node_name=node.get("name"),
+            )
+            await message.answer(
+                f"✅ Нода найдена: <b>{node.get('name')}</b> ({node_ip})\n\n"
+                "🌐 Введите <b>адрес для пользователей</b> (Host Address):\n"
+                "Домен или IP, к которому будут подключаться клиенты.\n\n"
+                "Рекомендуется домен (например <code>pl.vpn.example.com</code>), "
+                "но можно и IP: <code>144.31.113.69</code>",
+                parse_mode="HTML",
+            )
+            await state.set_state(AddServerSteps.WAITING_HOST_ADDRESS)
+        except Exception as e:
+            await message.answer(
+                f"❌ Ошибка Remnawave API:\n<code>{html_std.escape(str(e))}</code>",
+                parse_mode="HTML",
+            )
+        finally:
+            if rw_client:
+                await rw_client.close()
+
+    @dp.message(AddServerSteps.WAITING_HOST_ADDRESS)
+    async def process_remnawave_host_address(message: Message, state: FSMContext):
+        host_address = message.text.strip()
+        if not host_address:
+            await message.answer("❌ Адрес не может быть пустым. Попробуйте снова:")
+            return
+        await state.update_data(host_address=host_address)
+        await message.answer(
+            "🔌 Введите <b>порт для пользователей</b>:\n\n"
+            "Для Remnawave gRPC без TLS обычно <code>8443</code> (порт inbound на ноде).\n"
+            "Порт <code>443</code> — только если на VPS настроен прокси/TLS-фронт.",
+            parse_mode="HTML",
+        )
+        await state.set_state(AddServerSteps.WAITING_HOST_PORT)
+
+    @dp.message(AddServerSteps.WAITING_HOST_PORT)
+    async def process_remnawave_host_port(message: Message, state: FSMContext):
+        try:
+            host_port = int(message.text.strip())
+        except ValueError:
+            await message.answer("❌ Порт должен быть числом. Попробуйте снова:")
+            return
+
+        if host_port == 2222:
+            await message.answer(
+                "❌ <b>2222</b> — это порт <b>ноды</b> (панель → remnanode), не для клиентов.\n\n"
+                "Для gRPC без TLS укажи <code>8443</code> (порт inbound Xray на VPS).",
+                parse_mode="HTML",
+            )
+            return
+
+        await state.update_data(host_port=host_port)
+
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔝 В начало", callback_data="order:start")
+        builder.button(text="🔙 В конец", callback_data="order:end")
+        builder.button(text="🔢 По числу (приоритет)", callback_data="order:number")
+        builder.adjust(1)
+
+        await message.answer(
+            "📍 <b>Выберите порядок отображения сервера:</b>",
+            parse_mode="HTML",
+            reply_markup=builder.as_markup(),
+        )
+        await state.set_state(AddServerSteps.WAITING_ORDER)
     
     @dp.message(AddServerSteps.WAITING_PANEL_URL)
     async def process_server_panel_url_cmd(message: Message, state: FSMContext):
@@ -2106,6 +2450,86 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         """Финальное сохранение сервера после всех шагов"""
         data = await state.get_data()
         name = data.get('name')
+        display_order = data.get('display_order', 100)
+        is_system = data.get('is_system', False)
+        panel_type = data.get('panel_type', '3x-ui')
+
+        if panel_type == 'remnawave':
+            host_address = data.get('host_address')
+            host_port = data.get('host_port', 443)
+            node_uuid = data.get('node_uuid')
+            node_ip = data.get('node_ip')
+            rw_client = None
+            host_uuid = None
+            try:
+                rw_client = build_remnawave_client(config)
+                host = await rw_client.create_host(
+                    remark=name,
+                    address=host_address,
+                    port=host_port,
+                    node_uuid=node_uuid,
+                )
+                host_uuid = host.get('uuid')
+                if not host_uuid:
+                    raise RuntimeError("Панель не вернула UUID хоста")
+            except Exception as e:
+                await message.answer(
+                    f"❌ <b>Ошибка создания Host в Remnawave:</b>\n"
+                    f"<code>{html_std.escape(str(e))}</code>",
+                    parse_mode="HTML",
+                )
+                await state.clear()
+                return
+            finally:
+                if rw_client:
+                    await rw_client.close()
+
+            panel_url = config.remnawave.panel_url or "https://www.xdoublegroup.online"
+            async with get_connection() as conn:
+                await conn.execute(
+                    """
+                    SELECT setval('servers_id_seq', COALESCE((SELECT MAX(id) FROM servers), 0) + 1, false)
+                    """
+                )
+                server_id = await conn.fetchval(
+                    """
+                    INSERT INTO servers (
+                        name, ip, port, protocol, username, password, inbound_id, base_url,
+                        is_active, display_order, is_system, panel_type,
+                        remnawave_host_uuid, remnawave_node_uuid
+                    )
+                    VALUES ($1, $2, $3, 'https', 'remnawave', '', 0, $4,
+                            TRUE, $5, $6, 'remnawave', $7, $8)
+                    RETURNING id
+                    """,
+                    name,
+                    host_address,
+                    host_port,
+                    panel_url,
+                    display_order,
+                    is_system,
+                    host_uuid,
+                    node_uuid,
+                )
+
+            try:
+                asyncio.create_task(create_keys_for_specific_server(server_id))
+            except Exception as e:
+                logger.error(f"Error starting key creation for new Remnawave server: {e}")
+
+            await message.answer(
+                f"✅ <b>Локация Remnawave добавлена!</b>\n\n"
+                f"ID в боте: <i>{server_id}</i>\n"
+                f"Название: <i>{name}</i>\n"
+                f"Нода: <i>{data.get('node_name')} ({node_ip})</i>\n"
+                f"Host: <i>{host_address}:{host_port}</i>\n"
+                f"Host UUID: <code>{host_uuid}</code>\n\n"
+                f"🔑 Ключи для активных пользователей синхронизируются...",
+                parse_mode="HTML",
+            )
+            await state.clear()
+            return
+
         ip = data.get('ip')
         port = data.get('port', 54321)
         protocol = data.get('protocol', 'https')
@@ -2113,8 +2537,6 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         password = data.get('password')
         inbound_id = data.get('inbound_id')
         base_url = data.get('base_url')
-        display_order = data.get('display_order', 100)
-        is_system = data.get('is_system', False)
         
         # Проверяем подключение к серверу перед сохранением если еще не проверяли
         try:
@@ -2147,15 +2569,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 SELECT setval('servers_id_seq', COALESCE((SELECT MAX(id) FROM servers), 0) + 1, false)
             ''')
             server_id = await conn.fetchval('''
-                INSERT INTO servers (name, ip, port, protocol, username, password, inbound_id, base_url, is_active, display_order, is_system)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10)
+                INSERT INTO servers (name, ip, port, protocol, username, password, inbound_id, base_url, is_active, display_order, is_system, panel_type)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, '3x-ui')
                 RETURNING id
             ''', name, ip, port, protocol, username, password, inbound_id, base_url, display_order, is_system)
             
             
         # Создаём ключи для активных пользователей (теперь через одну задачу, последовательно)
         try:
-            from bot.subscriptions import create_keys_for_specific_server
             asyncio.create_task(create_keys_for_specific_server(server_id))
         except Exception as e:
             logger.error(f"Error starting key creation for new server: {e}")
@@ -2180,7 +2601,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         async with get_connection() as conn:
             servers = await conn.fetch('''
-                SELECT id, name, ip, is_active, display_order 
+                SELECT id, name, ip, is_active, display_order, panel_type
                 FROM servers 
                 ORDER BY display_order, id
             ''')
@@ -2197,9 +2618,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             is_active = server['is_active']
             display_order = server['display_order']
             is_system = server.get('is_system', False)
+            panel_type = server.get('panel_type') or '3x-ui'
             status = "✅ Активен" if is_active else "❌ Неактивен"
             type_label = " (⚙️ СИСТЕМНЫЙ)" if is_system else ""
-            text += f"#{server_id} [Порядок: {display_order}] <b>{name}</b> ({ip}){type_label}\n   {status}\n\n"
+            panel_label = " 🌊" if panel_type == "remnawave" else ""
+            text += f"#{server_id} [Порядок: {display_order}] <b>{name}</b> ({ip}){type_label}{panel_label}\n   {status}\n\n"
         
         await message.answer(text, parse_mode="HTML")
     
@@ -4437,31 +4860,39 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 "SELECT COUNT(*) FROM utm_visits WHERE utm_tag = $1 AND created_at >= CURRENT_DATE - INTERVAL '7 days'",
                 tag
             ) or 0
-            # Конверсия: из новых пользователей сколько купили подписку
-            conversions = await conn.fetchval('''
-                SELECT COUNT(DISTINCT p.user_id)
-                FROM payments p
-                JOIN utm_visits uv ON p.user_id = uv.user_id
-                WHERE uv.utm_tag = $1 AND uv.is_new_user = TRUE AND p.status = 'completed'
-            ''', tag) or 0
+            conversions = None
+            if tag != "cocoon_bird":
+                conversions = await conn.fetchval('''
+                    SELECT COUNT(DISTINCT p.user_id)
+                    FROM payments p
+                    JOIN utm_visits uv ON p.user_id = uv.user_id
+                    WHERE uv.utm_tag = $1 AND uv.is_new_user = TRUE AND p.status = 'completed'
+                ''', tag) or 0
         
-        conversion_rate = (conversions / new_users * 100) if new_users > 0 else 0
+        conversion_rate = (conversions / new_users * 100) if conversions is not None and new_users > 0 else 0
         status = "✅ Активна" if campaign['is_active'] else "❌ Неактивна"
         bonus = f"+{campaign['bonus_days']} дней" if campaign['bonus_days'] else "без бонуса"
         
         bot_info = await bot.get_me()
         link = f"https://t.me/{bot_info.username}?start={tag}"
         
+        stats_lines = [
+            f"📈 Всего переходов: <b>{total_visits}</b>",
+            f"👤 Новых пользователей: <b>{new_users}</b>",
+        ]
+        if conversions is not None:
+            stats_lines.append(
+                f"💰 Конверсия в оплату: <b>{conversions}</b> ({conversion_rate:.1f}%)"
+            )
+        stats_lines.append(f"📅 За 7 дней: <b>{visits_7d}</b>")
+
         text = (
             f"⚙️ <b>Кампания: {tag}</b>\n\n"
             f"📝 Описание: {campaign['description'] or '—'}\n"
             f"📊 Статус: {status}\n"
             f"🎁 Бонус: {bonus}\n\n"
-            f"📈 Всего переходов: <b>{total_visits}</b>\n"
-            f"👤 Новых пользователей: <b>{new_users}</b>\n"
-            f"💰 Конверсия в оплату: <b>{conversions}</b> ({conversion_rate:.1f}%)\n"
-            f"📅 За 7 дней: <b>{visits_7d}</b>\n\n"
-            f"🔗 Ссылка:\n<code>{link}</code>"
+            + "\n".join(stats_lines)
+            + f"\n\n🔗 Ссылка:\n<code>{link}</code>"
         )
         
         toggle_text = "🔴 Деактивировать" if campaign['is_active'] else "🟢 Активировать"
@@ -4642,95 +5073,219 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             return
 
         target_user_id = int(user_id_str)
-        
-        async with get_connection() as conn:
-            # 1. Основная информация
-            user = await conn.fetchrow('''
-                SELECT user_id, username, first_name, registration_date, last_activity, 
-                       pay_subscribed, subscription_end, subscription_tier,
-                       invited_by, referral_count, balance, trial_used, utm_source,
-                       yookassa_recurring_payment_method_id, autopay_grace_until
-                FROM users WHERE user_id = $1
-            ''', target_user_id)
+        card = await _build_admin_user_card(target_user_id)
+        if not card:
+            await message.answer(
+                f"❌ Пользователь с ID <code>{target_user_id}</code> не найден в базе.",
+                parse_mode="HTML",
+            )
+            await state.clear()
+            return
 
-            if not user:
-                await message.answer(f"❌ Пользователь с ID <code>{target_user_id}</code> не найден в базе.", parse_mode="HTML")
-                await state.clear()
-                return
+        report, builder = card
+        await message.answer(report, reply_markup=builder.as_markup(), parse_mode="HTML")
+        await state.clear()
 
-            # 2. Информация о платежах
-            payments = await conn.fetch('''
-                SELECT amount, currency, timestamp, status, plan_id 
-                FROM payments 
-                WHERE user_id = $1 
-                ORDER BY timestamp DESC LIMIT 10
-            ''', target_user_id)
+    @dp.callback_query(F.data.startswith("admin_block_confirm:"))
+    async def handle_admin_block_confirm(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        target_user_id = int(callback.data.split(":")[1])
+        if target_user_id in config.bot.admin_ids:
+            await safe_callback_answer(callback, "❌ Нельзя заблокировать админа", show_alert=True)
+            return
+        await state.set_state(AdminStates.BLOCK_REASON)
+        await state.update_data(
+            target_user_id=target_user_id,
+            revert_referral_fraud=False,
+        )
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(
+                text="◀️ Отмена",
+                callback_data=f"admin_user_card:{target_user_id}",
+            )
+        )
+        await callback.message.edit_text(
+            f"🚫 <b>Блокировка</b> пользователя <code>{target_user_id}</code>\n\n"
+            "Введите <b>причину блокировки</b> одним сообщением.\n"
+            "Она сохранится в карточке пользователя и будет видна при разборе жалоб.\n\n"
+            "<i>Будет отключены VPN, подписка и доступ к боту.</i>",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+        await safe_callback_answer(callback)
 
-            # 3. Кто пригласил (если есть)
-            inviter_name = "Никто"
-            if user['invited_by']:
-                inviter = await conn.fetchrow('SELECT first_name, username FROM users WHERE user_id = $1', user['invited_by'])
-                if inviter:
-                    inviter_name = f"{inviter['first_name']} (@{inviter['username'] or '—'}) [<code>{user['invited_by']}</code>]"
-            
-            # Формируем текст
-            from ..plans import TIERS, FREE_TIER_ID, is_sentinel_subscription_end
+    @dp.callback_query(F.data.startswith("admin_block_fraud:"))
+    async def handle_admin_block_fraud_confirm(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        target_user_id = int(callback.data.split(":")[1])
+        if target_user_id in config.bot.admin_ids:
+            await safe_callback_answer(callback, "❌ Нельзя заблокировать админа", show_alert=True)
+            return
+        await state.set_state(AdminStates.BLOCK_REASON)
+        await state.update_data(
+            target_user_id=target_user_id,
+            revert_referral_fraud=True,
+        )
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(
+                text="◀️ Отмена",
+                callback_data=f"admin_user_card:{target_user_id}",
+            )
+        )
+        await callback.message.edit_text(
+            f"🚫 <b>Блокировка с откатом рефералов</b> — <code>{target_user_id}</code>\n\n"
+            "Введите <b>причину блокировки</b> одним сообщением "
+            "(например, нарушение п. 8.6 оферты).\n\n"
+            "<i>Также будут заблокированы приглашённые им аккаунты из реферальной программы.</i>",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+        await safe_callback_answer(callback)
 
-            tier_id = (user.get("subscription_tier") or FREE_TIER_ID).strip() or FREE_TIER_ID
-            tier_name = TIERS.get(tier_id, {}).get("name", tier_id)
-            has_card = bool(user.get("yookassa_recurring_payment_method_id"))
-            grace_until = user.get("autopay_grace_until")
-            grace_str = grace_until.strftime("%d.%m.%Y") if grace_until else "—"
+    @dp.message(AdminStates.BLOCK_REASON)
+    async def process_admin_block_reason(message: Message, state: FSMContext):
+        if not is_admin(message.from_user.id, config):
+            await message.answer("❌ Нет доступа")
+            await state.clear()
+            return
 
-            sub_status = "✅ Активна" if user['pay_subscribed'] and user['subscription_end'] and user['subscription_end'] >= datetime.now() else "❌ Неактивна"
-            if is_sentinel_subscription_end(user['subscription_end']):
-                sub_end = "бессрочно (Free)"
-            else:
-                sub_end = user['subscription_end'].strftime("%d.%m.%Y %H:%M") if user['subscription_end'] else "—"
-            reg_date = user['registration_date'].strftime("%d.%m.%Y %H:%M") if user['registration_date'] else "—"
-            last_act = user['last_activity'].strftime("%d.%m.%Y %H:%M") if user['last_activity'] else "—"
-            
-            username_display = f"@{user['username']}" if user['username'] else "—"
+        reason = (message.text or "").strip()
+        if len(reason) < 3:
+            await message.answer(
+                "❌ Укажите причину подробнее (минимум 3 символа). Отправьте текст снова:"
+            )
+            return
+        if len(reason) > 500:
+            await message.answer(
+                "❌ Слишком длинный текст (максимум 500 символов). Сократите и отправьте снова:"
+            )
+            return
 
-            report = (
-                f"👤 <b>Карточка пользователя</b> <code>{target_user_id}</code>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"👤 <b>Имя:</b> {user['first_name'] or '—'}\n"
-                f"🔗 <b>Username:</b> {username_display}\n"
-                f"📅 <b>Регистрация:</b> <code>{reg_date}</code>\n"
-                f"🕒 <b>Активность:</b> <code>{last_act}</code>\n"
-                f"📍 <b>Источник (UTM):</b> <code>{user['utm_source'] or 'Прямой вход'}</code>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"💎 <b>Тариф:</b> {tier_name} (<code>{tier_id}</code>)\n"
-                f"📋 <b>Подписка:</b> {sub_status}\n"
-                f"⏳ <b>Истекает:</b> <code>{sub_end}</code>\n"
-                f"💳 <b>Карта:</b> {'✅ привязана' if has_card else '❌ нет'}\n"
-                f"⏸ <b>Отсрочка автоплатежа:</b> <code>{grace_str}</code>\n"
-                f"🎁 <b>Триал:</b> {'✅ Юзал' if user['trial_used'] else '❌ Нет'}\n"
-                f"💰 <b>Баланс:</b> <code>{user['balance'] or 0}</code> коп.\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"👥 <b>Рефералы:</b> {user['referral_count']} чел.\n"
-                f"🤝 <b>Кто пригласил:</b> {inviter_name}\n"
+        data = await state.get_data()
+        target_user_id = data.get("target_user_id")
+        if not target_user_id:
+            await message.answer("❌ Сессия блокировки истекла. Найдите пользователя заново.")
+            await state.clear()
+            return
+
+        await state.update_data(block_reason=reason)
+        fraud = bool(data.get("revert_referral_fraud"))
+        fraud_note = (
+            "\n\n⚠️ Будет выполнен <b>откат реферальных бонусов</b>."
+            if fraud
+            else ""
+        )
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(
+                text="✅ Подтвердить блокировку",
+                callback_data="admin_block_apply",
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text="◀️ Отмена",
+                callback_data=f"admin_user_card:{target_user_id}",
+            )
+        )
+        await message.answer(
+            f"Подтвердите блокировку <code>{target_user_id}</code>:{fraud_note}\n\n"
+            f"📝 <b>Причина:</b> {html_std.escape(reason)}",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML",
+        )
+
+    @dp.callback_query(F.data == "admin_block_apply")
+    async def handle_admin_block_apply(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+
+        data = await state.get_data()
+        target_user_id = data.get("target_user_id")
+        reason = (data.get("block_reason") or "").strip()
+        fraud = bool(data.get("revert_referral_fraud"))
+
+        if not target_user_id or len(reason) < 3:
+            await safe_callback_answer(callback, "❌ Сессия истекла, начните снова", show_alert=True)
+            await state.clear()
+            return
+        if target_user_id in config.bot.admin_ids:
+            await safe_callback_answer(callback, "❌ Нельзя заблокировать админа", show_alert=True)
+            await state.clear()
+            return
+
+        result = await block_user(
+            int(target_user_id),
+            reason=reason,
+            admin_id=callback.from_user.id,
+            revert_referral_fraud=fraud,
+        )
+        await state.clear()
+
+        if not result.get("blocked"):
+            await safe_callback_answer(
+                callback,
+                f"❌ Не удалось: {result.get('error', 'ошибка')}",
+                show_alert=True,
+            )
+            return
+
+        await safe_callback_answer(callback, "✅ Пользователь заблокирован")
+        card = await _build_admin_user_card(int(target_user_id))
+        if card:
+            report, builder = card
+            header = (
+                f"✅ <b>Заблокирован</b> (п. 8.6, рефералов: {result.get('referrals_blocked', 0)})\n\n"
+                if fraud
+                else f"✅ <b>Заблокирован</b> (ключей отключено: {result.get('keys_revoked', 0)})\n\n"
+            )
+            await callback.message.edit_text(
+                header + report,
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML",
             )
 
-            if payments:
-                report += f"━━━━━━━━━━━━━━━━━━\n💳 <b>Последние 10 платежей:</b>\n"
-                for p in payments:
-                    p_status = "✅" if p['status'] == 'completed' else "⏳" if p['status'] == 'pending' else "❌"
-                    if p['currency'] == 'RUB':
-                        rub_amount = p['amount'] / 100
-                        p_sum = f"{rub_amount:.2f}".rstrip("0").rstrip(".")
-                    else:
-                        p_sum = str(p['amount'])
-                    p_curr = "₽" if p['currency'] == 'RUB' else "⭐"
-                    p_date = p['timestamp'].strftime("%d.%m.%y")
-                    report += f"• {p_date}: <b>{p_sum}{p_curr}</b> {p_status} (<i>{p['plan_id']}</i>)\n"
-            else:
-                report += f"━━━━━━━━━━━━━━━━━━\n💳 <b>Платежи:</b> отсутствуют\n"
+    @dp.callback_query(F.data.startswith("admin_unblock:"))
+    async def handle_admin_unblock(callback: CallbackQuery):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        target_user_id = int(callback.data.split(":")[1])
+        ok = await unblock_user(target_user_id, admin_id=callback.from_user.id)
+        invalidate_blacklist_cache(target_user_id)
+        if not ok:
+            await safe_callback_answer(callback, "❌ Пользователь не был заблокирован", show_alert=True)
+            return
+        await safe_callback_answer(callback, "✅ Разблокирован")
+        card = await _build_admin_user_card(target_user_id)
+        if card:
+            report, builder = card
+            await callback.message.edit_text(
+                f"✅ <b>Разблокирован</b>\n\n{report}",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML",
+            )
 
-            builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="◀️ Назад к поиску", callback_data="admin_user_info"))
-            builder.row(InlineKeyboardButton(text="🏠 В админку", callback_data="admin_back"))
-
-            await message.answer(report, reply_markup=builder.as_markup(), parse_mode="HTML")
-            await state.clear()
+    @dp.callback_query(F.data.startswith("admin_user_card:"))
+    async def handle_admin_user_card_refresh(callback: CallbackQuery, state: FSMContext):
+        if not is_admin(callback.from_user.id, config):
+            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            return
+        await state.clear()
+        target_user_id = int(callback.data.split(":")[1])
+        card = await _build_admin_user_card(target_user_id)
+        if not card:
+            await safe_callback_answer(callback, "❌ Пользователь не найден", show_alert=True)
+            return
+        report, builder = card
+        await callback.message.edit_text(
+            report, reply_markup=builder.as_markup(), parse_mode="HTML"
+        )
+        await safe_callback_answer(callback)

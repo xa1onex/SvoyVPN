@@ -15,11 +15,17 @@ from .config import load_config
 from .database import init_db
 from .subscriptions import handle_expired_subscriptions, send_upcoming_subscription_reminders
 from .tier_autopay import run_yookassa_autopay_renewals
-from .engagement_notifications import run_engagement_notifications
+from .engagement_notifications import run_engagement_notifications, run_referral_trial_backfill
+from .connect_nudge_notifications import (
+    run_connect_nudge_backfill,
+    run_connect_nudge_reminders,
+)
 from .webhook_server import WebhookServer
 from .yookassa_client import YooKassaClient
 from .flyer_client import FlyerClient
 from .flyer_middleware import FlyerSubscriptionMiddleware
+from .activity_middleware import BotActivityMiddleware
+from .blacklist_middleware import BlacklistMiddleware
 from .payments import process_webhook_payment
 from .plans import get_subscription_plans, get_renewal_plans, PAYMENT_METHODS
 from .traffic_worker import run_traffic_sync_loop
@@ -73,6 +79,8 @@ def setup_scheduler():
         'interval',
         minutes=5,
         args=[bot],
+        max_instances=1,
+        coalesce=True,
     )
 
     scheduler.add_job(
@@ -110,6 +118,14 @@ def setup_scheduler():
         args=[bot, config],
     )
 
+    # Напоминания подключить VPN (1ч / 1д / за 4д до конца подарка)
+    scheduler.add_job(
+        run_connect_nudge_reminders,
+        "interval",
+        minutes=15,
+        args=[bot],
+    )
+
     # Также запускаем при старте
     moscow_tz = pytz.timezone("Europe/Moscow")
     now_moscow = datetime.now(moscow_tz)
@@ -130,6 +146,22 @@ def setup_scheduler():
         run_date=now_moscow + timedelta(seconds=60),
         args=[bot, config],
         misfire_grace_time=3600
+    )
+
+    scheduler.add_job(
+        run_connect_nudge_backfill,
+        "date",
+        run_date=now_moscow + timedelta(seconds=90),
+        args=[bot],
+        misfire_grace_time=3600,
+    )
+
+    scheduler.add_job(
+        run_referral_trial_backfill,
+        "date",
+        run_date=now_moscow + timedelta(seconds=120),
+        args=[bot],
+        misfire_grace_time=3600,
     )
     
     scheduler.start()
@@ -270,6 +302,11 @@ async def main():
     except Exception as e:
         logger.error(f"Error during VLESS configuration migration: {e}")
     
+    dp.message.middleware(BotActivityMiddleware(config))
+    dp.callback_query.middleware(BotActivityMiddleware(config))
+    dp.message.middleware(BlacklistMiddleware(config))
+    dp.callback_query.middleware(BlacklistMiddleware(config))
+
     global flyer_client
     flyer_client = FlyerClient(config.flyer)
     if flyer_client.enabled:

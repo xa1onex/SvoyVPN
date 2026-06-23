@@ -403,6 +403,13 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
     current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
     
     builder = InlineKeyboardBuilder()
+
+    from ..trial_usage import user_show_referral_trial_offer, get_trial_days
+
+    show_referral_trial = False
+    async with get_connection() as conn:
+        show_referral_trial = await user_show_referral_trial_offer(conn, user_id)
+        trial_days = await get_trial_days(conn) if show_referral_trial else 0
     
     if is_renew:
         from ..subscriptions import get_subscription_status_display
@@ -413,26 +420,56 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
             text += f"• <b>{plan_data['title']}</b> — {format_price_rub(plan_data['price_rub'])}\n"
         text += "\n"
     else:
-        text = (
-            "❌ <b>VPN неактивен</b>\n\n"
-            "Оформите <b>Plus</b> — быстрый VPN с обходом блокировок:\n"
-            "• 50 ГБ bypass в месяц\n"
-            "• YouTube / TikTok / AI\n"
-            "• Безлимит устройств\n\n"
-        )
+        if show_referral_trial and trial_days > 0:
+            text = (
+                "🎁 <b>Plus за 1₽</b>\n\n"
+                f"Специальное предложение для вас — <b>{trial_days} дней</b> Plus "
+                f"с автопродлением по актуальной цене.\n\n"
+                "• 50 ГБ bypass в месяц\n"
+                "• YouTube / TikTok / AI\n"
+                "• Безлимит устройств\n\n"
+            )
+            builder.row(
+                InlineKeyboardButton(
+                    text="🎁 Plus за 1₽ — попробовать",
+                    callback_data="activate_trial",
+                ),
+            )
+        else:
+            text = (
+                "❌ <b>VPN неактивен</b>\n\n"
+                "Оформите <b>Plus</b> — быстрый VPN с обходом блокировок:\n"
+                "• 50 ГБ bypass в месяц\n"
+                "• YouTube / TikTok / AI\n"
+                "• Безлимит устройств\n\n"
+            )
+            for plan_id, plan_data in current_tariffs.items():
+                text += f"• <b>{plan_data['title']}</b> — {format_price_rub(plan_data['price_rub'])}\n"
+            text += "\n"
+            for plan_id, plan_data in current_tariffs.items():
+                builder.button(
+                    text=f"{plan_data['title']} — {format_price_rub(plan_data['price_rub'])}",
+                    callback_data=f"tier_pay:{plan_id}",
+                )
+            builder.adjust(1)
+
+    if is_renew:
         for plan_id, plan_data in current_tariffs.items():
-            text += f"• <b>{plan_data['title']}</b> — {format_price_rub(plan_data['price_rub'])}\n"
-        text += "\n"
+            builder.button(
+                text=f"{plan_data['title']} — {format_price_rub(plan_data['price_rub'])}",
+                callback_data=f"tier_pay:{plan_id}",
+            )
+        builder.adjust(1)
 
     builder.row(InlineKeyboardButton(text="🚀 Тарифы Plus", callback_data="open_tiers"))
     builder.row(InlineKeyboardButton(text="📶 Увеличить лимит трафика", callback_data="open_traffic_packs"))
-    for plan_id, plan_data in current_tariffs.items():
-        builder.button(
-            text=f"{plan_data['title']} — {format_price_rub(plan_data['price_rub'])}",
-            callback_data=f"tier_pay:{plan_id}",
+    if not show_referral_trial and not is_renew:
+        builder.row(
+            InlineKeyboardButton(
+                text="🎁 Пригласи друга — получи бонус",
+                callback_data="open_invite",
+            ),
         )
-
-    builder.adjust(1)
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
     
     return text, builder
@@ -1222,12 +1259,29 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             from ..trial_usage import (
                 get_trial_days,
                 has_completed_trial_payment,
-                user_eligible_for_trial_offer,
+                user_has_referral_trial_source,
+                user_show_referral_trial_offer,
+                referral_trial_offer_text,
             )
 
-            if not await user_eligible_for_trial_offer(conn, user_id):
+            if not await user_has_referral_trial_source(conn, user_id):
+                await callback.answer(
+                    "Пробный Plus за 1₽ доступен по реферальной или партнёрской ссылке.",
+                    show_alert=True,
+                )
+                from .tiers import build_tiers_message
+                text, markup = await build_tiers_message(user_id, view="plus_plans")
+                await callback.message.edit_text(
+                    text, parse_mode="HTML", reply_markup=markup
+                )
+                return
+
+            if not await user_show_referral_trial_offer(conn, user_id):
                 if await has_completed_trial_payment(conn, user_id):
-                    await callback.answer("❌ Вы уже использовали пробный период!", show_alert=True)
+                    await callback.answer(
+                        "❌ Вы уже использовали пробный период!",
+                        show_alert=True,
+                    )
                 else:
                     await callback.answer(
                         "❌ Пробный период недоступен (активная Plus или отключён в настройках).",
@@ -1245,6 +1299,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             return
 
         try:
+            from ..trial_usage import referral_trial_offer_text
             from ..yookassa_client import YooKassaClient
             yk = YooKassaClient(config.yookassa)
             bot_info = await bot.get_me()
@@ -1278,14 +1333,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             b.row(InlineKeyboardButton(text="💳 Перейти к оплате (1₽)", url=payment_data["confirmation_url"]))
             b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
             await callback.message.edit_text(
-                f"🆓 <b>Пробный период — Plus</b>\n\n"
-                f"Период: <b>{trial_days} дней</b>\n"
-                f"Стоимость: <b>1₽</b>\n\n"
-                f"· Безлимит устройств\n"
-                f"· 50гб/мес bypass-трафика\n"
-                f"· Безлимит на быстрые сервера\n"
-                f"· И много другое\n\n"
-                f"<i>Plus активируется после успешной оплаты - просто обновите подписку в happ, через 🔄 или через бота - раздел '🔗 Подключить VPN'</i>",
+                referral_trial_offer_text(trial_days),
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
             ) 

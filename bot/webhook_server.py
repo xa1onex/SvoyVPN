@@ -1759,10 +1759,10 @@ class WebhookServer:
                         logger.warning(f"Could not fetch profile photo for user {user_id}: {ex}", exc_info=True)
 
                 # Trial logic
-                from .trial_usage import user_eligible_for_trial_offer
+                from .trial_usage import user_show_referral_trial_offer
                 trial_settings = await conn.fetchrow('SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1')
                 trial_days = trial_settings['days'] if trial_settings and trial_settings['days'] else 0
-                trial_available = await user_eligible_for_trial_offer(conn, user_id)
+                trial_available = await user_show_referral_trial_offer(conn, user_id)
 
                 # Admin check
                 is_admin = user_id in self.admin_ids
@@ -1845,8 +1845,8 @@ class WebhookServer:
                 return web.json_response({"error": "User ID not found"}, status=400)
                 
             async with get_connection() as conn:
-                from .trial_usage import user_eligible_for_trial_offer
-                if not await user_eligible_for_trial_offer(conn, user_id):
+                from .trial_usage import user_show_referral_trial_offer
+                if not await user_show_referral_trial_offer(conn, user_id):
                     return web.json_response({"error": "Trial not available"}, status=400)
 
             return web.json_response(
@@ -2413,13 +2413,14 @@ class WebhookServer:
         try:
             async with get_connection() as conn:
                 row = await conn.fetchrow(
-                    "SELECT ip FROM servers WHERE id = $1 AND is_active = TRUE", server_id
+                    "SELECT ip, port FROM servers WHERE id = $1 AND is_active = TRUE", server_id
                 )
                 if not row:
                     # 200 + ping -1: миниапп так же покажет «Недоступен», без 404 в логах и у прокси
                     return web.json_response({"ping": -1, "ip": None})
                 
                 ip = row['ip']
+                tcp_port = int(row['port'] or 443)
             
             # ICMP ping с таймаутом 3 секунды
             try:
@@ -2439,11 +2440,11 @@ class WebhookServer:
                         ping_ms = round(float(match.group(1)))
                         return web.json_response({"ping": ping_ms, "ip": ip})
                 
-                # Ping failed — try TCP connect as fallback
+                # Ping failed — try TCP connect as fallback (use server port, e.g. 8443 for Remnawave gRPC)
                 try:
                     t0 = asyncio.get_event_loop().time()
                     _, writer = await asyncio.wait_for(
-                        asyncio.open_connection(ip, 443), timeout=3
+                        asyncio.open_connection(ip, tcp_port), timeout=3
                     )
                     t1 = asyncio.get_event_loop().time()
                     writer.close()
@@ -3759,8 +3760,8 @@ class WebhookServer:
 
                 trial_settings = await conn.fetchrow("SELECT days FROM trial_settings ORDER BY id DESC LIMIT 1")
                 trial_days = trial_settings["days"] if trial_settings else 0
-                from .trial_usage import user_eligible_for_trial_offer
-                trial_available = await user_eligible_for_trial_offer(conn, user_id)
+                from .trial_usage import user_show_referral_trial_offer
+                trial_available = await user_show_referral_trial_offer(conn, user_id)
 
                 is_admin = user_id in self.admin_ids
 

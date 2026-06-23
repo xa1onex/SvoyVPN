@@ -90,7 +90,9 @@ class FlyerClient:
             raise FlyerAPIError(str(e)) from e
 
         if data.get("error"):
-            logger.error("Flyer %s error: %s", method, data["error"])
+            err = str(data["error"])
+            if "prohibited method" not in err.lower():
+                logger.error("Flyer %s error: %s", method, err)
         elif data.get("warning"):
             logger.warning("Flyer %s warning: %s", method, data["warning"])
         elif data.get("info"):
@@ -134,8 +136,17 @@ class FlyerClient:
         except FlyerAPIError:
             return True
 
-        if "skip" not in result and result.get("error"):
-            raise FlyerAPIError(result["error"])
+        if result.get("error"):
+            err = str(result["error"])
+            if "prohibited method" in err.lower():
+                logger.warning(
+                    "Flyer check unavailable for this bot type, skipping: %s",
+                    err,
+                )
+                self.enabled = False
+                return True
+            if "skip" not in result:
+                raise FlyerAPIError(err)
 
         subscribed = bool(result.get("skip"))
         if subscribed and "error" not in result:

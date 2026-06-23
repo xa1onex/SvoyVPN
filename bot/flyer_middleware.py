@@ -175,7 +175,7 @@ class FlyerSubscriptionMiddleware(BaseMiddleware):
                 },
             )
         except Exception as e:
-            logger.error("Flyer check failed for user %s: %s", user_id, e)
+            logger.warning("Flyer check failed for user %s: %s", user_id, e)
             return await handler(event, data)
 
         if subscribed:

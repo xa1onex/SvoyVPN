@@ -8,6 +8,23 @@ from typing import Any
 import httpx
 
 from .config import XUIConfig
+from .vless_link_builder import (
+    build_vless_link,
+    client_flow_for_network,
+    resolve_listen_ip,
+)
+
+
+def _parse_json_field(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value:
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:  # noqa: BLE001
+            return {}
+    return {}
 
 
 class XUIClient:
@@ -50,6 +67,28 @@ class XUIClient:
             return {"Authorization": f"Bearer {self.api_token}"}
         return {}
 
+    async def _post_headers(self) -> dict[str, str]:
+        headers: dict[str, str] = {"Content-Type": "application/json", **self._auth_headers()}
+        if not self.api_token:
+            csrf_token = await self._fetch_csrf_token()
+            if csrf_token:
+                headers["X-CSRF-Token"] = csrf_token
+        return headers
+
+    async def _fetch_csrf_token(self) -> str | None:
+        """3x-ui v3.3+ отдаёт CSRF-токен; на старых панелях endpoint отсутствует."""
+        await self._client.get("")
+        resp = await self._client.get("csrf-token")
+        if resp.status_code == 404:
+            return None
+        if resp.status_code != 200:
+            raise RuntimeError(f"x-ui csrf-token failed: {resp.status_code} {resp.text}")
+        data = resp.json()
+        token = data.get("obj") if isinstance(data, dict) else None
+        if not token:
+            raise RuntimeError(f"x-ui csrf-token missing in response: {resp.text}")
+        return str(token)
+
     async def login(self) -> None:
         if self.api_token:
             self._authorized = True
@@ -57,12 +96,26 @@ class XUIClient:
         if not (self.username and self.password):
             raise RuntimeError("Either API_TOKEN or USERNAME/PASSWORD must be provided")
         try:
-            resp = await self._client.post(
-                "login",
-                data={"username": self.username, "password": self.password},
-            )
+            csrf_token = await self._fetch_csrf_token()
+            if csrf_token:
+                resp = await self._client.post(
+                    "login",
+                    json={"username": self.username, "password": self.password},
+                    headers={"X-CSRF-Token": csrf_token},
+                )
+            else:
+                resp = await self._client.post(
+                    "login",
+                    data={"username": self.username, "password": self.password},
+                )
             if resp.status_code not in (200, 302):
                 raise RuntimeError(f"x-ui login failed: {resp.status_code} {resp.text}")
+            try:
+                body = resp.json()
+                if isinstance(body, dict) and body.get("success") is False:
+                    raise RuntimeError(f"x-ui login failed: {body.get('msg') or body}")
+            except Exception:  # noqa: BLE001
+                pass
             self._authorized = True
         except httpx.ConnectError as e:
             raise RuntimeError(f"Connection error: {e}") from e
@@ -86,11 +139,24 @@ class XUIClient:
         """Создать VLESS-клиента с заданным сроком."""
         await self.ensure_login()
 
+        inbound_id = self.inbound_id
+        if not inbound_id:
+            raise RuntimeError("inbound_id is not set")
+
+        inbounds_resp = await self._client.get("panel/api/inbounds/list")
+        inbounds = inbounds_resp.json().get("obj", [])
+        chosen = next((i for i in inbounds if i.get("id") == inbound_id), None)
+        if not chosen:
+            raise RuntimeError("Inbound not found for client creation")
+
+        stream_settings = _parse_json_field(chosen.get("streamSettings"))
+        network = (stream_settings.get("network") or "tcp").lower()
+
         client_uuid = uuid.uuid4().hex
         email = f"tg_{telegram_user_id}_{int(time.time())}@xui"
         total_gb_bytes = 0 if not traffic_gb else traffic_gb * 1073741824
 
-        client_dict = {
+        client_dict: dict[str, Any] = {
             "id": client_uuid,
             "email": email,
             "alterId": 64,
@@ -100,18 +166,16 @@ class XUIClient:
             "enable": True,
             "tgId": email,
             "subId": "",
-            "flow": "xtls-rprx-vision",
         }
-
-        inbound_id = self.inbound_id
-        if not inbound_id:
-            raise RuntimeError("inbound_id is not set")
+        flow = client_flow_for_network(network)
+        if flow:
+            client_dict["flow"] = flow
 
         payload = {
             "id": inbound_id,
             "settings": json.dumps({"clients": [client_dict]}),
         }
-        headers = {"Content-Type": "application/json", **self._auth_headers()}
+        headers = await self._post_headers()
 
         resp = await self._client.post("panel/api/inbounds/addClient", json=payload, headers=headers)
         if resp.status_code != 200:
@@ -121,88 +185,26 @@ class XUIClient:
         if not data.get("success", True):
             raise RuntimeError(f"addClient error: {data}")
 
-        # Получаем inbound, чтобы построить ссылку
-        inbounds_resp = await self._client.get("panel/api/inbounds/list")
-        inbounds = inbounds_resp.json().get("obj", [])
-        chosen = next((i for i in inbounds if i.get("id") == inbound_id), None)
-        if not chosen:
-            raise RuntimeError("Inbound not found for link generation")
-
         port = chosen.get("port") or "443"
-        stream_settings = json.loads(chosen.get("streamSettings", "{}") or "{}")
-        reality_settings = stream_settings.get("realitySettings") or {}
-
-        pbk = ""
-        sid = ""
-        sni = "google.com"
-        fp = "chrome"
-
-        if reality_settings:
-            settings = reality_settings.get("settings", {})
-            if isinstance(settings, str):
-                try:
-                    settings = json.loads(settings)
-                except Exception:  # noqa: BLE001
-                    settings = {}
-            elif not isinstance(settings, dict):
-                settings = {}
-
-            pbk = settings.get("publicKey", "") or ""
-
-            sid = reality_settings.get("shortId", "") or ""
-            if not sid:
-                short_ids = reality_settings.get("shortIds", []) or settings.get("shortIds", [])
-                if isinstance(short_ids, list) and short_ids:
-                    sid = short_ids[0]
-                elif isinstance(short_ids, str):
-                    sid = short_ids
-
-            sni_list = reality_settings.get("serverNames", [])
-            if isinstance(sni_list, str):
-                try:
-                    sni_list = json.loads(sni_list)
-                except Exception:  # noqa: BLE001
-                    sni_list = [sni_list] if sni_list else []
-            if isinstance(sni_list, list) and sni_list:
-                sni = sni_list[0]
-            elif isinstance(sni_list, str) and sni_list:
-                sni = sni_list
-
-            fingerprints = settings.get("fingerprints", []) or reality_settings.get(
-                "fingerprints",
-                [],
-            )
-            if isinstance(fingerprints, str):
-                try:
-                    fingerprints = json.loads(fingerprints)
-                except Exception:  # noqa: BLE001
-                    fingerprints = [fingerprints] if fingerprints else []
-            if isinstance(fingerprints, list) and fingerprints:
-                fp = fingerprints[0]
-            elif isinstance(fingerprints, str) and fingerprints:
-                fp = fingerprints
-
-        # Определяем IP для ссылки
-        listen_ip = public_ip
-        if not listen_ip:
-            listen_ip = chosen.get("listen") or ""
-            if not listen_ip or listen_ip in ("0.0.0.0", "127.0.0.1", "localhost"):
-                url_part = self.base_url.split("//")[-1].split("/")[0]
-                listen_ip = url_part.split(":")[0]
-                
-        # Если все еще 127.0.0.1 — это проблема для внешнего клиента
+        listen_ip = resolve_listen_ip(
+            chosen_inbound=chosen,
+            public_ip=public_ip,
+            base_url=self.base_url,
+        )
         if listen_ip in ("127.0.0.1", "localhost"):
-             import logging
-             logging.warning(f"VLESS link generated with {listen_ip}. This might not work for external clients.")
+            import logging
+            logging.warning(
+                "VLESS link generated with %s. This might not work for external clients.",
+                listen_ip,
+            )
 
-        link = f"vless://{client_uuid}@{listen_ip}:{port}/?type=tcp&encryption=none&security=reality"
-        if pbk:
-            link += f"&pbk={pbk}"
-        link += f"&fp={fp}"
-        link += f"&sni={sni}"
-        link += f"&sid={sid or '3d'}"
-        link += "&spx=%2F&flow=xtls-rprx-vision"
-        link += f"#{display_name or email.split('@')[0]}"
+        link = build_vless_link(
+            client_uuid=client_uuid,
+            listen_ip=listen_ip,
+            port=port,
+            stream_settings=stream_settings,
+            display_name=display_name or email.split("@")[0],
+        )
 
         return {
             "email": email,
@@ -236,9 +238,16 @@ class XUIClient:
             clients = []
 
         client_found = False
+        network = (_parse_json_field(chosen.get("streamSettings")).get("network") or "tcp")
+        expected_flow = client_flow_for_network(str(network).lower())
         for client in clients:
             if client.get("id") == client_id:
                 client["expiryTime"] = expiry_time_unix_ms
+                client["enable"] = True
+                if expected_flow:
+                    client["flow"] = expected_flow
+                else:
+                    client.pop("flow", None)
                 client_found = True
                 break
 
@@ -268,7 +277,7 @@ class XUIClient:
             if key in chosen:
                 payload[key] = updated_settings if key == "settings" else chosen[key]
 
-        headers = {"Content-Type": "application/json", **self._auth_headers()}
+        headers = await self._post_headers()
         resp = await self._client.post(
             f"panel/api/inbounds/update/{inbound_id}",
             json=payload,
@@ -284,7 +293,7 @@ class XUIClient:
         if not inbound_id:
             raise RuntimeError("inbound_id is not set")
 
-        headers = {"Content-Type": "application/json", **self._auth_headers()}
+        headers = await self._post_headers()
         resp = await self._client.post(
             f"panel/api/inbounds/{inbound_id}/delClient/{client_id}",
             headers=headers,
@@ -295,6 +304,7 @@ class XUIClient:
                 return
 
         # Fallback для других версий панели
+        headers = await self._post_headers()
         resp = await self._client.post(
             "panel/api/inbounds/delClient",
             json={"id": inbound_id, "clientId": client_id},

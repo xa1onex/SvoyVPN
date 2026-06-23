@@ -24,9 +24,13 @@ from .traffic import (
     is_navigation_header_server,
     navigation_header_vless_line,
 )
+from .remnawave_client import RemnawaveClient, build_remnawave_client, is_remnawave_server
 from .xui_client import XUIClient
 
 logger = logging.getLogger(__name__)
+
+# Не держим пул БД во время HTTP к панелям; не более 2 параллельных провижинов
+_KEY_PROVISION_SEM = asyncio.Semaphore(2)
 
 # Ключ без даты истечения не считается валидным для платной подписки.
 SQL_VPN_KEY_NOT_EXPIRED = (
@@ -191,6 +195,189 @@ async def extend_subscription(user_id: int, months: int, conn=None) -> None:
         await apply_subscription_anchor_on_payment(conn, user_id)
 
 
+_KEY_PROVISION_SEM = asyncio.Semaphore(3)
+
+
+async def _sync_remnawave_key_for_user(
+    conn,
+    client: RemnawaveClient,
+    *,
+    user_id: int,
+    server_id: int,
+    host_remark: str,
+    subscription_end,
+) -> bool:
+    """Создать или обновить один Remnawave-ключ в vpn_keys."""
+    expire_at = RemnawaveClient.parse_expiry_datetime(subscription_end)
+    expires_at = expire_at.date()
+
+    rw_user = await client.ensure_user(
+        telegram_id=user_id,
+        expire_at=expire_at,
+    )
+    short_uuid = rw_user.get("shortUuid")
+    vless_uuid = rw_user.get("vlessUuid")
+    rw_user_uuid = rw_user.get("uuid")
+    if not short_uuid or not vless_uuid:
+        return False
+
+    vless_link = await client.get_vless_link_for_host_remark(short_uuid, host_remark)
+    if not vless_link:
+        logger.warning(
+            "Remnawave link not found for user %s host %s",
+            user_id,
+            host_remark,
+        )
+        return False
+
+    await conn.execute(
+        """
+        UPDATE users
+        SET remnawave_user_uuid = $1
+        WHERE user_id = $2
+          AND (remnawave_user_uuid IS NULL OR remnawave_user_uuid = $1)
+        """,
+        rw_user_uuid,
+        user_id,
+    )
+
+    existing = await conn.fetchrow(
+        """
+        SELECT id FROM vpn_keys
+        WHERE user_id = $1 AND server_id = $2
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        user_id,
+        server_id,
+    )
+    if existing:
+        await conn.execute(
+            """
+            UPDATE vpn_keys
+            SET vless_client_id = $1, vless_link = $2, key_name = $3,
+                expires_at = $4, is_active = TRUE
+            WHERE id = $5
+            """,
+            vless_uuid,
+            vless_link,
+            host_remark,
+            expires_at,
+            existing["id"],
+        )
+        return True
+
+    key_id = await conn.fetchval(
+        """
+        INSERT INTO vpn_keys (user_id, server_id, vless_client_id, vless_link,
+                              key_name, expires_at, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+        ON CONFLICT (user_id, server_id) WHERE is_active = TRUE DO NOTHING
+        RETURNING id
+        """,
+        user_id,
+        server_id,
+        vless_uuid,
+        vless_link,
+        host_remark,
+        expires_at,
+    )
+    if key_id:
+        return True
+
+    await conn.execute(
+        """
+        UPDATE vpn_keys
+        SET vless_client_id = $1, vless_link = $2, key_name = $3,
+            expires_at = $4, is_active = TRUE
+        WHERE user_id = $5 AND server_id = $6
+        """,
+        vless_uuid,
+        vless_link,
+        host_remark,
+        expires_at,
+        user_id,
+        server_id,
+    )
+    return True
+
+
+async def _create_remnawave_keys_for_server(server_id: int, server: dict) -> None:
+    """Создать/обновить ключи Remnawave для всех активных пользователей на новом хосте."""
+    from .config import load_config
+    from .traffic import is_free_server_label
+
+    config = load_config()
+    client = build_remnawave_client(config)
+    host_remark = str(server["name"])
+
+    try:
+        async with get_connection() as conn:
+            paid_users = await conn.fetch(
+                """
+                SELECT user_id, subscription_end
+                FROM users
+                WHERE pay_subscribed = TRUE
+                  AND subscription_end IS NOT NULL
+                  AND DATE(subscription_end) >= CURRENT_DATE
+                  AND COALESCE(subscription_tier, 'free') <> 'free'
+                  AND DATE(subscription_end) < DATE '2090-01-01'
+                """
+            )
+            active_users = list(paid_users)
+
+            if is_free_server_label(host_remark):
+                free_users = await conn.fetch(
+                    """
+                    SELECT user_id, subscription_end
+                    FROM users
+                    WHERE pay_subscribed = TRUE
+                      AND subscription_end IS NOT NULL
+                      AND DATE(subscription_end) >= CURRENT_DATE
+                      AND COALESCE(subscription_tier, 'free') = 'free'
+                    """
+                )
+                seen = {int(u["user_id"]) for u in active_users}
+                for row in free_users:
+                    uid = int(row["user_id"])
+                    if uid not in seen:
+                        active_users.append(row)
+                        seen.add(uid)
+
+            if not active_users:
+                logger.info("No active users for Remnawave server %s", server_id)
+                return
+
+            logger.info(
+                "Syncing Remnawave keys for %d users on host %s (server %s)",
+                len(active_users),
+                host_remark,
+                server_id,
+            )
+
+            for user_row in active_users:
+                user_id = int(user_row["user_id"])
+                try:
+                    await _sync_remnawave_key_for_user(
+                        conn,
+                        client,
+                        user_id=user_id,
+                        server_id=server_id,
+                        host_remark=host_remark,
+                        subscription_end=user_row["subscription_end"],
+                    )
+                    await asyncio.sleep(0.05)
+                except Exception as e:
+                    logger.error(
+                        "Remnawave key sync failed for user %s server %s: %s",
+                        user_id,
+                        server_id,
+                        e,
+                    )
+    finally:
+        await client.close()
+
+
 async def create_keys_for_specific_server(server_id: int) -> None:
     """
     Создать ключи для конкретного сервера всем активным пользователям.
@@ -201,7 +388,8 @@ async def create_keys_for_specific_server(server_id: int) -> None:
             # Получаем информацию о сервере
             server = await conn.fetchrow(
                 """
-                SELECT id, name, ip, username, password, inbound_id, base_url, is_active
+                SELECT id, name, ip, username, password, inbound_id, base_url, is_active,
+                       panel_type, remnawave_host_uuid, remnawave_node_uuid
                 FROM servers
                 WHERE id = $1
                 """,
@@ -244,6 +432,10 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                     server["name"],
                     len(nav_users),
                 )
+                return
+
+            if is_remnawave_server(server):
+                await _create_remnawave_keys_for_server(server_id, server)
                 return
 
             # Только платные пользователи (Free управляет своим набором серверов)
@@ -371,134 +563,171 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
     Создать или активировать ключи для всех активных серверов.
     Если ключ уже есть - активирует и продлевает, если нет - создаёт новый.
     """
-    try:
-        async with get_connection() as conn:
-            user_row = await conn.fetchrow(
-                """
-                SELECT subscription_end, pay_subscribed, subscription_tier
-                FROM users
-                WHERE user_id = $1
-                  AND pay_subscribed = TRUE
-                  AND subscription_end IS NOT NULL
-                """,
-                user_id,
+    async with _KEY_PROVISION_SEM:
+        try:
+            await _create_or_activate_keys_for_all_servers_impl(user_id)
+        except Exception as e:
+            logger.error(f"Error creating keys for user {user_id}: {e}")
+
+
+async def _create_or_activate_keys_for_all_servers_impl(user_id: int) -> None:
+    is_free = False
+    allowed: set[int] | None = None
+    expires_at = None
+    expiry_ms = 0
+    relay_sid = None
+    servers = []
+
+    async with get_connection() as conn:
+        user_row = await conn.fetchrow(
+            """
+            SELECT subscription_end, pay_subscribed, subscription_tier
+            FROM users
+            WHERE user_id = $1
+              AND pay_subscribed = TRUE
+              AND subscription_end IS NOT NULL
+            """,
+            user_id,
+        )
+        if not user_row:
+            return
+
+        tier = (user_row["subscription_tier"] or FREE_TIER_ID).strip() or FREE_TIER_ID
+        is_free = tier == FREE_TIER_ID
+
+        if is_free:
+            from .free_tier_servers import (
+                assign_free_tier_servers,
+                get_free_tier_allowed_server_ids,
             )
-            if not user_row:
-                return
 
-            tier = (user_row["subscription_tier"] or FREE_TIER_ID).strip() or FREE_TIER_ID
-            is_free = tier == FREE_TIER_ID
-
-            if is_free:
-                from .free_tier_servers import (
-                    assign_free_tier_servers,
-                    deactivate_free_tier_extra_keys,
-                    get_free_tier_allowed_server_ids,
-                )
-
-                await assign_free_tier_servers(conn, user_id)
-                allowed = await get_free_tier_allowed_server_ids(conn, user_id)
-                expires_at = FREE_SUBSCRIPTION_END
-                end_dt = datetime.combine(FREE_SUBSCRIPTION_END, dt_time(23, 59, 59))
-                expiry_ms = int(end_dt.timestamp() * 1000)
-            else:
-                allowed = None
-                subscription_end = user_row["subscription_end"]
-                if isinstance(subscription_end, str):
-                    if " " in subscription_end:
-                        end_date = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
-                    else:
-                        end_date = datetime.strptime(subscription_end, "%Y-%m-%d")
+            await assign_free_tier_servers(conn, user_id)
+            allowed = await get_free_tier_allowed_server_ids(conn, user_id)
+            expires_at = FREE_SUBSCRIPTION_END
+            end_dt = datetime.combine(FREE_SUBSCRIPTION_END, dt_time(23, 59, 59))
+            expiry_ms = int(end_dt.timestamp() * 1000)
+        else:
+            subscription_end = user_row["subscription_end"]
+            if isinstance(subscription_end, str):
+                if " " in subscription_end:
+                    end_date = datetime.strptime(subscription_end.split()[0], "%Y-%m-%d")
                 else:
-                    end_date = subscription_end
+                    end_date = datetime.strptime(subscription_end, "%Y-%m-%d")
+            else:
+                end_date = subscription_end
 
-                end_dt = datetime.combine(end_date.date(), dt_time(23, 59, 59))
-                expiry_ms = int(end_dt.timestamp() * 1000)
-                expires_at = end_date.date() if isinstance(end_date, datetime) else end_date
+            end_dt = datetime.combine(end_date.date(), dt_time(23, 59, 59))
+            expiry_ms = int(end_dt.timestamp() * 1000)
+            expires_at = end_date.date() if isinstance(end_date, datetime) else end_date
 
-            relay_sid = await conn.fetchval(
-                """
-                SELECT tg_relay_server_id
-                FROM traffic_settings
-                ORDER BY id DESC
-                LIMIT 1
-                """
-            )
-            servers = await conn.fetch(
-                """
-                SELECT id, name, ip, username, password, inbound_id, base_url
-                FROM servers
-                WHERE is_active = TRUE
-                   OR id IS NOT DISTINCT FROM $1::bigint
-                """,
-                relay_sid,
-            )
+        relay_sid = await conn.fetchval(
+            """
+            SELECT tg_relay_server_id
+            FROM traffic_settings
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        )
+        servers = await conn.fetch(
+            """
+            SELECT id, name, ip, username, password, inbound_id, base_url, panel_type
+            FROM servers
+            WHERE is_active = TRUE
+               OR id IS NOT DISTINCT FROM $1::bigint
+            """,
+            relay_sid,
+        )
 
-            # Деактивируем ключи для неактивных серверов (кроме узла «ТГ безлимит» — он может быть на паузе в продаже)
-            await conn.execute(
-                """
-                UPDATE vpn_keys
-                SET is_active = FALSE
-                WHERE user_id = $1
-                  AND is_active = TRUE
-                  AND server_id IN (
-                      SELECT id FROM servers WHERE is_active = FALSE
-                  )
-                  AND server_id IS DISTINCT FROM (
-                      SELECT tg_relay_server_id
-                      FROM traffic_settings
-                      ORDER BY id DESC
-                      LIMIT 1
-                  )
-                """,
-                user_id,
-            )
+        await conn.execute(
+            """
+            UPDATE vpn_keys
+            SET is_active = FALSE
+            WHERE user_id = $1
+              AND is_active = TRUE
+              AND server_id IN (
+                  SELECT id FROM servers WHERE is_active = FALSE
+              )
+              AND server_id IS DISTINCT FROM (
+                  SELECT tg_relay_server_id
+                  FROM traffic_settings
+                  ORDER BY id DESC
+                  LIMIT 1
+              )
+            """,
+            user_id,
+        )
 
-            if not servers:
-                return
+        existing_by_server: dict[int, Any] = {}
+        for row in await conn.fetch(
+            """
+            SELECT server_id, id, vless_client_id, is_active
+            FROM vpn_keys
+            WHERE user_id = $1
+            ORDER BY id DESC
+            """,
+            user_id,
+        ):
+            sid = row["server_id"]
+            if sid not in existing_by_server:
+                existing_by_server[sid] = row
 
-            for server in servers:
-                server_id = server["id"]
+    if not servers:
+        return
+
+    for server in servers:
+        server_id = server["id"]
+        try:
+            if is_navigation_header_server(server["name"]):
+                if is_free and allowed is not None and int(server_id) not in allowed:
+                    continue
+                async with get_connection() as conn:
+                    await upsert_navigation_header_key(
+                        conn,
+                        user_id=user_id,
+                        server_id=int(server_id),
+                        server_name=str(server["name"]),
+                        expires_at=expires_at,
+                    )
+                continue
+
+            if is_free and allowed is not None and int(server_id) not in allowed:
+                continue
+
+            if is_remnawave_server(server):
+                from .config import load_config
+
+                rw_client = build_remnawave_client(load_config())
                 try:
-                    if is_navigation_header_server(server["name"]):
-                        if is_free and int(server_id) not in allowed:
-                            continue
-                        await upsert_navigation_header_key(
+                    async with get_connection() as conn:
+                        sub_end = (
+                            FREE_SUBSCRIPTION_END
+                            if is_free
+                            else expires_at
+                        )
+                        await _sync_remnawave_key_for_user(
                             conn,
+                            rw_client,
                             user_id=user_id,
                             server_id=int(server_id),
-                            server_name=str(server["name"]),
-                            expires_at=expires_at,
+                            host_remark=str(server["name"]),
+                            subscription_end=sub_end,
                         )
-                        continue
+                finally:
+                    await rw_client.close()
+                continue
 
-                    if is_free and int(server_id) not in allowed:
-                        continue
+            existing = existing_by_server.get(server_id)
 
-                    # Проверяем существующий ключ
-                    existing = await conn.fetchrow(
-                        """
-                        SELECT id, vless_client_id, is_active
-                        FROM vpn_keys
-                        WHERE user_id = $1 AND server_id = $2
-                        ORDER BY id DESC
-                        LIMIT 1
-                        """,
-                        user_id,
-                        server_id,
-                    )
-
-                    client = XUIClient(
-                        base_url=server["base_url"],
-                        username=server["username"],
-                        password=server["password"],
-                        inbound_id=server["inbound_id"]
-                    )
-
-                    if existing:
-                        # Ключ есть - активируем и продлеваем
-                        await client.update_client_expiry(existing["vless_client_id"], expiry_ms)
-
+            client = XUIClient(
+                base_url=server["base_url"],
+                username=server["username"],
+                password=server["password"],
+                inbound_id=server["inbound_id"],
+            )
+            try:
+                if existing:
+                    await client.update_client_expiry(existing["vless_client_id"], expiry_ms)
+                    async with get_connection() as conn:
                         await conn.execute(
                             """
                             UPDATE vpn_keys
@@ -508,20 +737,18 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                             expires_at,
                             existing["id"],
                         )
-                    else:
-                        # Ключа нет - создаём новый
-                        result = await client.add_vless_client(
-                            telegram_user_id=user_id,
-                            display_name=server["name"],
-                            traffic_gb=None,
-                            expiry_time_unix_ms=expiry_ms,
-                            public_ip=server.get("ip")
-                        )
+                else:
+                    result = await client.add_vless_client(
+                        telegram_user_id=user_id,
+                        display_name=server["name"],
+                        traffic_gb=None,
+                        expiry_time_unix_ms=expiry_ms,
+                        public_ip=server.get("ip"),
+                    )
+                    if not result.get("id") or not result.get("link"):
+                        continue
 
-                        if not result.get("id") or not result.get("link"):
-                            await client.close()
-                            continue
-
+                    async with get_connection() as conn:
                         key_id = await conn.fetchval(
                             """
                             INSERT INTO vpn_keys (user_id, server_id, vless_client_id, vless_link,
@@ -544,24 +771,22 @@ async def create_or_activate_keys_for_all_servers(user_id: int) -> None:
                                 SET key_name = $1
                                 WHERE id = $2
                                 """,
-                                server['name'],
+                                server["name"],
                                 key_id,
                             )
+            finally:
+                await client.close()
 
-                    await client.close()
+        except Exception as e:
+            logger.error(f"Failed to create/reactivate key for server {server['name']}: {e}")
 
-                except Exception as e:
-                    logger.error(f"Failed to create/reactivate key for server {server['name']}: {e}")
+    if is_free and allowed:
+        from .free_tier_servers import deactivate_free_tier_extra_keys
 
-            if is_free and allowed:
-                from .free_tier_servers import deactivate_free_tier_extra_keys
-
-                await deactivate_free_tier_extra_keys(
-                    conn, user_id, allowed, tg_relay_server_id=relay_sid
-                )
-
-    except Exception as e:
-        logger.error(f"Error creating keys for user {user_id}: {e}")
+        async with get_connection() as conn:
+            await deactivate_free_tier_extra_keys(
+                conn, user_id, allowed, tg_relay_server_id=relay_sid
+            )
 
 
 async def ensure_user_keys_for_server_ids(user_id: int, server_ids: List[int]) -> None:
@@ -570,6 +795,8 @@ async def ensure_user_keys_for_server_ids(user_id: int, server_ids: List[int]) -
     Используется из GET /sub/{token}, чтобы не дергать все панели XUI подряд
     (клиенты вроде Happ обрывают запрос по таймауту).
     """
+    from .config import load_config
+
     if not server_ids:
         return
     try:
@@ -607,9 +834,10 @@ async def ensure_user_keys_for_server_ids(user_id: int, server_ids: List[int]) -
             )
             servers = await conn.fetch(
                 """
-                SELECT id, name, ip, username, password, inbound_id, base_url
+                SELECT id, name, ip, username, password, inbound_id, base_url, panel_type
                 FROM servers
                 WHERE id = ANY($1::int[])
+                  AND COALESCE(is_system, FALSE) = FALSE
                   AND (is_active = TRUE OR id IS NOT DISTINCT FROM $2::bigint)
                 """,
                 server_ids,
@@ -621,6 +849,21 @@ async def ensure_user_keys_for_server_ids(user_id: int, server_ids: List[int]) -
             for server in servers:
                 server_id = server["id"]
                 try:
+                    if is_remnawave_server(server):
+                        rw_client = build_remnawave_client(load_config())
+                        try:
+                            await _sync_remnawave_key_for_user(
+                                conn,
+                                rw_client,
+                                user_id=user_id,
+                                server_id=int(server_id),
+                                host_remark=str(server["name"]),
+                                subscription_end=subscription_end,
+                            )
+                        finally:
+                            await rw_client.close()
+                        continue
+
                     existing = await conn.fetchrow(
                         """
                         SELECT id, vless_client_id, is_active
@@ -641,17 +884,45 @@ async def ensure_user_keys_for_server_ids(user_id: int, server_ids: List[int]) -
                     )
 
                     if existing:
-                        await client.update_client_expiry(existing["vless_client_id"], expiry_ms)
-
-                        await conn.execute(
-                            """
-                            UPDATE vpn_keys
-                            SET is_active = TRUE, expires_at = $1
-                            WHERE id = $2
-                            """,
-                            expires_at,
-                            existing["id"],
-                        )
+                        try:
+                            await client.update_client_expiry(existing["vless_client_id"], expiry_ms)
+                            await conn.execute(
+                                """
+                                UPDATE vpn_keys
+                                SET is_active = TRUE, expires_at = $1
+                                WHERE id = $2
+                                """,
+                                expires_at,
+                                existing["id"],
+                            )
+                        except Exception as upd_err:
+                            # Клиент пропал на панели (inbound пересоздан / shortId сменён) —
+                            # вместо вечной ошибки пересоздаём клиента и чиним строку ключа.
+                            logger.warning(
+                                f"Stale key for user {user_id} on server {server_id} "
+                                f"({existing['vless_client_id']}): {upd_err}; recreating"
+                            )
+                            result = await client.add_vless_client(
+                                telegram_user_id=user_id,
+                                display_name=server["name"],
+                                traffic_gb=None,
+                                expiry_time_unix_ms=expiry_ms,
+                                public_ip=server.get("ip"),
+                            )
+                            if result.get("id") and result.get("link"):
+                                await conn.execute(
+                                    """
+                                    UPDATE vpn_keys
+                                    SET vless_client_id = $1, vless_link = $2,
+                                        key_name = $3, expires_at = $4, is_active = TRUE
+                                    WHERE id = $5
+                                    """,
+                                    result["id"],
+                                    result["link"],
+                                    server["name"],
+                                    expires_at,
+                                    existing["id"],
+                                )
                     else:
                         result = await client.add_vless_client(
                             telegram_user_id=user_id,
@@ -1271,6 +1542,23 @@ async def finalize_free_tier_access(conn, user_id: int) -> None:
         asyncio.create_task(_revoke_keys_on_panels(list(revoked_rows)))
 
 
+async def revoke_all_vpn_access(conn, user_id: int) -> int:
+    """Отключить все VPN-ключи пользователя в БД и на панелях."""
+    revoked_rows = await conn.fetch(
+        """
+        UPDATE vpn_keys
+        SET is_active = FALSE,
+            expires_at = CURRENT_DATE - INTERVAL '1 day'
+        WHERE user_id = $1 AND is_active = TRUE
+        RETURNING id, vless_client_id, server_id
+        """,
+        user_id,
+    )
+    if revoked_rows:
+        asyncio.create_task(_revoke_keys_on_panels(list(revoked_rows)))
+    return len(revoked_rows)
+
+
 async def _revoke_keys_on_panels(rows: list) -> None:
     """Срок клиента на X-UI в прошлое — платные узлы перестают работать."""
     past_ms = 1_000
@@ -1471,14 +1759,33 @@ async def migrate_inactive_users_to_free(
 
 
 async def grant_free_tier(conn, user_id: int) -> None:
-    """Перевести пользователя на тариф Free (без сброса trial_used)."""
+    """Перевести пользователя на тариф Free (сохраняем дату окончания Plus для триала)."""
     from .plans import (
+        ALL_PAID_TIER_IDS,
         FREE_SUBSCRIPTION_END,
         FREE_TIER_ID,
         get_tier_bypass_gb,
         get_tier_max_devices,
+        is_sentinel_subscription_end,
     )
     from .free_tier_servers import assign_free_tier_servers
+
+    old = await conn.fetchrow(
+        """
+        SELECT subscription_tier, subscription_end
+        FROM users WHERE user_id = $1
+        """,
+        user_id,
+    )
+    last_plus_ended_at = None
+    if old:
+        old_tier = (old["subscription_tier"] or "").strip()
+        old_end = old["subscription_end"]
+        if old_tier in ALL_PAID_TIER_IDS:
+            if old_end and not is_sentinel_subscription_end(old_end):
+                last_plus_ended_at = old_end
+            else:
+                last_plus_ended_at = datetime.utcnow()
 
     await conn.execute(
         """
@@ -1495,7 +1802,8 @@ async def grant_free_tier(conn, user_id: int) -> None:
             tier_duration_months = NULL,
             tier_price_paid = NULL,
             tier_purchased_at = NULL,
-            renewal_used = FALSE
+            renewal_used = FALSE,
+            last_plus_ended_at = COALESCE($6, last_plus_ended_at)
         WHERE user_id = $1
         """,
         user_id,
@@ -1503,6 +1811,7 @@ async def grant_free_tier(conn, user_id: int) -> None:
         FREE_SUBSCRIPTION_END,
         get_tier_bypass_gb(FREE_TIER_ID),
         get_tier_max_devices(FREE_TIER_ID),
+        last_plus_ended_at,
     )
     await assign_free_tier_servers(conn, user_id)
     await finalize_free_tier_access(conn, user_id)
@@ -1547,20 +1856,35 @@ async def update_vless_links_for_server(server_id: int) -> None:
             if not chosen:
                 return
             
+            from .vless_link_builder import build_vless_link, resolve_listen_ip
+
             port = chosen.get("port") or "443"
             stream_settings = json.loads(chosen.get("streamSettings", "{}") or "{}")
-            reality_settings = stream_settings.get("realitySettings") or {}
-            
-            pbk = reality_settings.get("settings", {}).get("publicKey", "")
-            sid = reality_settings.get("shortId", "")
-            sni = (reality_settings.get("serverNames", []) or ["google.com"])[0]
-            fp = "chrome"
-            
-            listen_ip = server["ip"] or server["base_url"].split("//")[-1].split("/")[0].split(":")[0]
-            
+            listen_ip = server["ip"] or resolve_listen_ip(
+                chosen_inbound=chosen,
+                public_ip=server["ip"],
+                base_url=server["base_url"],
+            )
+
+            display_name = server["name"]
             for key in keys:
-                link = f"vless://{key['vless_client_id']}@{listen_ip}:{port}/?type=tcp&encryption=none&security=reality&pbk={pbk}&fp={fp}&sni={sni}&sid={sid or '3d'}&spx=%2F&flow=xtls-rprx-vision#{server['name']}"
-                await conn.execute("UPDATE vpn_keys SET vless_link = $1 WHERE id = $2", link, key['id'])
+                link = build_vless_link(
+                    client_uuid=key["vless_client_id"],
+                    listen_ip=listen_ip,
+                    port=port,
+                    stream_settings=stream_settings,
+                    display_name=display_name,
+                )
+                await conn.execute(
+                    """
+                    UPDATE vpn_keys
+                    SET vless_link = $1, key_name = $2
+                    WHERE id = $3
+                    """,
+                    link,
+                    display_name,
+                    key["id"],
+                )
                 
             await client.close()
     except Exception as e:

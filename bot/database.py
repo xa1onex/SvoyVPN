@@ -21,8 +21,9 @@ async def get_pool() -> asyncpg.Pool:
         if db_url:
             _pool = await asyncpg.create_pool(
                 dsn=db_url,
-                min_size=1,
-                max_size=20,
+                min_size=2,
+                max_size=40,
+                command_timeout=60,
             )
         else:
             _pool = await asyncpg.create_pool(
@@ -31,8 +32,9 @@ async def get_pool() -> asyncpg.Pool:
                 database=os.getenv("DB_NAME", "vpn_db"),
                 user=os.getenv("DB_USER", "postgres"),
                 password=os.getenv("DB_PASSWORD", ""),
-                min_size=1,
-                max_size=20,
+                min_size=2,
+                max_size=40,
+                command_timeout=60,
             )
         logging.info("PostgreSQL connection pool created")
     return _pool
@@ -42,7 +44,7 @@ async def get_pool() -> asyncpg.Pool:
 async def get_connection():
     """Async context manager for DB access."""
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=30) as conn:
         yield conn
 
 
@@ -133,6 +135,12 @@ async def init_db() -> None:
             if 'trial_used' not in existing_columns:
                 await conn.execute("ALTER TABLE users ADD COLUMN trial_used BOOLEAN DEFAULT FALSE")
                 logging.info("Added trial_used column to users table")
+
+            if 'last_plus_ended_at' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN last_plus_ended_at TIMESTAMP"
+                )
+                logging.info("Added last_plus_ended_at column to users table")
             
             if 'utm_source' not in existing_columns:
                 await conn.execute("ALTER TABLE users ADD COLUMN utm_source TEXT")
@@ -175,6 +183,18 @@ async def init_db() -> None:
                     "ALTER TABLE users ADD COLUMN bypass_bonus_gb INTEGER DEFAULT 0"
                 )
                 logging.info("Added bypass_bonus_gb column to users table")
+            if 'bypass_pack_purchased_gb' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN bypass_pack_purchased_gb INTEGER DEFAULT 0"
+                )
+                logging.info("Added bypass_pack_purchased_gb column to users table")
+                await conn.execute(
+                    """
+                    UPDATE users
+                    SET bypass_pack_purchased_gb = COALESCE(bypass_bonus_gb, 0)
+                    WHERE COALESCE(bypass_bonus_gb, 0) > 0
+                    """
+                )
             if 'bypass_last_sync_at' not in existing_columns:
                 await conn.execute(
                     "ALTER TABLE users ADD COLUMN bypass_last_sync_at TIMESTAMP"
@@ -232,6 +252,21 @@ async def init_db() -> None:
                     "ALTER TABLE users ADD COLUMN referral_bonus_bypass_percent INTEGER DEFAULT 0"
                 )
                 logging.info("Added referral_bonus_bypass_percent column to users table")
+            if 'blacklist_reason' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN blacklist_reason TEXT"
+                )
+                logging.info("Added blacklist_reason column to users table")
+            if 'blacklisted_at' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN blacklisted_at TIMESTAMP"
+                )
+                logging.info("Added blacklisted_at column to users table")
+            if 'remnawave_user_uuid' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN remnawave_user_uuid TEXT"
+                )
+                logging.info("Added remnawave_user_uuid column to users table")
         except Exception as e:
             logging.warning(f"Could not add columns to users table: {e}")
 
@@ -248,6 +283,33 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS user_notifications_user_type_idx
             ON user_notifications(user_id, notification_type)
         """)
+
+        # Действия пользователей в боте (кнопки, команды, сообщения)
+        try:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS bot_activity_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    event_kind TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    detail TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_bot_activity_user_created
+                ON bot_activity_logs(user_id, created_at DESC)
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_bot_activity_created
+                ON bot_activity_logs(created_at DESC)
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_bot_activity_action
+                ON bot_activity_logs(action)
+            """)
+        except Exception as e:
+            logging.warning("Could not create bot_activity_logs table: %s", e)
 
         # Добавляем уникальный индекс для referral_code (после добавления колонки)
         try:
@@ -347,6 +409,24 @@ async def init_db() -> None:
                     "ALTER TABLE servers ADD COLUMN is_bypass BOOLEAN NOT NULL DEFAULT FALSE"
                 )
                 logging.info("Added is_bypass column to servers table")
+
+            if 'panel_type' not in srv_existing:
+                await conn.execute(
+                    "ALTER TABLE servers ADD COLUMN panel_type TEXT NOT NULL DEFAULT '3x-ui'"
+                )
+                logging.info("Added panel_type column to servers table")
+
+            if 'remnawave_host_uuid' not in srv_existing:
+                await conn.execute(
+                    "ALTER TABLE servers ADD COLUMN remnawave_host_uuid TEXT"
+                )
+                logging.info("Added remnawave_host_uuid column to servers table")
+
+            if 'remnawave_node_uuid' not in srv_existing:
+                await conn.execute(
+                    "ALTER TABLE servers ADD COLUMN remnawave_node_uuid TEXT"
+                )
+                logging.info("Added remnawave_node_uuid column to servers table")
         except Exception as e:
             logging.warning(f"Could not migrate servers table (display_order/is_system): {e}")
 

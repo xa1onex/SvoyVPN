@@ -61,6 +61,7 @@ def _pick_from_server_rows(rows, *, is_bypass: bool) -> int | None:
                 or (
                     is_free_server_label(r["name"])
                     and not is_free_header_server(r["name"])
+                    and (r.get("panel_type") or "3x-ui") != "remnawave"
                 )
             )
         ]
@@ -70,7 +71,13 @@ def _pick_from_server_rows(rows, *, is_bypass: bool) -> int | None:
             for r in rows
             if not is_navigation_header_server(r["name"])
             and not r.get("is_bypass")
-            and not is_free_server_label(r["name"])
+            and (
+                not is_free_server_label(r["name"])
+                or (
+                    (r.get("panel_type") or "3x-ui") == "remnawave"
+                    and not is_free_header_server(r["name"])
+                )
+            )
         ]
     if not candidates:
         return None
@@ -84,7 +91,7 @@ async def pick_best_server_id(conn, *, is_bypass: bool) -> int | None:
     """Самый приоритетный активный сервер: display_order, затем транспорт в имени."""
     rows = await conn.fetch(
         """
-        SELECT id, name, display_order, is_bypass
+        SELECT id, name, display_order, is_bypass, panel_type
         FROM servers
         WHERE is_active = TRUE
           AND COALESCE(exclude_from_subscription, FALSE) = FALSE

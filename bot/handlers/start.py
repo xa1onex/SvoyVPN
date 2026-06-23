@@ -7,8 +7,10 @@ import random
 import logging
 from datetime import datetime, timedelta
 from aiogram import Bot, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..database import get_connection, generate_subscription_token, ensure_subscription_token
 from ..plans import (
@@ -24,6 +26,7 @@ from ..subscriptions import (
     get_user_subscription_url,
 )
 from ..traffic import ensure_bypass_period
+from ..help_content import get_help_page_text, help_page_count
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +50,58 @@ def _svoyvpn_why_and_footer_html() -> str:
     )
     why_block = (
         "<b>Зачем он вам:</b>\n"
-        "• Мы дарим подарки всем за использование VPN - /invite\n"
+        "• Мы дарим до 2000₽ всем за использование VPN - /invite\n"
         "• Универсальные тарифы от <b>0₽/год</b>\n"
         "• Стабильный обход <b>Белых списков</b>\n"
         "• И многое другое"
     )
     footer = (
-        f"\n\n👉 Больше информации в разделе <b>помощь</b> — /help\n\n"
+        f"\n\n👉 Начни прямо сейчас полностью бесплатно! <b>🔗 Подключить VPN</b> жми и все готово!\n\n"
         f"‼️ Используя сервис, вы соглашаетесь с {offer_link}."
     )
     return why_block + footer
+
+
+def build_utm_bonus_welcome_message() -> str:
+    """Приветствие при регистрации по UTM/рефералу с бонусом (без упоминания дней)."""
+    offer_link = (
+        f'<a href="{OFFER_PRIVACY_TELEGRAPH_URL}">'
+        "офертой и политикой конфиденциальности</a>"
+    )
+    return (
+        "<b>SvoyVPN</b> — стабильный VPN с обходом Белых списков "
+        "и с <b>бесплатным</b> тарифом!\n\n"
+        "Тебе уже доступны:\n"
+        "· <b>Бесплатный</b> обход Белых списков\n"
+        "· Стабильные <b>быстрые</b> страны\n"
+        "· Работа <b>YouTube/TikTok/ChatGPT</b> и др.\n"
+        'Просто жми кнопку "🔗 Подключить VPN" и все <b>готово</b>!\n\n'
+        "А также можешь забрать до <b>2000₽</b> подарками тг - /invite "
+        '(или раздел "🎁 Подарок")\n\n'
+        f"‼️ Используя сервис, вы соглашаетесь с {offer_link}."
+    )
+
+
+def get_promo_welcome_keyboard(*, show_trial: bool = True):
+    """Клавиатура только для первого приветствия (UTM/реферал с бонусом)."""
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    builder = InlineKeyboardBuilder()
+    if show_trial:
+        builder.row(
+            InlineKeyboardButton(
+                text="🎁 Plus за 1₽ — попробовать",
+                callback_data="activate_trial",
+            ),
+        )
+    builder.row(
+        InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="get_vpn_link"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
+        InlineKeyboardButton(text="🆘 Помощь", callback_data="open_help"),
+    )
+    return builder.as_markup()
 
 
 async def build_new_user_welcome_message(
@@ -76,6 +121,64 @@ async def build_new_user_welcome_message(
         return f"{header}{gift_line}\n\n{body}"
 
     return f"{header}{body}"
+
+
+def _build_help_keyboard(
+    page: int,
+    *,
+    support_link: str | None,
+) -> InlineKeyboardBuilder:
+    """Клавиатура справки: навигация по темам + поддержка."""
+    builder = InlineKeyboardBuilder()
+    total = help_page_count(offer_url=OFFER_PRIVACY_TELEGRAPH_URL)
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(
+            InlineKeyboardButton(text="◀️ Назад", callback_data=f"help_page:{page - 1}")
+        )
+    if page < total - 1:
+        nav.append(
+            InlineKeyboardButton(text="Вперёд ▶️", callback_data=f"help_page:{page + 1}")
+        )
+    if nav:
+        builder.row(*nav)
+    if support_link:
+        builder.row(InlineKeyboardButton(text="🛟 Техподдержка", url=support_link))
+    builder.row(
+        InlineKeyboardButton(
+            text="📄 Оферта и политика конфиденциальности",
+            url=OFFER_PRIVACY_TELEGRAPH_URL,
+        )
+    )
+    builder.row(InlineKeyboardButton(text="⏪ В главное меню", callback_data="go_back"))
+    return builder
+
+
+async def _send_help_page(
+    message_or_callback: Message | CallbackQuery,
+    *,
+    page: int = 0,
+) -> None:
+    from ..database import get_support_link
+
+    support_link = await get_support_link()
+    text = get_help_page_text(page, offer_url=OFFER_PRIVACY_TELEGRAPH_URL)
+    markup = _build_help_keyboard(page, support_link=support_link).as_markup()
+
+    if isinstance(message_or_callback, CallbackQuery):
+        await message_or_callback.message.edit_text(
+            text,
+            reply_markup=markup,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+    else:
+        await message_or_callback.answer(
+            text,
+            reply_markup=markup,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
 
 
 async def setup_start_handler(dp, bot: Bot, config):
@@ -253,48 +356,27 @@ async def setup_start_handler(dp, bot: Bot, config):
                 await ensure_bypass_period(conn, user_id)
                 asyncio.create_task(create_or_activate_keys_for_all_servers(user_id))
 
-                from ..referral_rewards import get_referral_bonus_days
-
-                referral_bonus_days = 0
-                if has_referral:
-                    try:
-                        referral_bonus_days = await get_referral_bonus_days()
-                    except Exception:
-                        referral_bonus_days = 7
-
-                welcome_msg = await build_new_user_welcome_message(
-                    has_referral=has_referral,
-                    referral_bonus_days=referral_bonus_days,
+                use_promo_welcome = (
+                    (utm_bonus_applied and utm_bonus_days > 0 and not has_referral)
+                    or has_referral
                 )
 
-                if utm_bonus_applied and utm_bonus_days > 0 and not has_referral:
-                    user_data = await conn.fetchrow(
-                        "SELECT subscription_end FROM users WHERE user_id = $1", user_id
-                    )
-                    if user_data and user_data["subscription_end"]:
-                        expiration_date = user_data["subscription_end"].strftime("%d.%m.%Y")
-                    else:
-                        expiration_date = (
-                            datetime.now() + timedelta(days=utm_bonus_days)
-                        ).strftime("%d.%m.%Y")
+                if use_promo_welcome:
+                    from ..trial_usage import should_show_trial_in_main_menu
 
-                    day_word = (
-                        "день"
-                        if utm_bonus_days == 1
-                        else "дня"
-                        if utm_bonus_days < 5
-                        else "дней"
+                    welcome_msg = build_utm_bonus_welcome_message()
+                    show_trial_btn = await should_show_trial_in_main_menu(conn, user_id)
+                    welcome_keyboard = get_promo_welcome_keyboard(show_trial=show_trial_btn)
+                else:
+                    welcome_msg = await build_new_user_welcome_message(
+                        has_referral=False,
+                        referral_bonus_days=0,
                     )
-                    utm_prefix = (
-                        f"🎁 Вы получили +{utm_bonus_days} {day_word} "
-                        f"<b>Plus</b> по акции!\n"
-                        f"Ваш <b>VPN Plus</b> подключен до: {expiration_date}\n\n"
-                    )
-                    welcome_msg = utm_prefix + welcome_msg
+                    welcome_keyboard = await get_main_keyboard(user_id, config)
 
                 await message.answer(
                     welcome_msg,
-                    reply_markup=await get_main_keyboard(user_id, config),
+                    reply_markup=welcome_keyboard,
                     disable_web_page_preview=True,
                     parse_mode='HTML'
                 )
@@ -306,26 +388,100 @@ async def setup_start_handler(dp, bot: Bot, config):
                     user_id,
                     username=username,
                     first_name=first_name,
-                    provision_keys=True,
+                    provision_keys=False,
                 )
 
-                # Логируем UTM визит для существующего пользователя (без привилегий)
+                # Логируем UTM / реферал для существующего пользователя
                 if utm_tag:
                     try:
-                        await conn.execute('''
+                        await conn.execute(
+                            """
+                            UPDATE users
+                            SET utm_source = COALESCE(NULLIF(TRIM(utm_source), ''), $1)
+                            WHERE user_id = $2
+                            """,
+                            utm_tag,
+                            user_id,
+                        )
+                        await conn.execute(
+                            """
                             INSERT INTO utm_visits (user_id, utm_tag, is_new_user)
                             VALUES ($1, $2, FALSE)
-                        ''', user_id, utm_tag)
+                            """,
+                            user_id,
+                            utm_tag,
+                        )
                     except Exception as e:
                         logger.warning(f"Could not log UTM visit for existing user: {e}")
-                
+
+                if referral_code:
+                    inviter = await conn.fetchrow(
+                        "SELECT user_id FROM users WHERE referral_code = $1",
+                        referral_code,
+                    )
+                    if inviter and inviter["user_id"] != user_id:
+                        await conn.execute(
+                            """
+                            UPDATE users SET invited_by = COALESCE(invited_by, $1)
+                            WHERE user_id = $2 AND invited_by IS NULL
+                            """,
+                            inviter["user_id"],
+                            user_id,
+                        )
+
                 subscription_status = await get_subscription_status_display(user_id)
+                from ..trial_usage import (
+                    should_show_trial_in_main_menu,
+                    get_trial_days,
+                    referral_trial_offer_text,
+                )
+
+                show_referral_trial = await should_show_trial_in_main_menu(conn, user_id)
+                main_text = await get_main_text(first_name, subscription_status, user_id)
+                main_keyboard = await get_main_keyboard(user_id, config)
+
                 await message.answer(
-                    await get_main_text(first_name, subscription_status, user_id),
+                    main_text,
                     parse_mode="HTML",
-                    reply_markup=await get_main_keyboard(user_id, config),
+                    reply_markup=main_keyboard,
                     disable_web_page_preview=True,
                 )
+
+                if show_referral_trial:
+                    already = await conn.fetchval(
+                        """
+                        SELECT 1 FROM user_notifications
+                        WHERE user_id = $1 AND notification_type = 'referral_trial_on_return'
+                          AND created_at > NOW() - INTERVAL '7 days'
+                        """,
+                        user_id,
+                    )
+                    if not already and (utm_tag or referral_code):
+                        trial_days = await get_trial_days(conn)
+                        if trial_days > 0:
+                            from aiogram.utils.keyboard import InlineKeyboardBuilder
+                            from aiogram.types import InlineKeyboardButton
+
+                            b = InlineKeyboardBuilder()
+                            b.row(
+                                InlineKeyboardButton(
+                                    text="🎁 Plus за 1₽ — попробовать",
+                                    callback_data="activate_trial",
+                                )
+                            )
+                            await message.answer(
+                                referral_trial_offer_text(trial_days),
+                                parse_mode="HTML",
+                                reply_markup=b.as_markup(),
+                            )
+                            await conn.execute(
+                                """
+                                INSERT INTO user_notifications (user_id, notification_type)
+                                VALUES ($1, $2)
+                                """,
+                                user_id,
+                                "referral_trial_on_return",
+                            )
 
 
 async def get_main_text(first_name: str, subscription_status: str, user_id: int = None, is_new_user: bool = False, has_referral: bool = False) -> str:
@@ -387,10 +543,10 @@ async def get_main_keyboard(user_id: int, config):
     show_trial = False
     try:
         from ..database import get_connection
-        from ..trial_usage import user_eligible_for_trial_offer
+        from ..trial_usage import should_show_trial_in_main_menu
 
         async with get_connection() as conn:
-            show_trial = await user_eligible_for_trial_offer(conn, user_id)
+            show_trial = await should_show_trial_in_main_menu(conn, user_id)
     except Exception as e:
         logger.error(f"Error checking trial logic: {e}")
         
@@ -401,7 +557,7 @@ async def get_main_keyboard(user_id: int, config):
 
     builder.row(
         InlineKeyboardButton(text="🆘 Помощь", callback_data="open_help"),
-        InlineKeyboardButton(text="📶 Лимиты", callback_data="open_bypass_packs"),
+        InlineKeyboardButton(text="⏫ Лимиты", callback_data="open_bypass_packs"),
     )
     if await should_show_devices_menu(user_id):
         builder.row(
@@ -441,12 +597,16 @@ async def setup_other_handlers(dp, bot: Bot, config):
         from ..subscriptions import get_subscription_status_display
         subscription_status = await get_subscription_status_display(user_id)
         
-        await callback.message.edit_text(
-            text=await get_main_text(first_name, subscription_status, user_id),
-            parse_mode='HTML',
-            reply_markup=await get_main_keyboard(user_id, config),
-            disable_web_page_preview=True,
-        )
+        try:
+            await callback.message.edit_text(
+                text=await get_main_text(first_name, subscription_status, user_id),
+                parse_mode='HTML',
+                reply_markup=await get_main_keyboard(user_id, config),
+                disable_web_page_preview=True,
+            )
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
         await callback.answer()
     
     @dp.message(Command("test_delete_user"))
@@ -500,68 +660,21 @@ async def setup_other_handlers(dp, bot: Bot, config):
     @dp.callback_query(F.data == "open_help")
     @dp.message(Command("help"))
     async def handle_open_help(message_or_callback: Message | CallbackQuery):
-        """Обработчик кнопки Помощь и команды /help"""
+        """Помощь — постраничная справка."""
         if isinstance(message_or_callback, CallbackQuery):
-            callback = message_or_callback
-            message = callback.message
-            await callback.answer()
-        else:
-            message = message_or_callback
-            callback = None
-        
-        # Получаем ссылку на техподдержку
-        from ..database import get_support_link
-        support_link = await get_support_link()
-        
-        from aiogram.utils.keyboard import InlineKeyboardBuilder
-        builder = InlineKeyboardBuilder()
-        if support_link:
-            builder.row(InlineKeyboardButton(text="🛟 Техподдержка", url=support_link))
-        builder.row(
-            InlineKeyboardButton(
-                text="📄 Оферта и политика конфиденциальности",
-                url=OFFER_PRIVACY_TELEGRAPH_URL,
-            )
-        )
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
+            await message_or_callback.answer()
+        await _send_help_page(message_or_callback, page=0)
 
-        help_text = (
-            "🤖<b>VPN бот</b> — быстрый и надежный VPN сервис\n\n"
-            f"📄 <a href=\"{OFFER_PRIVACY_TELEGRAPH_URL}\">Публичная оферта и политика конфиденциальности</a> "
-            "— условия услуги и обработки персональных данных.\n\n"
-            "<b>Бот предоставляет</b>:\n"
-            "• Быстрый и безопасный VPN\n"
-            "• Обход всех блокировок\n"
-            "• Высокая скорость подключения\n\n"
-            "<b>Как пользоваться</b>?\n"
-            "• Купите подписку через /prem\n"
-            "• Получите VPN ссылку\n"
-            "• Импортируйте ссылку в приложение Happ\n"
-            "• Подключитесь!\n\n"
-            "<b>Реферальная программа</b>:\n"
-            "• Пригласите друга через /invite\n"
-            "• За каждого друга — скидка 5% на следующее списание (до 25%)\n"
-            "• +5% bypass ГБ от тарифа — вам и другу\n\n"
-            "📌 <b>Команды</b>:\n"
-            "/start - Перезагрузить бота\n"
-            "/prem - Покупка VPN\n"
-            "/invite - Пригласи друга\n"
-        )
-        
-        # Если это callback, редактируем сообщение, иначе отправляем новое
-        if isinstance(message_or_callback, CallbackQuery):
-            await callback.message.edit_text(
-                help_text,
-                reply_markup=builder.as_markup(),
-                parse_mode="HTML",
-                disable_web_page_preview=True,
-            )
-        else:
-            await message.answer(
-                help_text,
-                reply_markup=builder.as_markup(),
-                parse_mode="HTML",
-                disable_web_page_preview=True,
-            )
-    
+    @dp.callback_query(F.data.startswith("help_page:"))
+    async def handle_help_page(callback: CallbackQuery):
+        """Листание тем справки."""
+        try:
+            page = int(callback.data.split(":")[1])
+        except (IndexError, ValueError):
+            page = 0
+        total = help_page_count(offer_url=OFFER_PRIVACY_TELEGRAPH_URL)
+        page = max(0, min(page, total - 1))
+        await callback.answer()
+        await _send_help_page(callback, page=page)
+
     # Админ-панель обрабатывается в admin.py

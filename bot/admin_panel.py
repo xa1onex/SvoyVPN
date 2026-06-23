@@ -17,6 +17,7 @@ from .plans import (
     SENTINEL_SUBSCRIPTION_END_THRESHOLD,
     format_price_rub,
 )
+from .activity_log import ACTION_LABELS
 
 
 def get_admin_panel_keyboard():
@@ -323,6 +324,64 @@ async def build_admin_stats_text(conn) -> str:
         "SELECT COUNT(*) FROM servers WHERE is_active = TRUE"
     )
 
+    bot_dau = await conn.fetchval(
+        """
+        SELECT COUNT(DISTINCT user_id) FROM bot_activity_logs
+        WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '24 hours'
+        """
+    ) or 0
+    bot_wau = await conn.fetchval(
+        """
+        SELECT COUNT(DISTINCT user_id) FROM bot_activity_logs
+        WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+        """
+    ) or 0
+
+    funnel_7d = await conn.fetchrow(
+        """
+        SELECT
+            COUNT(*) AS reg,
+            COUNT(*) FILTER (WHERE EXISTS (
+                SELECT 1 FROM bot_activity_logs b
+                WHERE b.user_id = u.user_id AND b.action = 'get_vpn_link'
+            )) AS vpn_click,
+            COUNT(*) FILTER (WHERE EXISTS (
+                SELECT 1 FROM bot_activity_logs b
+                WHERE b.user_id = u.user_id AND b.action = 'open_help'
+            )) AS help_click,
+            COUNT(*) FILTER (WHERE EXISTS (
+                SELECT 1 FROM subscription_usage_logs s WHERE s.user_id = u.user_id
+            )) AS sub_req
+        FROM users u
+        WHERE u.blacklisted = FALSE
+          AND u.registration_date >= CURRENT_DATE - INTERVAL '7 days'
+        """
+    ) or {}
+
+    top_bot_actions = await conn.fetch(
+        """
+        SELECT
+            SPLIT_PART(action, ':', 1) AS act,
+            COUNT(*) AS cnt
+        FROM bot_activity_logs
+        WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+        GROUP BY 1
+        ORDER BY cnt DESC
+        LIMIT 8
+        """
+    )
+    bot_actions_text = ""
+    for row in top_bot_actions:
+        bot_actions_text += f"  • <code>{row['act'][:28]}</code>: {row['cnt']}\n"
+    if not bot_actions_text:
+        bot_actions_text = "  • Данных пока нет\n"
+
+    reg_7d = int(funnel_7d.get("reg") or 0)
+    vpn_click_7d = int(funnel_7d.get("vpn_click") or 0)
+    help_click_7d = int(funnel_7d.get("help_click") or 0)
+    sub_req_7d = int(funnel_7d.get("sub_req") or 0)
+    funnel_pct = lambda n: f"{100 * n / reg_7d:.0f}%" if reg_7d else "—"
+
     top_platforms = await conn.fetch(
         """
         SELECT user_agent, COUNT(*) AS count
@@ -340,6 +399,72 @@ async def build_admin_stats_text(conn) -> str:
     if not platforms_text:
         platforms_text = "  • Данных пока нет\n"
 
+    bot_dau = await conn.fetchval(
+        """
+        SELECT COUNT(DISTINCT user_id) FROM bot_activity_logs
+        WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '24 hours'
+        """
+    )
+    bot_wau = await conn.fetchval(
+        """
+        SELECT COUNT(DISTINCT user_id) FROM bot_activity_logs
+        WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+        """
+    )
+    top_bot_actions = await conn.fetch(
+        """
+        SELECT SPLIT_PART(action, ':', 1) AS act, COUNT(*) AS cnt
+        FROM bot_activity_logs
+        WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+          AND event_kind IN ('callback', 'command')
+        GROUP BY act
+        ORDER BY cnt DESC
+        LIMIT 8
+        """
+    )
+    actions_text = ""
+    for row in top_bot_actions:
+        act = row["act"] or "?"
+        label = ACTION_LABELS.get(act) or act[:20]
+        actions_text += f"  • {label}: {row['cnt']}\n"
+    if not actions_text:
+        actions_text = "  • Данных пока нет\n"
+
+    funnel = await conn.fetchrow(
+        """
+        WITH recent AS (
+            SELECT user_id FROM users
+            WHERE registration_date >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+              AND blacklisted = FALSE
+        )
+        SELECT
+            (SELECT COUNT(*) FROM recent) AS reg,
+            (SELECT COUNT(DISTINCT b.user_id)
+             FROM bot_activity_logs b JOIN recent r ON r.user_id = b.user_id
+             WHERE b.event_kind = 'callback') AS clicked_btn,
+            (SELECT COUNT(DISTINCT b.user_id)
+             FROM bot_activity_logs b JOIN recent r ON r.user_id = b.user_id
+             WHERE b.action = 'get_vpn_link') AS vpn_btn,
+            (SELECT COUNT(DISTINCT s.user_id)
+             FROM subscription_usage_logs s JOIN recent r ON r.user_id = s.user_id) AS sub_req,
+            (SELECT COUNT(DISTINCT u.user_id)
+             FROM users u JOIN recent r ON r.user_id = u.user_id
+             WHERE EXISTS (
+                 SELECT 1 FROM bot_activity_logs b
+                 WHERE b.user_id = u.user_id AND b.event_kind = 'command' AND b.action = '/start'
+             )
+             AND NOT EXISTS (
+                 SELECT 1 FROM bot_activity_logs b
+                 WHERE b.user_id = u.user_id AND b.event_kind = 'callback'
+             )) AS only_start
+        """
+    )
+    reg7 = funnel["reg"] or 0
+    def _pct(n: int) -> str:
+        if not reg7:
+            return "0%"
+        return f"{100 * n / reg7:.0f}%"
+
     msk = datetime.now(pytz.timezone("Europe/Moscow")).strftime("%d.%m.%Y %H:%M")
 
     return (
@@ -356,7 +481,16 @@ async def build_admin_stats_text(conn) -> str:
         f"• В боте 7д / 30д: <b>{active_7d or 0}</b> / <b>{active_30d or 0}</b>\n"
         f"• Неактивны 30+ дней: <i>{inactive_30d or 0}</i>\n"
         f"• VPN DAU / WAU / MAU: <b>{sub_dau or 0}</b> / <b>{sub_wau or 0}</b> / <b>{sub_mau or 0}</b>\n"
-        f"• Запросов /sub сегодня: <b>{sub_requests_today or 0}</b>\n\n"
+        f"• Запросов /sub сегодня: <b>{sub_requests_today or 0}</b>\n"
+        f"• В боте (клики/команды) DAU / WAU: <b>{bot_dau or 0}</b> / <b>{bot_wau or 0}</b>\n\n"
+        "<b>🧭 Воронка (7 дней)</b>\n"
+        f"• Регистраций: <b>{reg7}</b>\n"
+        f"• Нажали кнопку: <b>{funnel['clicked_btn'] or 0}</b> ({_pct(funnel['clicked_btn'] or 0)})\n"
+        f"• «Подключить VPN»: <b>{funnel['vpn_btn'] or 0}</b> ({_pct(funnel['vpn_btn'] or 0)})\n"
+        f"• Запросили /sub: <b>{funnel['sub_req'] or 0}</b> ({_pct(funnel['sub_req'] or 0)})\n"
+        f"• Только /start, без кнопок: <i>{funnel['only_start'] or 0}</i>\n\n"
+        "<b>🔝 Действия в боте (7д)</b>\n"
+        f"{actions_text}\n"
         "<b>📱 Клиенты (7д)</b>\n"
         f"{platforms_text}\n"
         "<b>💰 Финансы (30 дней)</b>\n"

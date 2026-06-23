@@ -155,12 +155,13 @@ async def apply_tier_upgrade(
 
 
 async def apply_bypass_pack(conn, user_id: int, gb_amount: int) -> None:
-    """Add bypass bonus GB to user's current period."""
+    """Add bypass pack GB to user's current period (remaining + purchased counters)."""
     await ensure_bypass_period(conn, user_id)
     await conn.execute(
         """
         UPDATE users
-        SET bypass_bonus_gb = COALESCE(bypass_bonus_gb, 0) + $1
+        SET bypass_bonus_gb = COALESCE(bypass_bonus_gb, 0) + $1,
+            bypass_pack_purchased_gb = COALESCE(bypass_pack_purchased_gb, 0) + $1
         WHERE user_id = $2
         """,
         gb_amount,

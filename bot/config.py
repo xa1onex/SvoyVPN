@@ -52,9 +52,29 @@ class CryptoPayConfig(BaseModel):
     testnet: bool = Field(default=False, description="Use Crypto Pay Testnet")
 
 
+class RemnawaveConfig(BaseModel):
+    enabled: bool = Field(default=False, description="Enable Remnawave panel integration")
+    panel_url: str | None = Field(None, description="Remnawave panel base URL")
+    api_token: str | None = Field(None, description="Remnawave API token (from panel Settings → API)")
+    config_profile_uuid: str = Field(
+        default="00000000-0000-0000-0000-000000000000",
+        description="Default Config Profile UUID",
+    )
+    inbound_uuid: str = Field(
+        default="b1ac2590-d0c3-4e58-bb62-4aae2280f69e",
+        description="Inbound UUID inside the config profile (e.g. VLESS-gRPC)",
+    )
+    internal_squad_uuid: str = Field(
+        default="b5f0d64c-ec52-4bd6-87c8-98495d63209c",
+        description="Internal Squad UUID assigned to bot users",
+    )
+    grpc_path: str = Field(default="grpc.remnawave", description="gRPC serviceName for hosts")
+
+
 class AppConfig(BaseModel):
     bot: BotConfig
     xui: XUIConfig
+    remnawave: RemnawaveConfig = Field(default_factory=RemnawaveConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     payment: PaymentConfig = Field(default_factory=PaymentConfig)
     flyer: FlyerConfig = Field(default_factory=FlyerConfig)
@@ -140,9 +160,29 @@ def load_config() -> AppConfig:
     if app_url:
         app_url = app_url.rstrip("/")
 
+    remnawave = RemnawaveConfig(
+        enabled=os.getenv("REMNAWAVE_ENABLED", "false").lower() == "true",
+        panel_url=(os.getenv("REMNAWAVE_PANEL_URL") or "").rstrip("/") or None,
+        api_token=os.getenv("REMNAWAVE_API_TOKEN"),
+        config_profile_uuid=os.getenv(
+            "REMNAWAVE_CONFIG_PROFILE_UUID",
+            "00000000-0000-0000-0000-000000000000",
+        ),
+        inbound_uuid=os.getenv(
+            "REMNAWAVE_INBOUND_UUID",
+            "b1ac2590-d0c3-4e58-bb62-4aae2280f69e",
+        ),
+        internal_squad_uuid=os.getenv(
+            "REMNAWAVE_INTERNAL_SQUAD_UUID",
+            "b5f0d64c-ec52-4bd6-87c8-98495d63209c",
+        ),
+        grpc_path=os.getenv("REMNAWAVE_GRPC_PATH", "grpc.remnawave"),
+    )
+
     return AppConfig(
         bot=bot,
         xui=xui,
+        remnawave=remnawave,
         database=database,
         payment=payment,
         flyer=flyer,

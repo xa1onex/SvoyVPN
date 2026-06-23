@@ -142,12 +142,6 @@ async def grant_referral_bonuses(
     if bot:
         try:
             await bot.send_message(
-                invited_user_id,
-                f"🎁 <b>Вам начислено {bonus_days} дн. SvoyVPN Plus!</b>\n\n"
-                "Вы зарегистрировались по ссылке друга.",
-                parse_mode="HTML",
-            )
-            await bot.send_message(
                 inviter_id,
                 f"🎁 <b>Друг зарегистрировался!</b>\n\n"
                 f"Вам начислено <b>{bonus_days} дн.</b> SvoyVPN Plus.",

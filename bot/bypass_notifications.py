@@ -12,7 +12,7 @@ from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .database import get_connection
-from .traffic import BYTES_PER_GB, ensure_bypass_period, user_bypass_allowance_bytes
+from .traffic import BYTES_PER_GB, ensure_bypass_period
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +49,13 @@ async def check_bypass_traffic_notifications(bot: Bot) -> None:
             user_id = user_row["user_id"]
             used_bytes = int(user_row["bypass_traffic_used_bytes"] or 0)
             limit_gb = int(user_row["bypass_traffic_limit_gb"] or 0)
-            bonus_gb = int(user_row["bypass_bonus_gb"] or 0)
+            pack_gb = int(user_row["bypass_bonus_gb"] or 0)
             period_start = user_row["bypass_period_start"]
 
             if limit_gb <= 0:
                 continue
 
-            total_limit_bytes = (limit_gb + bonus_gb) * BYTES_PER_GB
+            total_limit_bytes = (limit_gb + pack_gb) * BYTES_PER_GB
             if total_limit_bytes <= 0:
                 continue
 
@@ -65,7 +65,7 @@ async def check_bypass_traffic_notifications(bot: Bot) -> None:
                 if remaining_fraction <= threshold:
                     await _maybe_send_notification(
                         bot, user_id, notif_type, period_start,
-                        used_bytes, total_limit_bytes, limit_gb, bonus_gb,
+                        used_bytes, total_limit_bytes, limit_gb, pack_gb,
                     )
                     break
 

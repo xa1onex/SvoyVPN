@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PURCHASE_BONUS_PERCENT = 10
 DEFAULT_YEARLY_GIFT_EVERY_N = 3
-TG_GIFT_RUB_RANGE = "800–1500₽"
+TG_GIFT_RUB_RANGE = "до 2000₽"
 
 
 async def get_purchase_bonus_percent() -> int:

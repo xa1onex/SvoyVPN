@@ -184,7 +184,10 @@ async def _try_pay_from_balance(
                     tier_duration_months = $4,
                     tier_price_paid = $5,
                     tier_purchased_at = NOW(),
-                    bypass_traffic_used_bytes = 0,
+                    bypass_traffic_used_bytes = CASE
+                        WHEN bypass_period_start IS NULL THEN 0
+                        ELSE bypass_traffic_used_bytes
+                    END,
                     pending_downgrade_tier = NULL
                 WHERE user_id = $6
                 """,

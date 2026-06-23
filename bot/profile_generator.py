@@ -116,6 +116,7 @@ def parse_vless_link(link: str) -> dict[str, Any] | None:
             "fp": params.get("fp", ["chrome"])[0],
             "spx": params.get("spx", [""])[0],
             "serviceName": params.get("serviceName", [None])[0],
+            "mode": params.get("mode", ["gun"])[0],
         }
     except Exception:
         return None
@@ -203,7 +204,11 @@ def _build_stream(parsed: dict[str, Any]) -> dict[str, Any]:
     if net == "tcp":
         ss["tcpSettings"] = {}
     elif net == "grpc":
-        ss["grpcSettings"] = {"authority": "", "mode": False, "serviceName": parsed.get("serviceName") or None}
+        ss["grpcSettings"] = {
+            "authority": "",
+            "multiMode": parsed.get("mode") == "multi",
+            "serviceName": parsed.get("serviceName") or "",
+        }
     elif net == "ws":
         ss["wsSettings"] = {"path": parsed.get("spx") or "/", "headers": {}}
 
@@ -508,7 +513,7 @@ def _bypass_limit_notice_items(
         _happ_notice_remark(f"⚠️ Лимит исчерпан: {used_s}/{lim_s} ГБ"),
         _happ_notice_remark("Чтобы увеличить лимит:"),
         _happ_notice_remark(f"1. Откройте @{handle}"),
-        _happ_notice_remark("2. 📶 Лимиты"),
+        _happ_notice_remark("2. ⏫ Лимиты"),
         _happ_notice_remark("3. Выберите нужный пакет"),
         _happ_notice_remark("⭐ Кстати, Plus — 50 ГБ/мес"),
     ]

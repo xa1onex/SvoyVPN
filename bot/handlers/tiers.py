@@ -99,18 +99,14 @@ def _tier_header_sections(ctx: dict) -> list[str]:
     """Верх экрана: заголовок и строка о текущем тарифе (одинаково на всех шагах)."""
     sections: list[str] = ["🚀 <b>Подписка VPN</b>"]
     if ctx["is_active"] and ctx["is_plus"]:
-        from ..subscriptions import should_show_subscription_end_date
-
-        if should_show_subscription_end_date(
-            ctx["sub_end"], has_recurring_card=ctx["has_card"]
-        ):
+        if ctx["has_card"]:
+            sections.append("Тариф <b>Plus</b> подключен")
+        else:
             end_str = format_subscription_end_for_display(ctx["sub_end"])
             if end_str:
                 sections.append(f"Тариф <b>Plus</b> подключен до {end_str}")
             else:
                 sections.append("Тариф <b>Plus</b> подключен")
-        else:
-            sections.append("Тариф <b>Plus</b> подключен")
     elif ctx["is_active"] and ctx["current_tier"] == FREE_TIER_ID:
         sections.append("Тариф: <b>Free</b> (бесплатный)")
     return sections
@@ -121,14 +117,37 @@ async def build_tiers_message(user_id: int, *, view: str = "main"):
     Экран подписки.
     view=main — Free и Plus, кнопка «Plus».
     view=plus_plans — варианты Plus с ценами (месяц / год).
+    view=referral_trial — Plus за 1₽ (реферал/UTM).
     """
     ctx = await _load_tier_screen_context(user_id)
     sections = _tier_header_sections(ctx)
 
+    from ..trial_usage import (
+        has_completed_trial_payment,
+        user_show_referral_trial_offer,
+    )
+
+    show_referral_trial = False
+    trial_used = False
+    async with get_connection() as conn:
+        show_referral_trial = await user_show_referral_trial_offer(conn, user_id)
+        trial_used = await has_completed_trial_payment(conn, user_id)
+
     plus_t = TIERS["plus"]
     plus_features = [f"  • {f}" for f in plus_t["features"]]
 
-    if view == "plus_plans":
+    if view == "referral_trial":
+        from ..trial_usage import get_trial_days
+
+        async with get_connection() as conn:
+            trial_days = await get_trial_days(conn)
+        sections.append(
+            f"🎁 <b>Специальное предложение</b>\n"
+            f"Plus на <b>{trial_days} дней</b> за <b>1₽</b> — только для тех, "
+            f"кто пришёл по реферальной или партнёрской ссылке.\n\n"
+            + "\n".join([f"<b>Plus</b>"] + plus_features)
+        )
+    elif view == "plus_plans":
         per_month_12m = ctx["price_12m"] // 1200
         plus_1m_lines = (
             [f"<b>Plus</b> · <b>{format_price_rub(ctx['price_1m'])}/мес</b>"] + plus_features
@@ -152,21 +171,40 @@ async def build_tiers_message(user_id: int, *, view: str = "main"):
         plus_lines = [f"<b>Plus</b>{plus_marker}"] + plus_features
         sections.append("\n".join(free_lines))
         sections.append("\n".join(plus_lines))
+        if show_referral_trial:
+            sections.append("🎁 <b>Plus за 1₽</b> — специальное предложение для вас")
 
     text = "\n\n".join(sections)
     builder = InlineKeyboardBuilder()
 
-    if view == "plus_plans":
+    if view == "referral_trial":
+        builder.row(
+            InlineKeyboardButton(
+                text="🎁 Plus за 1₽ — попробовать",
+                callback_data="activate_trial",
+            ),
+        )
+        builder.row(
+            InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"),
+        )
+    elif view == "plus_plans":
         builder.row(
             InlineKeyboardButton(
                 text=f"💎 Plus · {format_price_rub(ctx['price_1m'])}/мес",
                 callback_data="tier_select:plus:plus_1m",
             ),
             InlineKeyboardButton(
-                text=f"🌟 Plus · {format_price_rub(ctx['price_12m'])}/год",
+                text=f"🌟 Plus · {format_price_rub(int(ctx['price_12m'] / 12))}/мес",
                 callback_data="tier_select:plus:plus_12m",
             ),
         )
+        if trial_used:
+            builder.row(
+                InlineKeyboardButton(
+                    text="🎁 Пригласи друга — получи бонус",
+                    callback_data="open_invite",
+                ),
+            )
         builder.row(
             InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"),
         )
@@ -177,14 +215,26 @@ async def build_tiers_message(user_id: int, *, view: str = "main"):
                     text="🆓 Free (отменить)", callback_data="cancel_sub_start"
                 ),
             )
-        builder.row(
-            InlineKeyboardButton(
-                text="✅ Plus — подключен", callback_data="tier_info:plus"
-            ),
-            InlineKeyboardButton(
-                text="📶 Лимиты", callback_data="open_bypass_packs"
-            ),
-        )
+            builder.row(
+                InlineKeyboardButton(
+                    text="✅ Plus — подключен", callback_data="tier_info:plus"
+                ),
+                InlineKeyboardButton(
+                    text="⏫ Лимиты", callback_data="open_bypass_packs"
+                ),
+            )
+        else:
+            builder.row(
+                InlineKeyboardButton(
+                    text="💎 Plus — продлить",
+                    callback_data="tier_select:plus",
+                ),
+            )
+            builder.row(
+                InlineKeyboardButton(
+                    text="⏫ Лимиты", callback_data="open_bypass_packs"
+                ),
+            )
         builder.row(
             InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"),
         )
@@ -195,13 +245,26 @@ async def build_tiers_message(user_id: int, *, view: str = "main"):
             else "🆓 Free — бесплатно"
         )
         builder.row(
-            InlineKeyboardButton(
-                text=free_label, callback_data=f"tier_info:{FREE_TIER_ID}"
-            ),
+            InlineKeyboardButton(text=free_label, callback_data=f"tier_info:{FREE_TIER_ID}"),
         )
-        builder.row(
-            InlineKeyboardButton(text="💎 Plus", callback_data="tier_select:plus"),
-        )
+        if show_referral_trial:
+            builder.row(
+                InlineKeyboardButton(
+                    text="🎁 Plus за 1₽ — попробовать",
+                    callback_data="activate_trial",
+                ),
+            )
+        else:
+            builder.row(
+                InlineKeyboardButton(text="💎 Plus", callback_data="tier_select:plus"),
+            )
+            if trial_used:
+                builder.row(
+                    InlineKeyboardButton(
+                        text="🎁 Пригласи друга — получи бонус",
+                        callback_data="open_invite",
+                    ),
+                )
         builder.row(
             InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"),
         )
@@ -232,6 +295,17 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         parts = callback.data.split(":")
         if len(parts) == 2 and parts[1] == "plus":
             user_id = callback.from_user.id
+            async with get_connection() as conn:
+                from ..trial_usage import user_show_referral_trial_offer
+                if await user_show_referral_trial_offer(conn, user_id):
+                    text, markup = await build_tiers_message(
+                        user_id, view="referral_trial"
+                    )
+                    await callback.message.edit_text(
+                        text, parse_mode="HTML", reply_markup=markup
+                    )
+                    await callback.answer()
+                    return
             text, markup = await build_tiers_message(user_id, view="plus_plans")
             await callback.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
             await callback.answer()
@@ -473,7 +547,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         if tier_id != FREE_TIER_ID:
             builder.row(
                 InlineKeyboardButton(
-                    text="📶 Лимиты",
+                    text="⏫ Лимиты",
                     callback_data="open_bypass_packs",
                 )
             )
@@ -645,7 +719,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         user_id = callback.from_user.id
         async with get_connection() as conn:
             await conn.execute(
-                "UPDATE users SET bypass_bonus_gb = COALESCE(bypass_bonus_gb, 0) + 100, cancel_retention_used = TRUE WHERE user_id = $1",
+                "UPDATE users SET bypass_bonus_gb = COALESCE(bypass_bonus_gb, 0) + 100, bypass_pack_purchased_gb = COALESCE(bypass_pack_purchased_gb, 0) + 100, cancel_retention_used = TRUE WHERE user_id = $1",
                 user_id,
             )
         await callback.message.edit_text(
@@ -664,7 +738,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         user_id = callback.from_user.id
         async with get_connection() as conn:
             await conn.execute(
-                "UPDATE users SET bypass_bonus_gb = COALESCE(bypass_bonus_gb, 0) + 10 WHERE user_id = $1",
+                "UPDATE users SET bypass_bonus_gb = COALESCE(bypass_bonus_gb, 0) + 10, bypass_pack_purchased_gb = COALESCE(bypass_pack_purchased_gb, 0) + 10 WHERE user_id = $1",
                 user_id,
             )
         await callback.message.edit_text(
