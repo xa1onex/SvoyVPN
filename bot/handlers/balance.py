@@ -15,6 +15,7 @@ from ..config import AppConfig
 from ..database import get_connection
 from ..referral import build_referral_context, format_earn_screen, track_referral_page_open
 from ..referral_rewards import get_referral_bonus_days
+from ..custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -31,16 +32,16 @@ async def _gift_text_and_keyboard(bot: Bot, actor):
     ref_link = ref_ctx.get("ref_link") or ""
     if ref_link:
         b.row(
-            InlineKeyboardButton(text="📤 Пригласить", url=ref_ctx["share_url"]),
+            btn("Пригласить", "invite", url=ref_ctx["share_url"]),
             InlineKeyboardButton.model_construct(
-                text="📑 Скопировать",
+                text=f"{E.copy} Скопировать",
                 copy_text={"text": ref_link},
             ),
         )
     else:
-        b.row(InlineKeyboardButton(text="📤 Пригласить", url=ref_ctx["share_url"]))
-    b.row(InlineKeyboardButton(text="📋 История", callback_data="gift_history:0"))
-    b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
+        b.row(btn("Пригласить", "invite", url=ref_ctx["share_url"]))
+    b.row(btn("История", "clipboard", callback_data="gift_history:0"))
+    b.row(btn("Назад", "back", callback_data="go_back"))
     return text, b.as_markup()
 
 
@@ -189,8 +190,8 @@ async def setup_balance_handlers(dp, bot: Bot, config: AppConfig):
                 who = f"@{uname}" if uname else name
                 lines.append(
                     f"<code>{dt}</code>\n"
-                    f"👤 Друг <b>{who}</b> зарегистрировался\n"
-                    f"🎁 <b>+{bonus_days} дн.</b> SvoyVPN Plus"
+                    f"{E.user} Друг <b>{who}</b> зарегистрировался\n"
+                    f"{E.gift} <b>+{bonus_days} дн.</b> SvoyVPN Plus"
                 )
             elif row["kind"] == "purchase":
                 name = (row["friend_name"] or "Друг").strip()
@@ -199,24 +200,24 @@ async def setup_balance_handlers(dp, bot: Bot, config: AppConfig):
                 product = (row["product_label"] or "оплата").strip()
                 days = int(row["reward_days"] or 0)
                 gift_line = (
-                    "\n🎁 Подарок TG — свяжемся с вами"
+                    f"\n{E.gift} Подарок TG — свяжемся с вами"
                     if row["is_tg_gift"]
                     else ""
                 )
                 lines.append(
                     f"<code>{dt}</code>\n"
-                    f"💳 Друг <b>{who}</b>: {product}\n"
-                    f"🎁 <b>+{days} дн.</b> Plus{gift_line}"
+                    f"{E.card} Друг <b>{who}</b>: {product}\n"
+                    f"{E.gift} <b>+{days} дн.</b> Plus{gift_line}"
                 )
             else:
                 lines.append(
                     f"<code>{dt}</code>\n"
-                    f"🎁 Регистрация по ссылке друга\n"
+                    f"{E.gift} Регистрация по ссылке друга\n"
                     f"<b>+{bonus_days} дн.</b> SvoyVPN Plus"
                 )
 
         text = (
-            f"📋 <b>История подарков</b>\n"
+            f"{E.clipboard} <b>История подарков</b>\n"
             f"<i>Сейчас за друга: +{bonus_days} дн. Plus</i>\n\n"
             + "\n\n".join(lines)
         )
@@ -225,21 +226,19 @@ async def setup_balance_handlers(dp, bot: Bot, config: AppConfig):
         nav = []
         if offset > 0:
             nav.append(
-                InlineKeyboardButton(
-                    text="◀️",
+                btn("", "back",
                     callback_data=f"gift_history:{max(0, offset - page_size)}",
                 )
             )
         if has_more:
             nav.append(
-                InlineKeyboardButton(
-                    text="▶️",
+                btn("", "forward",
                     callback_data=f"gift_history:{offset + page_size}",
                 )
             )
         if nav:
             b.row(*nav)
-        b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_invite"))
+        b.row(btn("Назад", "back", callback_data="open_invite"))
 
         await callback.message.edit_text(
             text, parse_mode="HTML", reply_markup=b.as_markup()

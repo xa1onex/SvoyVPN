@@ -13,6 +13,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .database import get_connection
 from .plans import ALL_PAID_TIER_IDS, PAID_TIER_IDS, TIERS
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ async def notify_autopay_failed(
     grace_str = grace_until.strftime("%d.%m.%Y")
 
     text = (
-        "⚠️ <b>Не удалось списать оплату с привязанной карты</b>\n\n"
+        f"{E.warning} <b>Не удалось списать оплату с привязанной карты</b>\n\n"
         "Пополните баланс карты или привяжите другую — мы повторим списание "
         "автоматически.\n\n"
         f"Тариф <b>{tier_name}</b> остаётся активным до <b>{grace_str}</b>.\n"

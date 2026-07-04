@@ -13,6 +13,7 @@ from ..config import AppConfig
 from ..database import get_connection
 from ..plans import TIERS, format_price_rub, get_tier_plans
 from ..yookassa_client import YooKassaClient
+from ..custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ async def setup_personal_promo_handlers(dp, bot: Bot, config: AppConfig) -> None
         try:
             offer_id = int(callback.data.split(":")[1])
         except (IndexError, ValueError):
-            await callback.answer("❌ Неверный оффер", show_alert=True)
+            await callback.answer(f"{E.error} Неверный оффер", show_alert=True)
             return
 
         async with get_connection() as conn:
@@ -33,23 +34,23 @@ async def setup_personal_promo_handlers(dp, bot: Bot, config: AppConfig) -> None
             )
 
         if not offer:
-            await callback.answer("❌ Предложение не найдено", show_alert=True)
+            await callback.answer(f"{E.error} Предложение не найдено", show_alert=True)
             return
         if int(offer["user_id"]) != user_id:
-            await callback.answer("❌ Это предложение не для вас", show_alert=True)
+            await callback.answer(f"{E.error} Это предложение не для вас", show_alert=True)
             return
         if offer["status"] != "pending":
-            await callback.answer("❌ Предложение уже использовано или отменено", show_alert=True)
+            await callback.answer(f"{E.error} Предложение уже использовано или отменено", show_alert=True)
             return
         if offer["expires_at"] and offer["expires_at"] < datetime.now():
-            await callback.answer("❌ Срок предложения истёк", show_alert=True)
+            await callback.answer(f"{E.error} Срок предложения истёк", show_alert=True)
             return
 
         plan_id = offer["plan_id"]
         price = int(offer["price_rub"])
         plans = await get_tier_plans()
         if plan_id not in plans:
-            await callback.answer("❌ План недоступен", show_alert=True)
+            await callback.answer(f"{E.error} План недоступен", show_alert=True)
             return
 
         plan = plans[plan_id]
@@ -57,7 +58,7 @@ async def setup_personal_promo_handlers(dp, bot: Bot, config: AppConfig) -> None
         t = TIERS.get(tier_id, {})
 
         if not config.yookassa.enabled:
-            await callback.answer("❌ Оплата временно недоступна", show_alert=True)
+            await callback.answer(f"{E.error} Оплата временно недоступна", show_alert=True)
             return
 
         try:
@@ -101,15 +102,14 @@ async def setup_personal_promo_handlers(dp, bot: Bot, config: AppConfig) -> None
 
             b = InlineKeyboardBuilder()
             b.row(
-                InlineKeyboardButton(
-                    text="💳 Перейти к оплате",
+                btn("Перейти к оплате", "card",
                     url=payment_data["confirmation_url"],
                 )
             )
-            b.row(InlineKeyboardButton(text="◀️ Тарифы", callback_data="open_tiers"))
+            b.row(btn("Тарифы", "back", callback_data="open_tiers"))
 
             await callback.message.edit_text(
-                f"🔥 <b>{t.get('name', tier_id)}</b> · скидка <b>{offer['discount_percent']}%</b>\n\n"
+                f"{E.hot} <b>{t.get('name', tier_id)}</b> · скидка <b>{offer['discount_percent']}%</b>\n\n"
                 f"К оплате: <b>{format_price_rub(price)}</b> "
                 f"<s>{format_price_rub(offer['base_price_rub'])}</s>{warn}",
                 parse_mode="HTML",
@@ -118,4 +118,4 @@ async def setup_personal_promo_handlers(dp, bot: Bot, config: AppConfig) -> None
             await callback.answer()
         except Exception as e:
             logger.error("personal_promo %s: %s", offer_id, e, exc_info=True)
-            await callback.answer("❌ Ошибка создания платежа", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка создания платежа", show_alert=True)

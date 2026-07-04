@@ -16,6 +16,7 @@ from .subscriptions import (
     set_new_subscription_days,
 )
 from .traffic import ensure_bypass_period
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +144,7 @@ async def grant_referral_bonuses(
         try:
             await bot.send_message(
                 inviter_id,
-                f"🎁 <b>Друг зарегистрировался!</b>\n\n"
+                f"{E.gift} <b>Друг зарегистрировался!</b>\n\n"
                 f"Вам начислено <b>{bonus_days} дн.</b> SvoyVPN Plus.",
                 parse_mode="HTML",
             )

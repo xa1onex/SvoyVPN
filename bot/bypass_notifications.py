@@ -13,6 +13,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .database import get_connection
 from .traffic import BYTES_PER_GB, ensure_bypass_period
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ async def _maybe_send_notification(
 
         if notif_type == "bypass_0pct":
             text = (
-                "🚫 <b>Bypass-лимит исчерпан</b>\n\n"
+                f"{E.blocked} <b>Bypass-лимит исчерпан</b>\n\n"
                 f"Использовано: {used_bytes / BYTES_PER_GB:.1f} / {total_gb} ГБ\n\n"
                 "Обычный VPN продолжает работать без ограничений.\n"
                 "Bypass-сервера временно недоступны.\n\n"
@@ -121,24 +122,24 @@ async def _maybe_send_notification(
             )
         elif notif_type == "bypass_10pct":
             text = (
-                "⚠️ <b>Bypass трафик почти закончился</b>\n\n"
+                f"{E.warning} <b>Bypass трафик почти закончился</b>\n\n"
                 f"Осталось: <b>{remaining_gb:.1f} ГБ</b> из {total_gb} ГБ (10%)\n\n"
                 "Скоро bypass-сервера станут недоступны.\n"
                 "Обычный VPN продолжит работать."
             )
         else:
             text = (
-                "📊 <b>Bypass трафик заканчивается</b>\n\n"
+                f"{E.chart} <b>Bypass трафик заканчивается</b>\n\n"
                 f"Осталось: <b>{remaining_gb:.1f} ГБ</b> из {total_gb} ГБ (20%)\n\n"
                 "Рекомендуем докупить трафик или повысить тариф."
             )
 
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="📶 Докупить ГБ", callback_data="open_bypass_packs")
+            btn("Докупить ГБ", "signal", callback_data="open_bypass_packs")
         )
         builder.row(
-            InlineKeyboardButton(text="⬆️ Повысить тариф", callback_data="open_tiers")
+            btn("Повысить тариф", "up", callback_data="open_tiers")
         )
 
         await bot.send_message(

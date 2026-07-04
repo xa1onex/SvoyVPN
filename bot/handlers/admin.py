@@ -23,15 +23,16 @@ from ..user_block import block_user, unblock_user, invalidate_blacklist_cache
 from ..remnawave_client import build_remnawave_client
 from ..xui_client import XUIClient
 from ..webhook_server import WebhookServer
+from ..custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
 DEVICE_TYPES = {
-    "iphone": "📱 iPhone",
-    "android": "🤖 Android",
-    "windows": "🪟 Windows",
-    "macbook": "💻 MacBook",
-    "linux": "🐧 Linux"
+    "iphone": f"{E.devices} iPhone",
+    "android": f"{E.android} Android",
+    "windows": f"{E.windows} Windows",
+    "macbook": f"{E.laptop} MacBook",
+    "linux": f"{E.linux} Linux"
 }
 
 
@@ -59,7 +60,7 @@ async def _admin_traffic_panel_builder() -> tuple[str, InlineKeyboardBuilder]:
     else:
         tg_line = "• Сервер «ТГ безлимит»: <i>не выбран</i>\n"
     lines = [
-        "📶 <b>Настройки трафика</b>\n",
+        f"{E.signal} <b>Настройки трафика</b>\n",
         f"• Лимит Plus по умолчанию: <b>{default_gb} ГБ</b>/мес\n",
         f"• Интервал синхронизации с панелями: <b>{sync_sec}</b> сек\n",
         tg_line,
@@ -67,14 +68,14 @@ async def _admin_traffic_panel_builder() -> tuple[str, InlineKeyboardBuilder]:
     ]
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="✏️ Лимит Plus", callback_data="admin_traffic_edit:default_gb"),
-        InlineKeyboardButton(text="✏️ Интервал", callback_data="admin_traffic_edit:sync_sec"),
+        btn("Лимит Plus", "edit", callback_data="admin_traffic_edit:default_gb"),
+        btn("Интервал", "edit", callback_data="admin_traffic_edit:sync_sec"),
     )
     builder.row(
-        InlineKeyboardButton(text="📡 ТГ безлимит", callback_data="admin_traffic_tg_relay_pick"),
-        InlineKeyboardButton(text="📶 Bypass", callback_data="admin_bypass_packs"),
+        btn("ТГ безлимит", "antenna", callback_data="admin_traffic_tg_relay_pick"),
+        btn("Bypass", "signal", callback_data="admin_bypass_packs"),
     )
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+    builder.row(btn("Назад", "back", callback_data="admin_back"))
     return "\n".join(lines), builder
 
 
@@ -183,24 +184,24 @@ async def get_broadcast_constructor_menu(state_data: dict):
     filter_type = state_data.get('broadcast_filter', 'all')
     test_mode = state_data.get('broadcast_test', False)
     
-    status_text = "📢 <b>Конструктор рассылки</b>\n\n"
+    status_text = f"{E.megaphone} <b>Конструктор рассылки</b>\n\n"
     status_text += "<b>Текущий состав:</b>\n"
     
     if text:
-        status_text += f"✅ Текст: {text[:50]}...\n"
+        status_text += f"{E.success} Текст: {text[:50]}...\n"
     else:
-        status_text += "❌ Текст не добавлен\n"
+        status_text += f"{E.error} Текст не добавлен\n"
     
     if media_type:
-        media_name = "🖼️ Фото" if media_type == "photo" else "🎥 Видео" if media_type == "video" else "📄 Документ" if media_type == "document" else "🎬 GIF"
-        status_text += f"✅ Медиа: {media_name}\n"
+        media_name = f"{E.photo_vs} Фото" if media_type == "photo" else f"{E.video} Видео" if media_type == "video" else f"{E.doc} Документ" if media_type == "document" else f"{E.gif} GIF"
+        status_text += f"{E.success} Медиа: {media_name}\n"
     else:
-        status_text += "❌ Медиа не добавлено\n"
+        status_text += f"{E.error} Медиа не добавлено\n"
     
     if buttons:
-        status_text += f"✅ Кнопки: {len(buttons)} шт.\n"
+        status_text += f"{E.success} Кнопки: {len(buttons)} шт.\n"
     else:
-        status_text += "❌ Кнопки не добавлены\n"
+        status_text += f"{E.error} Кнопки не добавлены\n"
     
     filter_names = {
         'all': 'Все пользователи',
@@ -213,24 +214,40 @@ async def get_broadcast_constructor_menu(state_data: dict):
         'trial_not_used': 'Не использовали пробный период'
     }
     filter_name = filter_names.get(filter_type, 'Не выбрано')
-    status_text += f"✅ Фильтр: {filter_name}\n"
+    status_text += f"{E.success} Фильтр: {filter_name}\n"
     
     if test_mode:
-        status_text += "🧪 <b>ТЕСТОВЫЙ РЕЖИМ</b> (только админ)\n"
+        status_text += f"{E.test} <b>ТЕСТОВЫЙ РЕЖИМ</b> (только админ)\n"
     
     status_text += "\n<b>Выберите действие:</b>"
     
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="➕ Добавить текст" if not text else "✏️ Изменить текст", callback_data="broadcast_add_text"))
-    builder.row(InlineKeyboardButton(text="🖼️ Добавить медиа" if not media_type else "🖼️ Изменить медиа", callback_data="broadcast_add_media"))
-    builder.row(InlineKeyboardButton(text="🔘 Добавить кнопки" if not buttons else f"🔘 Кнопки ({len(buttons)})", callback_data="broadcast_add_buttons"))
-    builder.row(InlineKeyboardButton(text="👥 Выбрать получателей", callback_data="broadcast_choose_filter"))
-    builder.row(InlineKeyboardButton(text="🧪 Тест (только админ)" if not test_mode else "✅ Тест включен", callback_data="broadcast_toggle_test"))
+    builder.row(
+        btn("Добавить текст", "add", callback_data="broadcast_add_text")
+        if not text
+        else btn("Изменить текст", "edit", callback_data="broadcast_add_text")
+    )
+    builder.row(
+        btn("Добавить медиа", "photo_vs", callback_data="broadcast_add_media")
+        if not media_type
+        else btn("Изменить медиа", "photo_vs", callback_data="broadcast_add_media")
+    )
+    builder.row(
+        btn("Добавить кнопки", "radio", callback_data="broadcast_add_buttons")
+        if not buttons
+        else btn(f"Кнопки ({len(buttons)})", "radio", callback_data="broadcast_add_buttons")
+    )
+    builder.row(btn("Выбрать получателей", "users", callback_data="broadcast_choose_filter"))
+    builder.row(
+        btn("Тест (только админ)", "test", callback_data="broadcast_toggle_test")
+        if not test_mode
+        else btn("Тест включен", "success", callback_data="broadcast_toggle_test")
+    )
     
     if text or media_type:
-        builder.row(InlineKeyboardButton(text="✅ Отправить рассылку", callback_data="broadcast_confirm"))
+        builder.row(btn("Отправить рассылку", "success", callback_data="broadcast_confirm"))
     
-    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back"))
+    builder.row(btn("Отмена", "error", callback_data="admin_back"))
     
     return status_text, builder.as_markup()
 
@@ -286,11 +303,11 @@ async def _build_admin_user_card(target_user_id: int) -> tuple[str, InlineKeyboa
         grace_str = grace_until.strftime("%d.%m.%Y") if grace_until else "—"
 
         sub_status = (
-            "✅ Активна"
+            f"{E.success} Активна"
             if user["pay_subscribed"]
             and user["subscription_end"]
             and user["subscription_end"] >= datetime.now()
-            else "❌ Неактивна"
+            else f"{E.error} Неактивна"
         )
         if is_sentinel_subscription_end(user["subscription_end"]):
             sub_end = "бессрочно (Free)"
@@ -317,32 +334,32 @@ async def _build_admin_user_card(target_user_id: int) -> tuple[str, InlineKeyboa
             bl_at_str = bl_at.strftime("%d.%m.%Y %H:%M") if bl_at else "—"
             bl_reason = html_std.escape(str(user.get("blacklist_reason") or "—"))
             block_line = (
-                f"🚫 <b>Статус:</b> <b>ЗАБЛОКИРОВАН</b> с <code>{bl_at_str}</code>\n"
-                f"📝 <b>Причина:</b> {bl_reason}\n"
+                f"{E.blocked} <b>Статус:</b> <b>ЗАБЛОКИРОВАН</b> с <code>{bl_at_str}</code>\n"
+                f"{E.note} <b>Причина:</b> {bl_reason}\n"
             )
         else:
-            block_line = "✅ <b>Статус:</b> активен (не в чёрном списке)\n"
+            block_line = f"{E.success} <b>Статус:</b> активен (не в чёрном списке)\n"
 
         report = (
-            f"👤 <b>Карточка пользователя</b> <code>{target_user_id}</code>\n"
+            f"{E.user} <b>Карточка пользователя</b> <code>{target_user_id}</code>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"👤 <b>Имя:</b> {user['first_name'] or '—'}\n"
-            f"🔗 <b>Username:</b> {username_display}\n"
-            f"📅 <b>Регистрация:</b> <code>{reg_date}</code>\n"
-            f"🕒 <b>Активность:</b> <code>{last_act}</code>\n"
+            f"{E.user} <b>Имя:</b> {user['first_name'] or '—'}\n"
+            f"{E.vpn_connect} <b>Username:</b> {username_display}\n"
+            f"{E.calendar} <b>Регистрация:</b> <code>{reg_date}</code>\n"
+            f"{E.time} <b>Активность:</b> <code>{last_act}</code>\n"
             f"📍 <b>Источник (UTM):</b> <code>{user['utm_source'] or 'Прямой вход'}</code>\n"
             f"{block_line}"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"💎 <b>Тариф:</b> {tier_name} (<code>{tier_id}</code>)\n"
-            f"📋 <b>Подписка:</b> {sub_status}\n"
-            f"⏳ <b>Истекает:</b> <code>{sub_end}</code>\n"
-            f"💳 <b>Карта:</b> {'✅ привязана' if has_card else '❌ нет'}\n"
-            f"⏸ <b>Отсрочка автоплатежа:</b> <code>{grace_str}</code>\n"
-            f"🎁 <b>Триал 1₽:</b> {trial_label}\n"
-            f"💰 <b>Баланс:</b> <code>{user['balance'] or 0}</code> коп.\n"
+            f"{E.plus} <b>Тариф:</b> {tier_name} (<code>{tier_id}</code>)\n"
+            f"{E.clipboard} <b>Подписка:</b> {sub_status}\n"
+            f"{E.wait} <b>Истекает:</b> <code>{sub_end}</code>\n"
+            f"{E.card} <b>Карта:</b> {'{E.success} привязана' if has_card else '{E.error} нет'}\n"
+            f"{E.pause} <b>Отсрочка автоплатежа:</b> <code>{grace_str}</code>\n"
+            f"{E.gift} <b>Триал 1₽:</b> {trial_label}\n"
+            f"{E.money} <b>Баланс:</b> <code>{user['balance'] or 0}</code> коп.\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"👥 <b>Рефералы:</b> {user['referral_count']} чел.\n"
-            f"🤝 <b>Кто пригласил:</b> {inviter_name}\n"
+            f"{E.users} <b>Рефералы:</b> {user['referral_count']} чел.\n"
+            f"{E.handshake} <b>Кто пригласил:</b> {inviter_name}\n"
         )
 
         activity_rows = await conn.fetch(
@@ -356,71 +373,68 @@ async def _build_admin_user_card(target_user_id: int) -> tuple[str, InlineKeyboa
             target_user_id,
         )
         if activity_rows:
-            report += "━━━━━━━━━━━━━━━━━━\n📋 <b>Последние действия в боте:</b>\n"
+            report += f"━━━━━━━━━━━━━━━━━━\n{E.clipboard} <b>Последние действия в боте:</b>\n"
             for a in activity_rows:
                 ts = a["created_at"].strftime("%d.%m %H:%M") if a["created_at"] else "—"
                 label = format_activity_label(a["event_kind"] or "bot", a["action"] or "")
                 extra = f" <i>{a['detail'][:30]}</i>" if a["detail"] else ""
                 report += f"• {ts}: {label}{extra}\n"
         else:
-            report += "━━━━━━━━━━━━━━━━━━\n📋 <b>Действия в боте:</b> пока нет записей\n"
+            report += f"━━━━━━━━━━━━━━━━━━\n{E.clipboard} <b>Действия в боте:</b> пока нет записей\n"
 
         has_sub = await conn.fetchval(
             "SELECT 1 FROM subscription_usage_logs WHERE user_id = $1 LIMIT 1",
             target_user_id,
         )
-        report += f"\n🔌 <b>/sub в Happ:</b> {'✅ был' if has_sub else '❌ не было'}\n"
+        report += f"\n{E.plug} <b>/sub в Happ:</b> {'{E.success} был' if has_sub else '{E.error} не было'}\n"
 
         if payments:
-            report += "━━━━━━━━━━━━━━━━━━\n💳 <b>Последние 10 платежей:</b>\n"
+            report += f"━━━━━━━━━━━━━━━━━━\n{E.card} <b>Последние 10 платежей:</b>\n"
             for p in payments:
                 p_status = (
-                    "✅"
+                    f"{E.success}"
                     if p["status"] == "completed"
-                    else "⏳"
+                    else f"{E.wait}"
                     if p["status"] == "pending"
-                    else "❌"
+                    else f"{E.error}"
                 )
                 if p["currency"] == "RUB":
                     rub_amount = p["amount"] / 100
                     p_sum = f"{rub_amount:.2f}".rstrip("0").rstrip(".")
                 else:
                     p_sum = str(p["amount"])
-                p_curr = "₽" if p["currency"] == "RUB" else "⭐"
+                p_curr = "₽" if p["currency"] == "RUB" else f"{E.star}"
                 p_date = p["timestamp"].strftime("%d.%m.%y")
                 report += (
                     f"• {p_date}: <b>{p_sum}{p_curr}</b> {p_status} "
                     f"(<i>{p['plan_id']}</i>)\n"
                 )
         else:
-            report += "━━━━━━━━━━━━━━━━━━\n💳 <b>Платежи:</b> отсутствуют\n"
+            report += f"━━━━━━━━━━━━━━━━━━\n{E.card} <b>Платежи:</b> отсутствуют\n"
 
     builder = InlineKeyboardBuilder()
     if user.get("blacklisted"):
         builder.row(
-            InlineKeyboardButton(
-                text="✅ Разблокировать",
+            btn("Разблокировать", "success",
                 callback_data=f"admin_unblock:{target_user_id}",
             )
         )
     else:
         builder.row(
-            InlineKeyboardButton(
-                text="🚫 Заблокировать",
+            btn("Заблокировать", "blocked",
                 callback_data=f"admin_block_confirm:{target_user_id}",
             )
         )
         if int(user.get("referral_count") or 0) > 0:
             builder.row(
-                InlineKeyboardButton(
-                    text="🚫 Блок + откат рефералов",
+                btn("Блок + откат рефералов", "blocked",
                     callback_data=f"admin_block_fraud:{target_user_id}",
                 )
             )
     builder.row(
-        InlineKeyboardButton(text="◀️ Назад к поиску", callback_data="admin_user_info")
+        btn("Назад к поиску", "back", callback_data="admin_user_info")
     )
-    builder.row(InlineKeyboardButton(text="🏠 В админку", callback_data="admin_back"))
+    builder.row(btn("В админку", "home", callback_data="admin_back"))
     return report, builder
 
 
@@ -432,11 +446,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_panel(message: Message):
         """Главная админ панель"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ У вас нет доступа к админ панели.")
+            await message.answer(f"{E.error} У вас нет доступа к админ панели.")
             return
         
         await message.answer(
-            "🔐 <b>Админ панель</b>\n\n"
+            f"{E.admin} <b>Админ панель</b>\n\n"
             "Выберите действие:",
             reply_markup=get_admin_panel_keyboard(),
             parse_mode="HTML"
@@ -446,11 +460,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_panel_callback(callback: CallbackQuery):
         """Callback для админ панели"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         await callback.message.edit_text(
-            "🔐 <b>Админ панель</b>\n\n"
+            f"{E.admin} <b>Админ панель</b>\n\n"
             "Выберите действие:",
             reply_markup=get_admin_panel_keyboard(),
             parse_mode="HTML"
@@ -461,11 +475,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_back(callback: CallbackQuery):
         """Вернуться в админ панель"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         await callback.message.edit_text(
-            "🔐 <b>Админ панель</b>\n\n"
+            f"{E.admin} <b>Админ панель</b>\n\n"
             "Выберите действие:",
             reply_markup=get_admin_panel_keyboard(),
             parse_mode="HTML"
@@ -499,14 +513,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data == "edit_announcement")
     async def start_edit_announcement(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         await callback.message.edit_text(
-            "✏️ Введите новый текст объявления.\n\n<code>Он будет показан в главном меню всем пользователям.</code>",
+            f"{E.edit} Введите новый текст объявления.\n\n<code>Он будет показан в главном меню всем пользователям.</code>",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
         )
@@ -516,7 +530,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.message(AdminEditStates.EDIT_ANNOUNCEMENT)
     async def save_announcement_text(message: Message, state: FSMContext):
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа", parse_mode="HTML")
+            await message.answer(f"{E.error} Нет доступа", parse_mode="HTML")
             await state.clear()
             return
         
@@ -532,7 +546,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 WHERE id = (SELECT id FROM announcements ORDER BY id DESC LIMIT 1)
             ''', new_ann)
         
-        await message.answer("✅ Объявление обновлено! Теперь оно показывается всем пользователям.", parse_mode="HTML")
+        await message.answer(f"{E.success} Объявление обновлено! Теперь оно показывается всем пользователям.", parse_mode="HTML")
         await state.clear()
     
     # Статистика
@@ -540,7 +554,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_stats(callback: CallbackQuery):
         """Подробная статистика Free / Plus."""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
 
         async with get_connection() as conn:
@@ -548,8 +562,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
 
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_stats"),
-            InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"),
+            btn("Обновить", "refresh", callback_data="admin_stats"),
+            btn("Назад", "back", callback_data="admin_back"),
         )
 
         await callback.message.edit_text(
@@ -562,7 +576,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_realtime_logs(callback: CallbackQuery):
         """Просмотр последних действий пользователей (по логам подписки)"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         from ..activity_log import format_activity_label
@@ -588,9 +602,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             ''')
         
         if not logs:
-            text = "🔔 <b>Логи активности</b>\n\nЛоги пока пусты. Дождитесь действий пользователей."
+            text = f"{E.bell} <b>Логи активности</b>\n\nЛоги пока пусты. Дождитесь действий пользователей."
         else:
-            text = "🔔 <b>Последние действия (реальное время):</b>\n\n"
+            text = f"{E.bell} <b>Последние действия (реальное время):</b>\n\n"
             for log in logs:
                 user_id = log['user_id']
                 name = log['first_name'] or log['username'] or f"ID:{user_id}"
@@ -598,9 +612,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 
                 if ltype == 'vpn':
                     ua = (log['action'] or "Unknown").split('/')[0].split(' ')[0][:12]
-                    action_text = f"🔌 /sub Happ: <code>{ua}</code>"
+                    action_text = f"{E.plug} /sub Happ: <code>{ua}</code>"
                 elif ltype == 'miniapp':
-                    action_text = f"📱 Мини-апп: <code>{(log['action'] or 'open').capitalize()}</code>"
+                    action_text = f"{E.devices} Мини-апп: <code>{(log['action'] or 'open').capitalize()}</code>"
                 else:
                     action_text = format_activity_label(log['event_kind'] or 'bot', log['action'] or '')
                     if log['detail']:
@@ -614,12 +628,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 
                 time_str = ts.strftime('%H:%M:%S')
                 
-                text += f"🕒 <code>{time_str}</code> | <b>{name}</b>\n"
+                text += f"{E.time} <code>{time_str}</code> | <b>{name}</b>\n"
                 text += f"└ {action_text}\n\n"
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_realtime_logs"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Обновить", "refresh", callback_data="admin_realtime_logs"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         try:
             await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
@@ -640,7 +654,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_edit_price(callback: CallbackQuery, state: FSMContext):
         """Редактирование цены"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         plan_id = callback.data.split(":")[1]
@@ -648,17 +662,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         plan_data = all_plans.get(plan_id)
         
         if not plan_data:
-            await safe_callback_answer(callback, "❌ План не найден", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} План не найден", show_alert=True)
             return
         
         await callback.message.edit_text(
-            f"💰 <b>Редактирование цены</b>\n\n"
+            f"{E.money} <b>Редактирование цены</b>\n\n"
             f"План: {plan_data['title']}\n\n"
             f"Введите новую цену в формате:\n"
             f"<code>RUB СУММА_IN_КОПЕЙКАХ</code> или <code>STARS КОЛИЧЕСТВО</code>\n\n"
             f"Примеры:\n"
             f"<code>RUB 19900</code> - 199₽\n"
-            f"<code>STARS 199</code> - 199⭐",
+            f"<code>STARS 199</code> - 199{E.star}",
             parse_mode="HTML"
         )
         await state.set_state(AdminStates.SETTING_PRICE)
@@ -669,7 +683,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_price_setting(message: Message, state: FSMContext):
         """Обработка установки цены (legacy plans, tier plans, bypass packs)"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
 
@@ -688,18 +702,18 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                         "UPDATE bypass_pack_products SET is_active = NOT is_active WHERE id = $1",
                         bypass_pack_id,
                     )
-                await message.answer("✅ Статус пакета изменён.")
+                await message.answer(f"{E.success} Статус пакета изменён.")
                 await state.clear()
                 return
             parts = text_input.split()
             if len(parts) != 2:
-                await message.answer("❌ Формат: RUB 5900 или STARS 59 или TOGGLE")
+                await message.answer(f"{E.error} Формат: RUB 5900 или STARS 59 или TOGGLE")
                 return
             currency_type, amt_str = parts
             try:
                 amount = int(amt_str)
             except ValueError:
-                await message.answer("❌ Сумма должна быть числом")
+                await message.answer(f"{E.error} Сумма должна быть числом")
                 return
             async with get_connection() as conn:
                 if currency_type == "RUB":
@@ -713,9 +727,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                         amount, bypass_pack_id,
                     )
                 else:
-                    await message.answer("❌ Используйте RUB, STARS или TOGGLE")
+                    await message.answer(f"{E.error} Используйте RUB, STARS или TOGGLE")
                     return
-            await message.answer("✅ Цена bypass пакета обновлена!")
+            await message.answer(f"{E.success} Цена bypass пакета обновлена!")
             await state.clear()
             return
 
@@ -724,15 +738,15 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             from ..plans import TIER_PLANS_BASE
             parts = text_input.split()
             if len(parts) != 2 or parts[0] != "RUB":
-                await message.answer("❌ Формат: <code>RUB 14900</code> (цена в копейках)", parse_mode="HTML")
+                await message.answer(f"{E.error} Формат: <code>RUB 14900</code> (цена в копейках)", parse_mode="HTML")
                 return
             try:
                 amount = int(parts[1])
             except ValueError:
-                await message.answer("❌ Сумма должна быть числом")
+                await message.answer(f"{E.error} Сумма должна быть числом")
                 return
             if amount < 0:
-                await message.answer("❌ Цена не может быть отрицательной")
+                await message.answer(f"{E.error} Цена не может быть отрицательной")
                 return
             base = TIER_PLANS_BASE.get(tier_plan_id, {})
             tier = base.get("tier", "")
@@ -752,9 +766,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     tier, duration, amount, stars,
                 )
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="◀️ К тарифам", callback_data="admin_tier_prices"))
+            builder.row(btn("К тарифам", "back", callback_data="admin_tier_prices"))
             await message.answer(
-                f"✅ Цена обновлена: {base.get('title', tier_plan_id)} — {format_price_rub(amount)}",
+                f"{E.success} Цена обновлена: {base.get('title', tier_plan_id)} — {format_price_rub(amount)}",
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML",
             )
@@ -764,14 +778,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         # --- Handle legacy plan edit ---
         parts = text_input.split()
         if len(parts) != 2:
-            await message.answer("❌ Неверный формат. Используйте: RUB 19900 или STARS 199")
+            await message.answer(f"{E.error} Неверный формат. Используйте: RUB 19900 или STARS 199")
             return
         
         currency_type = parts[0]
         try:
             amount = int(parts[1])
         except ValueError:
-            await message.answer("❌ Сумма должна быть числом")
+            await message.answer(f"{E.error} Сумма должна быть числом")
             return
         
         async with get_connection() as conn:
@@ -798,7 +812,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     SET price_stars = $3, updated_at = CURRENT_TIMESTAMP
                 ''', plan_id, price_rub, amount)
             else:
-                await message.answer("❌ Неверный тип валюты. Используйте RUB или STARS")
+                await message.answer(f"{E.error} Неверный тип валюты. Используйте RUB или STARS")
                 return
         
         all_plans = {**SUBSCRIPTION_PLANS_BASE, **RENEWAL_PLANS_BASE}
@@ -815,10 +829,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 price_stars = plan_data['price_stars'] if plan_data else 0
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад к ценам", callback_data="admin_prices"))
+        builder.row(btn("Назад к ценам", "back", callback_data="admin_prices"))
         
         await message.answer(
-            f"✅ Цена обновлена!\n\n"
+            f"{E.success} Цена обновлена!\n\n"
             f"План: <b>{plan_title}</b>\n"
             f"Новая цена: {format_price_rub(price_rub)} | {format_price_stars(price_stars)}",
             reply_markup=builder.as_markup(),
@@ -833,7 +847,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_tier_prices(callback: CallbackQuery):
         """Цены Plus и bypass-пакеты."""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
 
         from ..plans import TIERS, get_tier_plans, get_bypass_packs
@@ -841,7 +855,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         plans = await get_tier_plans()
         plus_t = TIERS["plus"]
         text = (
-            "💎 <b>Тариф Plus</b>\n\n"
+            f"{E.plus} <b>Тариф Plus</b>\n\n"
             f"• Bypass: {plus_t['bypass_gb']} ГБ/мес\n"
             f"• Устройства: безлимит\n"
             f"• Оплата подписки: только карта (ЮKassa)\n\n"
@@ -853,8 +867,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         for plan_id, plan_data in plans.items():
             text += f"  • {plan_data['title']}: {format_price_rub(plan_data['price_rub'])}\n"
             plan_buttons.append(
-                InlineKeyboardButton(
-                    text=f"✏️ {plan_data['title']}",
+                btn("{plan_data['title']}", "edit",
                     callback_data=f"admin_tier_edit:{plan_id}",
                 )
             )
@@ -867,17 +880,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         text += "\n<b>Bypass-пакеты (докупка):</b>\n"
         packs = await get_bypass_packs()
         for p in packs:
-            st = "✅" if p.get("is_active", True) else "⏸"
+            st = f"{E.success}" if p.get("is_active", True) else f"{E.pause}"
             text += (
                 f"  {st} +{p['gb_amount']} ГБ: {format_price_rub(p['price_rub'])}"
-                f" | {p['price_stars']}⭐\n"
+                f" | {p['price_stars']}{E.star}\n"
             )
 
         builder.row(
-            InlineKeyboardButton(text="📶 Bypass-пакеты", callback_data="admin_bypass_packs"),
-            InlineKeyboardButton(text="🏷️ Bypass-серв.", callback_data="admin_mark_bypass"),
+            btn("Bypass-пакеты", "signal", callback_data="admin_bypass_packs"),
+            btn("Bypass-серв.", "tag_vs", callback_data="admin_mark_bypass"),
         )
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
 
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
@@ -886,7 +899,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_tier_edit(callback: CallbackQuery, state: FSMContext):
         """Редактирование цены тарифа"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
 
         plan_id = callback.data.split(":")[1]
@@ -894,11 +907,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         plans = await get_tier_plans()
         plan_data = plans.get(plan_id)
         if not plan_data:
-            await safe_callback_answer(callback, "❌ Не найден", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Не найден", show_alert=True)
             return
 
         await callback.message.edit_text(
-            f"✏️ <b>Редактирование: {plan_data['title']}</b>\n\n"
+            f"{E.edit} <b>Редактирование: {plan_data['title']}</b>\n\n"
             f"Текущая цена: {format_price_rub(plan_data['price_rub'])}\n\n"
             f"Введите новую цену в копейках:\n"
             f"<code>RUB 14900</code> = 149₽\n\n"
@@ -913,7 +926,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_bypass_packs(callback: CallbackQuery):
         """Управление bypass пакетами"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
 
         async with get_connection() as conn:
@@ -921,17 +934,16 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 "SELECT id, title, gb_amount, price_rub, price_stars, is_active FROM bypass_pack_products ORDER BY gb_amount"
             )
 
-        text = "📶 <b>Bypass пакеты (докупка ГБ)</b>\n\n"
+        text = f"{E.signal} <b>Bypass пакеты (докупка ГБ)</b>\n\n"
         builder = InlineKeyboardBuilder()
         for p in packs:
-            status = "✅" if p["is_active"] else "❌"
+            status = f"{E.success}" if p["is_active"] else f"{E.error}"
             text += f"{status} +{p['gb_amount']} ГБ — {p['title']} — {format_price_rub(p['price_rub'])}\n"
-            builder.row(InlineKeyboardButton(
-                text=f"✏️ +{p['gb_amount']} ГБ ({format_price_rub(p['price_rub'])})",
+            builder.row(btn("+{p['gb_amount']} ГБ ({format_price_rub(p['price_rub'])})", "edit",
                 callback_data=f"admin_bp_edit:{p['id']}",
             ))
 
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_tier_prices"))
+        builder.row(btn("Назад", "back", callback_data="admin_tier_prices"))
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
 
@@ -939,18 +951,18 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_bp_edit(callback: CallbackQuery, state: FSMContext):
         """Редактирование bypass пакета"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
 
         pack_id = int(callback.data.split(":")[1])
         async with get_connection() as conn:
             p = await conn.fetchrow("SELECT * FROM bypass_pack_products WHERE id = $1", pack_id)
         if not p:
-            await safe_callback_answer(callback, "❌ Не найден", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Не найден", show_alert=True)
             return
 
         await callback.message.edit_text(
-            f"✏️ <b>Bypass пакет: +{p['gb_amount']} ГБ</b>\n\n"
+            f"{E.edit} <b>Bypass пакет: +{p['gb_amount']} ГБ</b>\n\n"
             f"Текущая цена: {format_price_rub(p['price_rub'])} | {format_price_stars(p['price_stars'])}\n"
             f"Активен: {'да' if p['is_active'] else 'нет'}\n\n"
             f"Введите новую цену:\n"
@@ -966,7 +978,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_mark_bypass(callback: CallbackQuery):
         """Пометить сервер как bypass"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
 
         async with get_connection() as conn:
@@ -974,17 +986,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 "SELECT id, name, is_bypass, is_active FROM servers ORDER BY display_order, id"
             )
 
-        text = "🏷️ <b>Bypass серверы</b>\n\nОтметьте серверы, которые используются для обхода блокировок:\n\n"
+        text = f"{E.tag_vs} <b>Bypass серверы</b>\n\nОтметьте серверы, которые используются для обхода блокировок:\n\n"
         builder = InlineKeyboardBuilder()
         for s in servers:
-            mark = "🔓" if s["is_bypass"] else "🌐"
-            active = "✅" if s["is_active"] else "⏸"
+            mark = f"{E.bypass}" if s["is_bypass"] else f"{E.globe}"
+            active = f"{E.success}" if s["is_active"] else f"{E.pause}"
             builder.row(InlineKeyboardButton(
                 text=f"{mark} {active} {s['name']}",
                 callback_data=f"admin_toggle_bypass:{s['id']}",
             ))
 
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_tier_prices"))
+        builder.row(btn("Назад", "back", callback_data="admin_tier_prices"))
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
 
@@ -992,7 +1004,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_toggle_bypass(callback: CallbackQuery):
         """Toggle bypass flag on server"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
 
         server_id = int(callback.data.split(":")[1])
@@ -1003,7 +1015,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             )
             s = await conn.fetchrow("SELECT name, is_bypass FROM servers WHERE id = $1", server_id)
 
-        status = "bypass 🔓" if s["is_bypass"] else "обычный 🌐"
+        status = f"bypass {E.bypass}" if s["is_bypass"] else f"обычный {E.globe}"
         await safe_callback_answer(callback, f"{s['name']} → {status}", show_alert=True)
         # Refresh the list
         await handle_admin_mark_bypass(callback)
@@ -1011,7 +1023,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data == "admin_traffic")
     async def handle_admin_traffic(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         await state.clear()
         text, builder = await _admin_traffic_panel_builder()
@@ -1025,7 +1037,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data.startswith("admin_traffic_edit:"))
     async def handle_admin_traffic_edit(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         mode = callback.data.split(":")[1]
         prompts = {
@@ -1035,9 +1047,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         await state.set_state(AdminStates.TRAFFIC_SETTING_VALUE)
         await state.update_data(traffic_setting_mode=mode)
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_traffic"))
+        builder.row(btn("Назад", "back", callback_data="admin_traffic"))
         await callback.message.edit_text(
-            f"📶 <b>Настройка трафика</b>\n\n{prompts.get(mode, 'Введите значение:')}",
+            f"{E.signal} <b>Настройка трафика</b>\n\n{prompts.get(mode, 'Введите значение:')}",
             reply_markup=builder.as_markup(),
             parse_mode="HTML",
         )
@@ -1046,7 +1058,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data == "admin_traffic_tg_relay_pick")
     async def handle_admin_traffic_tg_relay_pick(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         await state.clear()
         async with get_connection() as conn:
@@ -1059,8 +1071,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             )
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(
-                text="⌨️ Указать по ID (любой сервер в БД)",
+            btn("Указать по ID (любой сервер в БД)", "keyboard",
                 callback_data="admin_traffic_tg_relay_by_id",
             )
         )
@@ -1073,16 +1084,15 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 )
             )
         builder.row(
-            InlineKeyboardButton(
-                text="🚫 Без сервера (только плейсхолдеры)",
+            btn("Без сервера (только плейсхолдеры)", "blocked",
                 callback_data="admin_traffic_tg_relay_clear",
             )
         )
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_traffic"))
+        builder.row(btn("Назад", "back", callback_data="admin_traffic"))
         await callback.message.edit_text(
-            "📡 <b>Сервер «ТГ безлимит»</b>\n\n"
+            f"{E.antenna} <b>Сервер «ТГ безлимит»</b>\n\n"
             "При превышении месячного лимита в подписке пользователь увидит "
-            "<b>одну</b> рабочую ссылку на выбранный узел (в клиенте имя <b>‼️ ТГ БЕЗЛИМИТ ‼️</b>, в конце списка). "
+            f"<b>одну</b> рабочую ссылку на выбранный узел (в клиенте имя <b>{E.alert_double} ТГ БЕЗЛИМИТ {E.alert_double}</b>, в конце списка). "
             "Ограничение «только Telegram» задаётся в <b>Xray</b> на inbound этого сервера.\n\n"
             "<b>Обычным пользователям</b> узел не показывай: в карточке сервера — "
             "<b>«Скрыть из подписки Happ»</b>. Сервер для реле можно держать на паузе — "
@@ -1096,14 +1106,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data == "admin_traffic_tg_relay_by_id")
     async def handle_admin_traffic_tg_relay_by_id(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         await state.set_state(AdminStates.TRAFFIC_TG_RELAY_SERVER_ID)
         b = InlineKeyboardBuilder()
-        b.row(InlineKeyboardButton(text="◀️ К списку серверов", callback_data="admin_traffic_tg_relay_pick"))
-        b.row(InlineKeyboardButton(text="◀️ К трафику", callback_data="admin_traffic"))
+        b.row(btn("К списку серверов", "back", callback_data="admin_traffic_tg_relay_pick"))
+        b.row(btn("К трафику", "back", callback_data="admin_traffic"))
         await callback.message.edit_text(
-            "⌨️ <b>ID сервера для «ТГ безлимит»</b>\n\n"
+            f"{E.keyboard} <b>ID сервера для «ТГ безлимит»</b>\n\n"
             "Отправьте одним сообщением <b>числовой id</b> записи в таблице серверов "
             "(тот же номер, что в админке «Серверы» — колонка id).\n\n"
             "Так можно привязать узел, которого <b>нет</b> в списке выше (например, выключен для продажи, "
@@ -1116,17 +1126,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.message(AdminStates.TRAFFIC_TG_RELAY_SERVER_ID)
     async def process_admin_traffic_tg_relay_server_id(message: Message, state: FSMContext):
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         raw = (message.text or "").strip()
         try:
             sid = int(raw)
         except ValueError:
-            await message.answer("❌ Нужно целое число — id сервера (например <code>12</code>).", parse_mode="HTML")
+            await message.answer(f"{E.error} Нужно целое число — id сервера (например <code>12</code>).", parse_mode="HTML")
             return
         if sid < 1:
-            await message.answer("❌ ID должен быть положительным.")
+            await message.answer(f"{E.error} ID должен быть положительным.")
             return
         async with get_connection() as conn:
             row = await conn.fetchrow(
@@ -1134,7 +1144,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 sid,
             )
             if not row:
-                await message.answer(f"❌ Сервера с id=<b>{sid}</b> в базе нет.", parse_mode="HTML")
+                await message.answer(f"{E.error} Сервера с id=<b>{sid}</b> в базе нет.", parse_mode="HTML")
                 return
             await conn.execute(
                 """
@@ -1146,7 +1156,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             )
         await state.clear()
         nm = html_std.escape(str(row["name"] or ""))
-        st = "активен" if row["is_active"] else "⚠️ выключен в продаже"
+        st = "активен" if row["is_active"] else f"{E.warning} выключен в продаже"
         text, builder = await _admin_traffic_panel_builder()
         tip = (
             "\n\nВ карточке сервера нажми <b>«Скрыть из подписки Happ»</b>, если узел не должен быть в общем списке."
@@ -1154,7 +1164,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             else "\n\nСервер на паузе — для реле это ок: ключи для этого id не снимаются. При желании включи обратно и скрой из подписки."
         )
         await message.answer(
-            f"✅ «ТГ безлимит» → сервер <b>#{sid}</b> {nm} ({st}).{tip}",
+            f"{E.success} «ТГ безлимит» → сервер <b>#{sid}</b> {nm} ({st}).{tip}",
             parse_mode="HTML",
         )
         await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
@@ -1162,13 +1172,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data.startswith("admin_traffic_tg_relay_set:"))
     async def handle_admin_traffic_tg_relay_set(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         await state.clear()
         try:
             sid = int(callback.data.split(":")[1])
         except (IndexError, ValueError):
-            await safe_callback_answer(callback, "❌ Неверный id", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Неверный id", show_alert=True)
             return
         async with get_connection() as conn:
             await conn.execute(
@@ -1185,12 +1195,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             reply_markup=builder.as_markup(),
             parse_mode="HTML",
         )
-        await safe_callback_answer(callback, "✅ Сохранено")
+        await safe_callback_answer(callback, f"{E.success} Сохранено")
 
     @dp.callback_query(F.data == "admin_traffic_tg_relay_clear")
     async def handle_admin_traffic_tg_relay_clear(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         await state.clear()
         async with get_connection() as conn:
@@ -1207,12 +1217,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             reply_markup=builder.as_markup(),
             parse_mode="HTML",
         )
-        await safe_callback_answer(callback, "✅ Снято")
+        await safe_callback_answer(callback, f"{E.success} Снято")
 
     @dp.message(AdminStates.TRAFFIC_SETTING_VALUE)
     async def process_admin_traffic_setting_value(message: Message, state: FSMContext):
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         data = await state.get_data()
@@ -1220,14 +1230,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         try:
             val = int((message.text or "").strip())
         except ValueError:
-            await message.answer("❌ Введите целое число")
+            await message.answer(f"{E.error} Введите целое число")
             return
 
         if mode == "default_gb" and (val < 1 or val > 100000):
-            await message.answer("❌ Допустимо от 1 до 100000 ГБ")
+            await message.answer(f"{E.error} Допустимо от 1 до 100000 ГБ")
             return
         if mode == "sync_sec" and (val < 30 or val > 86400):
-            await message.answer("❌ Интервал: от 30 до 86400 сек")
+            await message.answer(f"{E.error} Интервал: от 30 до 86400 сек")
             return
 
         async with get_connection() as conn:
@@ -1249,8 +1259,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 )
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ К трафику", callback_data="admin_traffic"))
-        await message.answer("✅ Сохранено", reply_markup=builder.as_markup())
+        builder.row(btn("К трафику", "back", callback_data="admin_traffic"))
+        await message.answer(f"{E.success} Сохранено", reply_markup=builder.as_markup())
         await state.clear()
 
     @dp.callback_query(F.data == "admin_gb_pack_add")
@@ -1262,7 +1272,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_gb_pack_legacy(callback: CallbackQuery, state: FSMContext):
         """Legacy gb_pack_products — редирект на bypass."""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         await state.clear()
         await handle_admin_bypass_packs(callback)
@@ -1272,7 +1282,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_discounts(callback: CallbackQuery):
         """Управление скидками"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         async with get_connection() as conn:
@@ -1284,19 +1294,20 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 days_threshold = settings['days_threshold']
                 enable_for_all = settings['enable_for_all']
         
-        status_text = "✅ Включена" if enable_for_all else "❌ Выключена"
+        status_text = f"{E.success} Включена" if enable_for_all else f"{E.error} Выключена"
         threshold_text = f"{days_threshold} {'день' if days_threshold == 1 else 'дня' if days_threshold < 5 else 'дней'}" if days_threshold > 0 else "Выключена"
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="✏️ Дни до окончания для скидки", callback_data="admin_discount_threshold"))
-        builder.row(InlineKeyboardButton(
-            text=f"{'🔴 Выключить' if enable_for_all else '🟢 Включить'} скидку для всех",
-            callback_data=f"admin_discount_toggle_all"
-        ))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Дни до окончания для скидки", "edit", callback_data="admin_discount_threshold"))
+        builder.row(
+            btn("Выключить скидку для всех", "off", callback_data="admin_discount_toggle_all")
+            if enable_for_all
+            else btn("Включить скидку для всех", "on", callback_data="admin_discount_toggle_all")
+        )
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         await callback.message.edit_text(
-            f"🎁 <b>Управление скидками</b>\n\n"
+            f"{E.gift} <b>Управление скидками</b>\n\n"
             f"<b>Режим 1:</b> Скидка за N дней до окончания\n"
             f"Текущее значение: <b>{threshold_text}</b>\n"
             f"(0 = скидка отключена)\n\n"
@@ -1312,14 +1323,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_discount_threshold(callback: CallbackQuery, state: FSMContext):
         """Настройка дней до окончания для скидки"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_discounts"))
+        builder.row(btn("Назад", "back", callback_data="admin_discounts"))
         
         await callback.message.edit_text(
-            "✏️ <b>Дни до окончания для скидки</b>\n\n"
+            f"{E.edit} <b>Дни до окончания для скидки</b>\n\n"
             "Введите количество дней до окончания подписки, когда будет показываться скидка:\n\n"
             "• <code>0</code> - скидка отключена\n"
             "• <code>3</code> - скидка показывается за 3 дня до окончания (по умолчанию)\n"
@@ -1335,17 +1346,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_discount_threshold(message: Message, state: FSMContext):
         """Обработка дней для скидки"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
         try:
             days = int(message.text.strip())
             if days < 0:
-                await message.answer("❌ Количество дней не может быть отрицательным")
+                await message.answer(f"{E.error} Количество дней не может быть отрицательным")
                 return
         except ValueError:
-            await message.answer("❌ Введите число")
+            await message.answer(f"{E.error} Введите число")
             return
         
         async with get_connection() as conn:
@@ -1363,11 +1374,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 ''', days)
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад к скидкам", callback_data="admin_discounts"))
+        builder.row(btn("Назад к скидкам", "back", callback_data="admin_discounts"))
         
         threshold_text = f"{days} {'день' if days == 1 else 'дня' if days < 5 else 'дней'}" if days > 0 else "Выключена"
         await message.answer(
-            f"✅ Количество дней для скидки установлено: <b>{threshold_text}</b>",
+            f"{E.success} Количество дней для скидки установлено: <b>{threshold_text}</b>",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
         )
@@ -1377,7 +1388,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_discount_toggle_all(callback: CallbackQuery):
         """Переключение режима скидки для всех"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         async with get_connection() as conn:
@@ -1396,7 +1407,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     WHERE id = (SELECT id FROM discount_settings ORDER BY id DESC LIMIT 1)
                 ''', new_value)
         
-        status_text = "✅ Включена" if new_value else "❌ Выключена"
+        status_text = f"{E.success} Включена" if new_value else f"{E.error} Выключена"
         await safe_callback_answer(callback, f"Скидка для всех: {status_text}")
         # Обновляем интерфейс
         await handle_admin_discounts(callback)
@@ -1468,7 +1479,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                                 callback_data=f"tier_pay:{plan_id}"
                             )
                         builder.adjust(1)
-                        builder.row(InlineKeyboardButton(text="💎 Тарифы", callback_data="open_tiers"))
+                        builder.row(btn("Тарифы", "plus", callback_data="open_tiers"))
                         
                         # Формируем текст
                         if days_remaining < 1:
@@ -1479,11 +1490,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                         await bot.send_message(
                             chat_id=user_id,
                             text=(
-                                "⏰ <b>Напоминание о подписке</b>\n\n"
+                                f"{E.clock} <b>Напоминание о подписке</b>\n\n"
                                 f"Ваша VPN подписка истекает {days_text} ({end_date_str})\n\n"
-                                "🔥 <b>Сейчас действует скидка!</b>\n"
+                                f"{E.hot} <b>Сейчас действует скидка!</b>\n"
                                 "Успей продлить подписку сейчас и получи выгодную цену.\n\n"
-                                "Не упусти возможность продолжить пользоваться VPN по специальной цене! 🎁"
+                                f"Не упусти возможность продолжить пользоваться VPN по специальной цене! {E.gift}"
                             ),
                             reply_markup=builder.as_markup(),
                             parse_mode="HTML"
@@ -1507,7 +1518,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_broadcast(callback: CallbackQuery, state: FSMContext):
         """Начать рассылку - конструктор"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         await state.update_data(
@@ -1533,13 +1544,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_broadcast_add_text(callback: CallbackQuery, state: FSMContext):
         """Добавление текста к рассылке"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         await callback.message.edit_text(
-            "📝 <b>Добавление текста</b>\n\n"
+            f"{E.note} <b>Добавление текста</b>\n\n"
             "Введите текст сообщения:\n\n"
-            "💡 <i>Если вы также добавите медиа, этот текст будет использован как подпись (caption)</i>",
+            f"{E.bulb} <i>Если вы также добавите медиа, этот текст будет использован как подпись (caption)</i>",
             parse_mode="HTML"
         )
         await state.set_state(AdminStates.BROADCAST_MESSAGE)
@@ -1549,13 +1560,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_broadcast_add_media(callback: CallbackQuery, state: FSMContext):
         """Добавление медиа к рассылке"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         await callback.message.edit_text(
-            "🖼️ <b>Добавление медиа</b>\n\n"
+            f"{E.photo_vs} <b>Добавление медиа</b>\n\n"
             "Отправьте фото, видео, документ или GIF:\n\n"
-            "💡 <i>Можно добавить подпись (caption) к медиа, если текст не был добавлен отдельно</i>",
+            f"{E.bulb} <i>Можно добавить подпись (caption) к медиа, если текст не был добавлен отдельно</i>",
             parse_mode="HTML"
         )
         await state.set_state(AdminStates.BROADCAST_MEDIA)
@@ -1565,13 +1576,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_broadcast_message(message: Message, state: FSMContext):
         """Обработка текста рассылки"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
         broadcast_text = message.text or ""
         if not broadcast_text.strip():
-            await message.answer("❌ Сообщение не может быть пустым")
+            await message.answer(f"{E.error} Сообщение не может быть пустым")
             return
         
         await state.update_data(broadcast_text=broadcast_text)
@@ -1580,7 +1591,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         status_text, keyboard = await get_broadcast_constructor_menu(data)
         
         await message.answer(
-            "✅ <b>Текст добавлен!</b>\n\n" + status_text,
+            f"{E.success} <b>Текст добавлен!</b>\n\n" + status_text,
             reply_markup=keyboard,
             parse_mode="HTML"
         )
@@ -1589,7 +1600,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_broadcast_media(message: Message, state: FSMContext):
         """Обработка медиа для рассылки"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -1610,7 +1621,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             media_type = "animation"
             file_id = message.animation.file_id
         else:
-            await message.answer("❌ Пожалуйста, отправьте фото, видео, документ или GIF")
+            await message.answer(f"{E.error} Пожалуйста, отправьте фото, видео, документ или GIF")
             return
         
         data = await state.get_data()
@@ -1625,10 +1636,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         data = await state.get_data()
         status_text, keyboard = await get_broadcast_constructor_menu(data)
-        media_preview = "🖼️ Фото" if media_type == "photo" else "🎥 Видео" if media_type == "video" else "📄 Документ" if media_type == "document" else "🎬 GIF"
+        media_preview = f"{E.photo_vs} Фото" if media_type == "photo" else f"{E.video} Видео" if media_type == "video" else f"{E.doc} Документ" if media_type == "document" else f"{E.gif} GIF"
         
         await message.answer(
-            f"✅ <b>{media_preview} добавлено!</b>\n\n" + status_text,
+            f"{E.success} <b>{media_preview} добавлено!</b>\n\n" + status_text,
             reply_markup=keyboard,
             parse_mode="HTML"
         )
@@ -1637,29 +1648,29 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_broadcast_add_buttons(callback: CallbackQuery, state: FSMContext):
         """Добавление кнопок к рассылке"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         data = await state.get_data()
         existing_buttons = data.get('broadcast_buttons', [])
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔗 Получить VPN", callback_data="broadcast_add_menu_button:get_vpn"))
-        builder.row(InlineKeyboardButton(text="🎁 Подарок", callback_data="broadcast_add_menu_button:referral"))
-        builder.row(InlineKeyboardButton(text="💎 Подписка", callback_data="broadcast_add_menu_button:premium"))
-        builder.row(InlineKeyboardButton(text="🆘 Помощь", callback_data="broadcast_add_menu_button:help"))
-        builder.row(InlineKeyboardButton(text="🎁 Plus за 1₽", callback_data="broadcast_add_menu_button:trial"))
-        builder.row(InlineKeyboardButton(text="➕ Добавить свою кнопку", callback_data="broadcast_add_custom_button"))
+        builder.row(btn("Получить VPN", "vpn_connect", callback_data="broadcast_add_menu_button:get_vpn"))
+        builder.row(btn("Подарок", "gift", callback_data="broadcast_add_menu_button:referral"))
+        builder.row(btn("Подписка", "plus", callback_data="broadcast_add_menu_button:premium"))
+        builder.row(btn("Помощь", "help", callback_data="broadcast_add_menu_button:help"))
+        builder.row(btn("Plus за 1₽", "gift", callback_data="broadcast_add_menu_button:trial"))
+        builder.row(btn("Добавить свою кнопку", "add", callback_data="broadcast_add_custom_button"))
         if existing_buttons:
-            builder.row(InlineKeyboardButton(text="✅ Готово", callback_data="broadcast_buttons_done"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_broadcast"))
+            builder.row(btn("Готово", "success", callback_data="broadcast_buttons_done"))
+        builder.row(btn("Назад", "back", callback_data="admin_broadcast"))
         
         buttons_list = ""
         if existing_buttons:
             buttons_list = "\n\n<b>Текущие кнопки:</b>\n" + "\n".join([f"• {btn['text']}" for btn in existing_buttons])
         
         text = (
-            "🔘 <b>Добавление кнопок</b>\n\n"
+            f"{E.radio} <b>Добавление кнопок</b>\n\n"
             "Выберите кнопку из главного меню или добавьте свою:"
             f"{buttons_list}"
         )
@@ -1671,7 +1682,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_broadcast_add_menu_button(callback: CallbackQuery, state: FSMContext):
         """Добавление кнопки главного меню в рассылку"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         button_type = callback.data.split(":")[1]
@@ -1679,21 +1690,21 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         existing_buttons = data.get('broadcast_buttons', [])
         
         menu_buttons_map = {
-            "get_vpn": "🔗 Получить VPN",
-            "referral": "🎁 Подарок",
-            "premium": "💎 Подписка",
-            "help": "🆘 Помощь",
-            "trial": "🎁 Plus за 1₽ — попробовать"
+            "get_vpn": f"{E.vpn_connect} Получить VPN",
+            "referral": f"{E.gift} Подарок",
+            "premium": f"{E.plus} Подписка",
+            "help": f"{E.help} Помощь",
+            "trial": f"{E.gift} Plus за 1₽ — попробовать"
         }
         
         button_text = menu_buttons_map.get(button_type)
         if not button_text:
-            await safe_callback_answer(callback, "❌ Неизвестный тип кнопки", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Неизвестный тип кнопки", show_alert=True)
             return
         
         for btn in existing_buttons:
             if btn.get('callback_data') == f"menu:{button_type}":
-                await safe_callback_answer(callback, "⚠️ Эта кнопка уже добавлена", show_alert=True)
+                await safe_callback_answer(callback, f"{E.warning} Эта кнопка уже добавлена", show_alert=True)
                 return
         
         new_button = {
@@ -1702,14 +1713,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         }
         existing_buttons.append(new_button)
         await state.update_data(broadcast_buttons=existing_buttons)
-        await safe_callback_answer(callback, f"✅ Кнопка '{button_text}' добавлена", show_alert=True)
+        await safe_callback_answer(callback, f"{E.success} Кнопка '{button_text}' добавлена", show_alert=True)
         await handle_broadcast_add_buttons(callback, state)
 
     @dp.callback_query(F.data == "broadcast_add_custom_button")
     async def handle_broadcast_add_custom_button(callback: CallbackQuery, state: FSMContext):
         """Добавление своей кнопки в рассылку"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         data = await state.get_data()
@@ -1718,7 +1729,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         if existing_buttons:
             buttons_list = "\n".join([f"• {btn['text']} → {btn.get('url', btn.get('callback_data', ''))}" for btn in existing_buttons])
             text = (
-                "🔘 <b>Добавление своей кнопки</b>\n\n"
+                f"{E.radio} <b>Добавление своей кнопки</b>\n\n"
                 f"<b>Текущие кнопки ({len(existing_buttons)}):</b>\n{buttons_list}\n\n"
                 "Отправьте кнопку в формате:\n"
                 "<code>Текст кнопки | URL</code>\n\n"
@@ -1728,7 +1739,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             )
         else:
             text = (
-                "🔘 <b>Добавление своей кнопки</b>\n\n"
+                f"{E.radio} <b>Добавление своей кнопки</b>\n\n"
                 "Отправьте кнопку в формате:\n"
                 "<code>Текст кнопки | URL</code>\n\n"
                 "Пример:\n"
@@ -1744,13 +1755,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_broadcast_buttons_done(callback: CallbackQuery, state: FSMContext):
         """Завершение добавления кнопок"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         data = await state.get_data()
         status_text, keyboard = await get_broadcast_constructor_menu(data)
         await callback.message.edit_text(
-            "✅ <b>Кнопки настроены!</b>\n\n" + status_text,
+            f"{E.success} <b>Кнопки настроены!</b>\n\n" + status_text,
             reply_markup=keyboard,
             parse_mode="HTML"
         )
@@ -1760,7 +1771,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_broadcast_buttons(message: Message, state: FSMContext):
         """Обработка кнопок для рассылки"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -1769,9 +1780,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             status_text, keyboard = await get_broadcast_constructor_menu(data)
             buttons = data.get('broadcast_buttons', [])
             if buttons:
-                await message.answer("✅ <b>Кнопки добавлены!</b>\n\n" + status_text, reply_markup=keyboard, parse_mode="HTML")
+                await message.answer(f"{E.success} <b>Кнопки добавлены!</b>\n\n" + status_text, reply_markup=keyboard, parse_mode="HTML")
             else:
-                await message.answer("⏭️ <b>Кнопки не добавлены</b>\n\n" + status_text, reply_markup=keyboard, parse_mode="HTML")
+                await message.answer(f"{E.skip} <b>Кнопки не добавлены</b>\n\n" + status_text, reply_markup=keyboard, parse_mode="HTML")
             return
         
         text = message.text or ""
@@ -1787,7 +1798,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     buttons.append({'text': btn_text, 'url': btn_url})
         
         if not buttons:
-            await message.answer("❌ Неверный формат. Используйте: <code>Текст кнопки | URL</code>", parse_mode="HTML")
+            await message.answer(f"{E.error} Неверный формат. Используйте: <code>Текст кнопки | URL</code>", parse_mode="HTML")
             return
         
         data = await state.get_data()
@@ -1797,7 +1808,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         buttons_list = "\n".join([f"• {btn['text']} → {btn['url']}" for btn in existing_buttons])
         await message.answer(
-            f"✅ <b>Кнопки добавлены ({len(existing_buttons)}):</b>\n\n{buttons_list}\n\n"
+            f"{E.success} <b>Кнопки добавлены ({len(existing_buttons)}):</b>\n\n{buttons_list}\n\n"
             f"Отправьте ещё кнопки или /done для возврата в конструктор",
             parse_mode="HTML"
         )
@@ -1806,28 +1817,28 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_broadcast_choose_filter(callback: CallbackQuery, state: FSMContext):
         """Выбор фильтра для рассылки"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="👥 Все пользователи", callback_data="broadcast_filter:all"))
-        builder.row(InlineKeyboardButton(text="✅ С активной подпиской", callback_data="broadcast_filter:active"))
-        builder.row(InlineKeyboardButton(text="❌ Без подписки", callback_data="broadcast_filter:inactive"))
-        builder.row(InlineKeyboardButton(text="📅 Активные за 7 дней", callback_data="broadcast_filter:active_7d"))
-        builder.row(InlineKeyboardButton(text="📅 Активные за 30 дней", callback_data="broadcast_filter:active_30d"))
-        builder.row(InlineKeyboardButton(text="🎁 С рефералами", callback_data="broadcast_filter:with_referrals"))
-        builder.row(InlineKeyboardButton(text="🆓 Использовали пробный период", callback_data="broadcast_filter:trial_used"))
-        builder.row(InlineKeyboardButton(text="🧪 Не использовали пробный период", callback_data="broadcast_filter:trial_not_used"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад в конструктор", callback_data="admin_broadcast"))
+        builder.row(btn("Все пользователи", "users", callback_data="broadcast_filter:all"))
+        builder.row(btn("С активной подпиской", "success", callback_data="broadcast_filter:active"))
+        builder.row(btn("Без подписки", "error", callback_data="broadcast_filter:inactive"))
+        builder.row(btn("Активные за 7 дней", "calendar", callback_data="broadcast_filter:active_7d"))
+        builder.row(btn("Активные за 30 дней", "calendar", callback_data="broadcast_filter:active_30d"))
+        builder.row(btn("С рефералами", "gift", callback_data="broadcast_filter:with_referrals"))
+        builder.row(btn("Использовали пробный период", "free", callback_data="broadcast_filter:trial_used"))
+        builder.row(btn("Не использовали пробный период", "test", callback_data="broadcast_filter:trial_not_used"))
+        builder.row(btn("Назад в конструктор", "back", callback_data="admin_broadcast"))
         
-        await callback.message.edit_text("🔍 <b>Выберите фильтр для рассылки:</b>", reply_markup=builder.as_markup(), parse_mode="HTML")
+        await callback.message.edit_text(f"{E.search} <b>Выберите фильтр для рассылки:</b>", reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
 
     @dp.callback_query(F.data == "broadcast_toggle_test")
     async def handle_broadcast_toggle_test(callback: CallbackQuery, state: FSMContext):
         """Переключение тестового режима"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         data = await state.get_data()
@@ -1843,7 +1854,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_broadcast_filter(callback: CallbackQuery, state: FSMContext):
         """Обработка выбора фильтра"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         filter_type = callback.data.split(":")[1]
@@ -1858,7 +1869,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def confirm_broadcast(callback: CallbackQuery, state: FSMContext):
         """Подтверждение и отправка рассылки"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         data = await state.get_data()
@@ -1870,7 +1881,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         test_mode = data.get('broadcast_test', False)
         
         if not broadcast_text and not media_type:
-            await safe_callback_answer(callback, "❌ Добавьте текст или медиа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Добавьте текст или медиа", show_alert=True)
             return
         
         # Формируем клавиатуру с кнопками
@@ -1898,7 +1909,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
 
         if test_mode:
             users = [{'user_id': callback.from_user.id}]
-            await callback.message.answer("🧪 <b>ТЕСТОВЫЙ РЕЖИМ:</b> Рассылка будет отправлена только вам", parse_mode="HTML")
+            await callback.message.answer(f"{E.test} <b>ТЕСТОВЫЙ РЕЖИМ:</b> Рассылка будет отправлена только вам", parse_mode="HTML")
         else:
             async with get_connection() as conn:
                 if filter_type == "all":
@@ -1924,7 +1935,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         failed = 0
         failed_user_ids = []
         test_text = " (тестовый режим)" if test_mode else ""
-        await callback.message.edit_text(f"📢 Рассылка начата{test_text}... Отправлено: {sent}, Ошибок: {failed}")
+        await callback.message.edit_text(f"{E.megaphone} Рассылка начата{test_text}... Отправлено: {sent}, Ошибок: {failed}")
         
         has_trial_button = any(btn.get('callback_data') == 'menu:trial' for btn in buttons)
 
@@ -1992,7 +2003,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     continue
                 sent += 1
                 if sent % 10 == 0:
-                    await callback.message.edit_text(f"📢 Рассылка... Отправлено: {sent}, Ошибок: {failed}")
+                    await callback.message.edit_text(f"{E.megaphone} Рассылка... Отправлено: {sent}, Ошибок: {failed}")
                 await asyncio.sleep(0.12)
             except Exception as e:
                 failed += 1
@@ -2003,7 +2014,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             preview_failed = ", ".join(failed_user_ids[:40])
             suffix = "" if len(failed_user_ids) <= 40 else f" ... (+{len(failed_user_ids) - 40} ещё)"
             await callback.message.edit_text(
-                f"✅ <b>Рассылка завершена{test_text}</b>\n\n"
+                f"{E.success} <b>Рассылка завершена{test_text}</b>\n\n"
                 f"Отправлено: <i>{sent}</i>\n"
                 f"Ошибок: <i>{failed}</i>\n\n"
                 f"<b>Не доставлено user_id:</b>\n<code>{preview_failed}{suffix}</code>",
@@ -2011,7 +2022,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             )
         else:
             await callback.message.edit_text(
-                f"✅ <b>Рассылка завершена{test_text}</b>\n\n"
+                f"{E.success} <b>Рассылка завершена{test_text}</b>\n\n"
                 f"Отправлено: <i>{sent}</i>\nОшибок: <i>{failed}</i>",
                 parse_mode="HTML"
             )
@@ -2024,18 +2035,18 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_manual_reminder(callback: CallbackQuery, state: FSMContext):
         """Обработчик кнопки ручной отправки напоминаний"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="📅 Сегодня", callback_data="reminder_end_day:0"))
-        builder.row(InlineKeyboardButton(text="📅 Завтра (+1 день)", callback_data="reminder_end_day:1"))
-        builder.row(InlineKeyboardButton(text="📅 Через 3 дня", callback_data="reminder_end_day:3"))
-        builder.row(InlineKeyboardButton(text="📅 Через 5 дней", callback_data="reminder_end_day:5"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Сегодня", "calendar", callback_data="reminder_end_day:0"))
+        builder.row(btn("Завтра (+1 день)", "calendar", callback_data="reminder_end_day:1"))
+        builder.row(btn("Через 3 дня", "calendar", callback_data="reminder_end_day:3"))
+        builder.row(btn("Через 5 дней", "calendar", callback_data="reminder_end_day:5"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         await callback.message.edit_text(
-            "⏰ <b>Ручная отправка напоминаний о подписке</b>\n\n"
+            f"{E.clock} <b>Ручная отправка напоминаний о подписке</b>\n\n"
             "Выберите день окончания подписки:",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -2046,7 +2057,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_reminder_end_day(callback: CallbackQuery, state: FSMContext):
         """Обработчик выбора дня окончания подписки"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         end_day_offset = int(callback.data.split(":")[1])
@@ -2056,18 +2067,18 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         date_str = target_date.strftime('%d.%m.%Y')
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="⏰ За 5 дней до окончания", callback_data="reminder_time:120"))
-        builder.row(InlineKeyboardButton(text="⏰ За 3 дня до окончания", callback_data="reminder_time:72"))
-        builder.row(InlineKeyboardButton(text="⏰ За 1 день до окончания", callback_data="reminder_time:24"))
-        builder.row(InlineKeyboardButton(text="⏰ За 3 часа до окончания", callback_data="reminder_time:3"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_manual_reminder"))
+        builder.row(btn("За 5 дней до окончания", "clock", callback_data="reminder_time:120"))
+        builder.row(btn("За 3 дня до окончания", "clock", callback_data="reminder_time:72"))
+        builder.row(btn("За 1 день до окончания", "clock", callback_data="reminder_time:24"))
+        builder.row(btn("За 3 часа до окончания", "clock", callback_data="reminder_time:3"))
+        builder.row(btn("Назад", "back", callback_data="admin_manual_reminder"))
         
         day_names = {0: "Сегодня", 1: "Завтра", 3: "Через 3 дня", 5: "Через 5 дней"}
         day_name = day_names.get(end_day_offset, f"Через {end_day_offset} дней")
         
         await callback.message.edit_text(
-            f"⏰ <b>Ручная отправка напоминаний</b>\n\n"
-            f"📅 День окончания: <b>{day_name}</b> ({date_str})\n\n"
+            f"{E.clock} <b>Ручная отправка напоминаний</b>\n\n"
+            f"{E.calendar} День окончания: <b>{day_name}</b> ({date_str})\n\n"
             f"Выберите период до окончания подписки:",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -2078,7 +2089,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_reminder_time(callback: CallbackQuery, state: FSMContext):
         """Обработчик выбора времени до окончания и отправка напоминаний"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         time_before_hours = float(callback.data.split(":")[1])
@@ -2086,7 +2097,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         end_day_offset = data.get('reminder_end_day', 0)
         
         await callback.message.edit_text(
-            "⏰ <b>Отправка напоминаний...</b>\n\n"
+            f"{E.clock} <b>Отправка напоминаний...</b>\n\n"
             "Пожалуйста, подождите...",
             parse_mode="HTML"
         )
@@ -2102,12 +2113,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         time_name = time_names.get(int(time_before_hours), f"{time_before_hours} часов")
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад в админ панель", callback_data="admin_back"))
+        builder.row(btn("Назад в админ панель", "back", callback_data="admin_back"))
         
         await callback.message.edit_text(
-            f"✅ <b>Отправка завершена</b>\n\n"
-            f"📅 День окончания: {day_name} ({target_date.strftime('%d.%m.%Y')})\n"
-            f"⏰ Период до окончания: {time_name}\n\n"
+            f"{E.success} <b>Отправка завершена</b>\n\n"
+            f"{E.calendar} День окончания: {day_name} ({target_date.strftime('%d.%m.%Y')})\n"
+            f"{E.clock} Период до окончания: {time_name}\n\n"
             f"{result_message}",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -2119,11 +2130,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def cmd_add_server(message: Message, state: FSMContext):
         """Команда для добавления нового сервера"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ У вас нет доступа к этой команде.")
+            await message.answer(f"{E.error} У вас нет доступа к этой команде.")
             return
         
         await message.answer(
-            "🔧 <b>Добавление нового сервера</b>\n\n"
+            f"{E.wrench} <b>Добавление нового сервера</b>\n\n"
             "Введите название сервера (будет видно пользователям):",
             parse_mode="HTML"
         )
@@ -2134,11 +2145,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         """Обработка названия сервера"""
         await state.update_data(name=message.text)
         builder = InlineKeyboardBuilder()
-        builder.button(text="🌊 Remnawave (новая панель)", callback_data="panel:remnawave")
-        builder.button(text="📦 3x-ui (старая панель)", callback_data="panel:3x-ui")
+        builder.button(text=f"{E.wave_water} Remnawave (новая панель)", callback_data="panel:remnawave")
+        builder.button(text=f"{E.package} 3x-ui (старая панель)", callback_data="panel:3x-ui")
         builder.adjust(1)
         await message.answer(
-            "🔧 <b>Тип панели:</b>\n\n"
+            f"{E.wrench} <b>Тип панели:</b>\n\n"
             "• <b>Remnawave</b> — центральная панель, нода уже должна быть установлена и подключена\n"
             "• <b>3x-ui</b> — отдельная панель на каждом сервере (как раньше)",
             parse_mode="HTML",
@@ -2158,7 +2169,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         if panel_type == "remnawave":
             if not config.remnawave.enabled:
                 await callback.message.edit_text(
-                    "❌ Remnawave не настроен в .env.\n\n"
+                    f"{E.error} Remnawave не настроен в .env.\n\n"
                     "Добавьте:\n"
                     "<code>REMNAWAVE_ENABLED=true</code>\n"
                     "<code>REMNAWAVE_PANEL_URL=https://www.xdoublegroup.online</code>\n"
@@ -2170,7 +2181,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 return
 
             await callback.message.edit_text(
-                "🖥 <b>Remnawave: IP ноды</b>\n\n"
+                f"{E.desktop} <b>Remnawave: IP ноды</b>\n\n"
                 "Введите IP-адрес VPS, где уже установлен <b>remnanode</b> и он "
                 "<b>подключён</b> к панели (зелёный статус в Nodes → Management).\n\n"
                 "Пример: <code>144.31.113.69</code>",
@@ -2181,11 +2192,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             return
 
         await callback.message.edit_text(
-            "🔗 Введите полную ссылку на панель 3x-ui:\n\n"
+            f"{E.vpn_connect} Введите полную ссылку на панель 3x-ui:\n\n"
             "Примеры:\n"
             "• <code>http://79.137.204.85:8080/</code>\n"
             "• <code>https://example.com:54321/</code>\n\n"
-            "⚠️ Важно: Укажите полную ссылку, включая протокол (http:// или https://), "
+            f"{E.warning} Важно: Укажите полную ссылку, включая протокол (http:// или https://), "
             "адрес, порт и путь (если есть).",
             parse_mode="HTML",
         )
@@ -2206,7 +2217,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     for n in nodes
                 ) or "нет нод"
                 await message.answer(
-                    f"❌ Нода с IP <code>{node_ip}</code> не найдена или не подключена.\n\n"
+                    f"{E.error} Нода с IP <code>{node_ip}</code> не найдена или не подключена.\n\n"
                     f"Доступные ноды: {known}\n\n"
                     "Сначала установите remnanode на VPS и дождитесь зелёного статуса в панели.",
                     parse_mode="HTML",
@@ -2219,8 +2230,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 node_name=node.get("name"),
             )
             await message.answer(
-                f"✅ Нода найдена: <b>{node.get('name')}</b> ({node_ip})\n\n"
-                "🌐 Введите <b>адрес для пользователей</b> (Host Address):\n"
+                f"{E.success} Нода найдена: <b>{node.get('name')}</b> ({node_ip})\n\n"
+                f"{E.globe} Введите <b>адрес для пользователей</b> (Host Address):\n"
                 "Домен или IP, к которому будут подключаться клиенты.\n\n"
                 "Рекомендуется домен (например <code>pl.vpn.example.com</code>), "
                 "но можно и IP: <code>144.31.113.69</code>",
@@ -2229,7 +2240,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             await state.set_state(AddServerSteps.WAITING_HOST_ADDRESS)
         except Exception as e:
             await message.answer(
-                f"❌ Ошибка Remnawave API:\n<code>{html_std.escape(str(e))}</code>",
+                f"{E.error} Ошибка Remnawave API:\n<code>{html_std.escape(str(e))}</code>",
                 parse_mode="HTML",
             )
         finally:
@@ -2240,11 +2251,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_remnawave_host_address(message: Message, state: FSMContext):
         host_address = message.text.strip()
         if not host_address:
-            await message.answer("❌ Адрес не может быть пустым. Попробуйте снова:")
+            await message.answer(f"{E.error} Адрес не может быть пустым. Попробуйте снова:")
             return
         await state.update_data(host_address=host_address)
         await message.answer(
-            "🔌 Введите <b>порт для пользователей</b>:\n\n"
+            f"{E.plug} Введите <b>порт для пользователей</b>:\n\n"
             "Для Remnawave gRPC без TLS обычно <code>8443</code> (порт inbound на ноде).\n"
             "Порт <code>443</code> — только если на VPS настроен прокси/TLS-фронт.",
             parse_mode="HTML",
@@ -2256,12 +2267,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         try:
             host_port = int(message.text.strip())
         except ValueError:
-            await message.answer("❌ Порт должен быть числом. Попробуйте снова:")
+            await message.answer(f"{E.error} Порт должен быть числом. Попробуйте снова:")
             return
 
         if host_port == 2222:
             await message.answer(
-                "❌ <b>2222</b> — это порт <b>ноды</b> (панель → remnanode), не для клиентов.\n\n"
+                f"{E.error} <b>2222</b> — это порт <b>ноды</b> (панель → remnanode), не для клиентов.\n\n"
                 "Для gRPC без TLS укажи <code>8443</code> (порт inbound Xray на VPS).",
                 parse_mode="HTML",
             )
@@ -2270,9 +2281,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         await state.update_data(host_port=host_port)
 
         builder = InlineKeyboardBuilder()
-        builder.button(text="🔝 В начало", callback_data="order:start")
-        builder.button(text="🔙 В конец", callback_data="order:end")
-        builder.button(text="🔢 По числу (приоритет)", callback_data="order:number")
+        builder.button(text=f"{E.top} В начало", callback_data="order:start")
+        builder.button(text=f"{E.bottom} В конец", callback_data="order:end")
+        builder.button(text=f"{E.numbers} По числу (приоритет)", callback_data="order:number")
         builder.adjust(1)
 
         await message.answer(
@@ -2298,7 +2309,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             
             protocol = parsed.scheme.lower()
             if protocol not in ['http', 'https']:
-                await message.answer("❌ Поддерживаются только протоколы HTTP и HTTPS. Попробуйте снова:")
+                await message.answer(f"{E.error} Поддерживаются только протоколы HTTP и HTTPS. Попробуйте снова:")
                 return
             
             netloc = parsed.netloc
@@ -2307,7 +2318,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 try:
                     port = int(port_str)
                 except ValueError:
-                    await message.answer("❌ Неверный формат порта. Попробуйте снова:")
+                    await message.answer(f"{E.error} Неверный формат порта. Попробуйте снова:")
                     return
             else:
                 host = netloc
@@ -2326,7 +2337,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             )
             
             await message.answer(
-                f"✅ URL успешно распознан!\n\n"
+                f"{E.success} URL успешно распознан!\n\n"
                 f"<b>Данные:</b>\n"
                 f"Протокол: <i>{protocol.upper()}</i>\n"
                 f"Адрес: <i>{ip_or_domain}</i>\n"
@@ -2338,7 +2349,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             await state.set_state(AddServerSteps.WAITING_USERNAME)
         except Exception as e:
             await message.answer(
-                f"❌ <b>Ошибка парсинга URL:</b>\n<code>{str(e)}</code>\n\n"
+                f"{E.error} <b>Ошибка парсинга URL:</b>\n<code>{str(e)}</code>\n\n"
                 f"Пожалуйста, введите полную ссылку в формате:\n"
                 f"<code>http://IP:ПОРТ/ПУТЬ/</code>",
                 parse_mode="HTML"
@@ -2364,15 +2375,15 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         try:
             inbound_id = int(message.text.strip())
         except ValueError:
-            await message.answer("❌ Inbound ID должен быть числом. Попробуйте снова:")
+            await message.answer(f"{E.error} Inbound ID должен быть числом. Попробуйте снова:")
             return
 
         await state.update_data(inbound_id=inbound_id)
         
         builder = InlineKeyboardBuilder()
-        builder.button(text="🔝 В начало", callback_data="order:start")
-        builder.button(text="🔙 В конец", callback_data="order:end")
-        builder.button(text="🔢 По числу (приоритет)", callback_data="order:number")
+        builder.button(text=f"{E.top} В начало", callback_data="order:start")
+        builder.button(text=f"{E.bottom} В конец", callback_data="order:end")
+        builder.button(text=f"{E.numbers} По числу (приоритет)", callback_data="order:number")
         builder.adjust(1)
         
         await message.answer(
@@ -2405,7 +2416,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 display_order = (max_order or 100) + 1
         
         await state.update_data(display_order=display_order)
-        await callback.message.edit_text(f"✅ Установлен порядок: {display_order}.")
+        await callback.message.edit_text(f"{E.success} Установлен порядок: {display_order}.")
         await ask_is_system(callback.message, state)
         await callback.answer()
 
@@ -2415,7 +2426,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         try:
             display_order = int(message.text.strip())
         except ValueError:
-            await message.answer("❌ Введите целое число:")
+            await message.answer(f"{E.error} Введите целое число:")
             return
             
         await state.update_data(display_order=display_order)
@@ -2424,8 +2435,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def ask_is_system(message: Message, state: FSMContext):
         """Спрашиваем, является ли сервер системным"""
         builder = InlineKeyboardBuilder()
-        builder.button(text="🌍 Публичный (Обычный)", callback_data="system:no")
-        builder.button(text="⚙️ Системный (Скрытый)", callback_data="system:yes")
+        builder.button(text=f"{E.world} Публичный (Обычный)", callback_data="system:no")
+        builder.button(text=f"{E.gear} Системный (Скрытый)", callback_data="system:yes")
         builder.adjust(1)
         
         await message.answer(
@@ -2442,7 +2453,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         is_system = (callback.data == "system:yes")
         await state.update_data(is_system=is_system)
         
-        await callback.message.edit_text(f"✅ Тип сервера: {'Системный' if is_system else 'Публичный'}. Сохраняю...")
+        await callback.message.edit_text(f"{E.success} Тип сервера: {'Системный' if is_system else 'Публичный'}. Сохраняю...")
         await save_new_server(callback.message, state)
         await callback.answer()
 
@@ -2474,7 +2485,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     raise RuntimeError("Панель не вернула UUID хоста")
             except Exception as e:
                 await message.answer(
-                    f"❌ <b>Ошибка создания Host в Remnawave:</b>\n"
+                    f"{E.error} <b>Ошибка создания Host в Remnawave:</b>\n"
                     f"<code>{html_std.escape(str(e))}</code>",
                     parse_mode="HTML",
                 )
@@ -2518,13 +2529,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 logger.error(f"Error starting key creation for new Remnawave server: {e}")
 
             await message.answer(
-                f"✅ <b>Локация Remnawave добавлена!</b>\n\n"
+                f"{E.success} <b>Локация Remnawave добавлена!</b>\n\n"
                 f"ID в боте: <i>{server_id}</i>\n"
                 f"Название: <i>{name}</i>\n"
                 f"Нода: <i>{data.get('node_name')} ({node_ip})</i>\n"
                 f"Host: <i>{host_address}:{host_port}</i>\n"
                 f"Host UUID: <code>{host_uuid}</code>\n\n"
-                f"🔑 Ключи для активных пользователей синхронизируются...",
+                f"{E.key} Ключи для активных пользователей синхронизируются...",
                 parse_mode="HTML",
             )
             await state.clear()
@@ -2553,11 +2564,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 await test_client.close()
             error_msg = str(e)
             if "SSL" in error_msg or "WRONG_VERSION_NUMBER" in error_msg:
-                suggestion = "\n\n💡 <b>Совет:</b> Попробуйте использовать HTTP вместо HTTPS."
+                suggestion = f"\n\n{E.bulb} <b>Совет:</b> Попробуйте использовать HTTP вместо HTTPS."
             else:
                 suggestion = "\n\nПроверьте данные и попробуйте снова."
             await message.answer(
-                f"❌ <b>Ошибка подключения к серверу:</b>\n<code>{error_msg}</code>{suggestion}",
+                f"{E.error} <b>Ошибка подключения к серверу:</b>\n<code>{error_msg}</code>{suggestion}",
                 parse_mode="HTML"
             )
             await state.clear()
@@ -2583,11 +2594,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
 
         
         await message.answer(
-            f"✅ <b>Сервер успешно добавлен!</b>\n\n"
+            f"{E.success} <b>Сервер успешно добавлен!</b>\n\n"
             f"ID: <i>{server_id}</i>\n"
             f"Название: <i>{name}</i>\n"
             f"IP: <i>{ip}</i>\n\n"
-            f"🔑 Ключи для активных пользователей создаются автоматически...",
+            f"{E.key} Ключи для активных пользователей создаются автоматически...",
             parse_mode="HTML"
         )
         await state.clear()
@@ -2596,7 +2607,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def cmd_list_servers(message: Message):
         """Список всех серверов"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ У вас нет доступа к этой команде.")
+            await message.answer(f"{E.error} У вас нет доступа к этой команде.")
             return
         
         async with get_connection() as conn:
@@ -2607,10 +2618,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             ''')
         
         if not servers:
-            await message.answer("📭 Серверы не найдены. Используйте /add_server для добавления.")
+            await message.answer(f"{E.empty} Серверы не найдены. Используйте /add_server для добавления.")
             return
         
-        text = "🖥️ <b>Список серверов:</b>\n\n"
+        text = f"{E.servers} <b>Список серверов:</b>\n\n"
         for server in servers:
             server_id = server['id']
             name = server['name']
@@ -2619,9 +2630,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             display_order = server['display_order']
             is_system = server.get('is_system', False)
             panel_type = server.get('panel_type') or '3x-ui'
-            status = "✅ Активен" if is_active else "❌ Неактивен"
-            type_label = " (⚙️ СИСТЕМНЫЙ)" if is_system else ""
-            panel_label = " 🌊" if panel_type == "remnawave" else ""
+            status = f"{E.success} Активен" if is_active else f"{E.error} Неактивен"
+            type_label = f" ({E.gear} СИСТЕМНЫЙ)" if is_system else ""
+            panel_label = f" {E.wave_water}" if panel_type == "remnawave" else ""
             text += f"#{server_id} [Порядок: {display_order}] <b>{name}</b> ({ip}){type_label}{panel_label}\n   {status}\n\n"
         
         await message.answer(text, parse_mode="HTML")
@@ -2630,24 +2641,24 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def cmd_toggle_server(message: Message):
         """Переключение статуса сервера"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ У вас нет доступа к этой команде.")
+            await message.answer(f"{E.error} У вас нет доступа к этой команде.")
             return
         
         parts = message.text.split()
         if len(parts) < 2:
-            await message.answer("❌ Использование: /toggle_server <server_id>")
+            await message.answer(f"{E.error} Использование: /toggle_server <server_id>")
             return
         
         try:
             server_id = int(parts[1])
         except ValueError:
-            await message.answer("❌ Server ID должен быть числом")
+            await message.answer(f"{E.error} Server ID должен быть числом")
             return
         
         async with get_connection() as conn:
             server = await conn.fetchrow('SELECT is_active FROM servers WHERE id = $1', server_id)
             if not server:
-                await message.answer("❌ Сервер не найден")
+                await message.answer(f"{E.error} Сервер не найден")
                 return
             
             new_status = not server['is_active']
@@ -2688,30 +2699,30 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                         )
         
         status_text = "активирован" if new_status else "приостановлен"
-        await message.answer(f"✅ Сервер {status_text}")
+        await message.answer(f"{E.success} Сервер {status_text}")
     
     @dp.message(Command("delete_server"))
     async def cmd_delete_server(message: Message):
         """Удаление сервера"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ У вас нет доступа к этой команде.")
+            await message.answer(f"{E.error} У вас нет доступа к этой команде.")
             return
         
         parts = message.text.split()
         if len(parts) < 2:
-            await message.answer("❌ Использование: /delete_server <server_id>")
+            await message.answer(f"{E.error} Использование: /delete_server <server_id>")
             return
         
         try:
             server_id = int(parts[1])
         except ValueError:
-            await message.answer("❌ Server ID должен быть числом")
+            await message.answer(f"{E.error} Server ID должен быть числом")
             return
         
         async with get_connection() as conn:
             server = await conn.fetchrow('SELECT name FROM servers WHERE id = $1', server_id)
             if not server:
-                await message.answer("❌ Сервер не найден")
+                await message.answer(f"{E.error} Сервер не найден")
                 return
             
             # Удаляем все ключи этого сервера перед удалением (чтобы не нарушить foreign key constraint)
@@ -2730,7 +2741,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             # Удаляем сервер
             await conn.execute('DELETE FROM servers WHERE id = $1', server_id)
         
-        await message.answer(f"✅ Сервер '{server['name']}' удален")
+        await message.answer(f"{E.success} Сервер '{server['name']}' удален")
     
     # ==================== УПРАВЛЕНИЕ БАЛАНСОМ ====================
     
@@ -2738,11 +2749,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_balance(callback: CallbackQuery, state: FSMContext):
         """Управление балансом"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         await callback.message.edit_text(
-            "💳 <b>Управление балансом</b>\n\n"
+            f"{E.card} <b>Управление балансом</b>\n\n"
             "Введите user_id пользователя (число) или @username:",
             parse_mode="HTML"
         )
@@ -2753,7 +2764,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_balance_user(message: Message, state: FSMContext):
         """Обработка выбора пользователя для баланса"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -2769,11 +2780,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             try:
                 user_id = int(user_input)
             except ValueError:
-                await message.answer("❌ Неверный формат. Введите user_id (число) или @username")
+                await message.answer(f"{E.error} Неверный формат. Введите user_id (число) или @username")
                 return
         
         if not user_id:
-            await message.answer("❌ Пользователь не найден")
+            await message.answer(f"{E.error} Пользователь не найден")
             return
         
         async with get_connection() as conn:
@@ -2781,12 +2792,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             current_balance = balance_row['balance'] if balance_row else 0
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="➕ Пополнить", callback_data=f"balance_add:{user_id}"))
-        builder.row(InlineKeyboardButton(text="➖ Списать", callback_data=f"balance_sub:{user_id}"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Пополнить", "add", callback_data=f"balance_add:{user_id}"))
+        builder.row(btn("Списать", "remove", callback_data=f"balance_sub:{user_id}"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         await message.answer(
-            f"💳 <b>Управление балансом</b>\n\n"
+            f"{E.card} <b>Управление балансом</b>\n\n"
             f"Пользователь: <i>{user_id}</i>\n"
             f"Текущий баланс: <i>{current_balance / 100:.2f}₽</i>\n\n"
             f"Выберите действие:",
@@ -2800,7 +2811,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_balance_action(callback: CallbackQuery, state: FSMContext):
         """Обработка действия с балансом"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         parts = callback.data.split(":")
@@ -2808,7 +2819,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         user_id = int(parts[1])
         
         action_text = "пополнения" if action == "balance_add" else "списания"
-        await callback.message.edit_text(f"💳 Введите сумму для {action_text} (в рублях):")
+        await callback.message.edit_text(f"{E.card} Введите сумму для {action_text} (в рублях):")
         await state.update_data(target_user_id=user_id, balance_action=action)
         await state.set_state(AdminStates.BALANCE_AMOUNT)
         await safe_callback_answer(callback)
@@ -2817,7 +2828,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_balance_amount(message: Message, state: FSMContext):
         """Обработка суммы баланса"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -2825,7 +2836,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             amount = float(message.text.strip())
             amount_cents = int(amount * 100)
         except ValueError:
-            await message.answer("❌ Неверный формат суммы. Введите число (например: 100.50)")
+            await message.answer(f"{E.error} Неверный формат суммы. Введите число (например: 100.50)")
             return
         
         data = await state.get_data()
@@ -2851,7 +2862,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             ''', user_id, new_balance)
         
         await message.answer(
-            f"✅ <b>Баланс обновлен</b>\n\n"
+            f"{E.success} <b>Баланс обновлен</b>\n\n"
             f"Пользователь: <i>{user_id}</i>\n"
             f"Было: <i>{current_balance / 100:.2f}₽</i>\n"
             f"Изменение: <i>{'+' if action == 'balance_add' else '-'}{amount:.2f}₽</i>\n"
@@ -2866,20 +2877,20 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_manage_admins(callback: CallbackQuery):
         """Управление админами"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         admin_list = ", ".join([str(admin_id) for admin_id in config.bot.admin_ids])
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="➕ Добавить админа", callback_data="admin_add_admin"))
-        builder.row(InlineKeyboardButton(text="➖ Удалить админа", callback_data="admin_remove_admin"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Добавить админа", "add", callback_data="admin_add_admin"))
+        builder.row(btn("Удалить админа", "remove", callback_data="admin_remove_admin"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         await callback.message.edit_text(
-            f"👥 <b>Управление админами</b>\n\n"
+            f"{E.users} <b>Управление админами</b>\n\n"
             f"Текущие админы: <code>{admin_list or 'нет'}</code>\n\n"
-            f"⚠️ <b>Внимание:</b> Изменения вступят в силу после перезапуска бота\n\n"
+            f"{E.warning} <b>Внимание:</b> Изменения вступят в силу после перезапуска бота\n\n"
             f"Админы настраиваются через переменную окружения ADMIN_IDS",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -2890,12 +2901,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_add_admin(callback: CallbackQuery, state: FSMContext):
         """Добавить админа"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         await callback.message.edit_text(
-            "➕ <b>Добавить админа</b>\n\n"
-            "⚠️ <b>Внимание:</b> Админы настраиваются через переменную окружения ADMIN_IDS.\n\n"
+            f"{E.add} <b>Добавить админа</b>\n\n"
+            f"{E.warning} <b>Внимание:</b> Админы настраиваются через переменную окружения ADMIN_IDS.\n\n"
             "Чтобы добавить админа:\n"
             "1. Добавьте user_id в переменную ADMIN_IDS в .env файле\n"
             "2. Перезапустите бота\n\n"
@@ -2908,12 +2919,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_remove_admin(callback: CallbackQuery, state: FSMContext):
         """Удалить админа"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         await callback.message.edit_text(
-            "➖ <b>Удалить админа</b>\n\n"
-            "⚠️ <b>Внимание:</b> Админы настраиваются через переменную окружения ADMIN_IDS.\n\n"
+            f"{E.remove} <b>Удалить админа</b>\n\n"
+            f"{E.warning} <b>Внимание:</b> Админы настраиваются через переменную окружения ADMIN_IDS.\n\n"
             "Чтобы удалить админа:\n"
             "1. Удалите user_id из переменной ADMIN_IDS в .env файле\n"
             "2. Перезапустите бота",
@@ -2927,13 +2938,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_manage_managers(callback: CallbackQuery):
         """Управление менеджерами"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         async with get_connection() as conn:
             managers = await conn.fetch('SELECT user_id, username, first_name, support_link, is_active FROM managers WHERE is_active = TRUE')
         
-        text = "🛟 <b>Управление менеджерами</b>\n\n"
+        text = f"{E.support} <b>Управление менеджерами</b>\n\n"
         if managers:
             for manager in managers:
                 link = manager['support_link'] or "не указана"
@@ -2942,9 +2953,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             text += "Менеджеры не добавлены\n\n"
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="➕ Добавить менеджера", callback_data="admin_add_manager"))
-        builder.row(InlineKeyboardButton(text="➖ Удалить менеджера", callback_data="admin_remove_manager"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Добавить менеджера", "add", callback_data="admin_add_manager"))
+        builder.row(btn("Удалить менеджера", "remove", callback_data="admin_remove_manager"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
@@ -2953,11 +2964,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_add_manager_callback(callback: CallbackQuery, state: FSMContext):
         """Добавить менеджера"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         await callback.message.edit_text(
-            "➕ <b>Добавить менеджера</b>\n\n"
+            f"{E.add} <b>Добавить менеджера</b>\n\n"
             "Введите user_id или @username:",
             parse_mode="HTML"
         )
@@ -2968,7 +2979,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_add_manager(message: Message, state: FSMContext):
         """Обработка добавления менеджера"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -2984,11 +2995,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             try:
                 user_id = int(user_input)
             except ValueError:
-                await message.answer("❌ Неверный формат. Введите user_id (число) или @username")
+                await message.answer(f"{E.error} Неверный формат. Введите user_id (число) или @username")
                 return
         
         if not user_id:
-            await message.answer("❌ Пользователь не найден в базе. Сначала он должен запустить бота через /start")
+            await message.answer(f"{E.error} Пользователь не найден в базе. Сначала он должен запустить бота через /start")
             return
         
         await message.answer("Теперь введите ссылку на техподдержку (например, https://t.me/support):")
@@ -2999,7 +3010,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_manager_support_link(message: Message, state: FSMContext):
         """Обработка ссылки на техподдержку"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -3019,34 +3030,33 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 SET username = $2, first_name = $3, support_link = $4, is_active = TRUE
             ''', user_id, username, first_name, support_link)
         
-        await message.answer(f"✅ Менеджер добавлен! Ссылка на техподдержку: {support_link}")
+        await message.answer(f"{E.success} Менеджер добавлен! Ссылка на техподдержку: {support_link}")
         await state.clear()
     
     @dp.callback_query(F.data == "admin_remove_manager")
     async def handle_remove_manager(callback: CallbackQuery, state: FSMContext):
         """Удалить менеджера"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         async with get_connection() as conn:
             managers = await conn.fetch('SELECT user_id, username, first_name FROM managers WHERE is_active = TRUE')
         
         if not managers:
-            await callback.message.edit_text("❌ Нет активных менеджеров")
+            await callback.message.edit_text(f"{E.error} Нет активных менеджеров")
             await safe_callback_answer(callback)
             return
         
         builder = InlineKeyboardBuilder()
         for manager in managers:
-            builder.row(InlineKeyboardButton(
-                text=f"❌ {manager['first_name']} (@{manager['username'] or 'нет'})",
+            builder.row(btn("{manager['first_name']} (@{manager['username'] or 'нет'})", "error",
                 callback_data=f"manager_delete:{manager['user_id']}"
             ))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_manage_managers"))
+        builder.row(btn("Назад", "back", callback_data="admin_manage_managers"))
         
         await callback.message.edit_text(
-            "➖ <b>Удалить менеджера</b>\n\n"
+            f"{E.remove} <b>Удалить менеджера</b>\n\n"
             "Выберите менеджера для удаления:",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -3057,7 +3067,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def confirm_delete_manager(callback: CallbackQuery):
         """Подтверждение удаления менеджера"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         user_id = int(callback.data.split(":")[1])
@@ -3065,7 +3075,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         async with get_connection() as conn:
             await conn.execute('UPDATE managers SET is_active = FALSE WHERE user_id = $1', user_id)
         
-        await callback.message.edit_text("✅ Менеджер удален")
+        await callback.message.edit_text(f"{E.success} Менеджер удален")
         await safe_callback_answer(callback)
     
     # ==================== УПРАВЛЕНИЕ РЕФЕРАЛЬНОЙ СИСТЕМОЙ ====================
@@ -3074,7 +3084,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_referral(callback: CallbackQuery):
         """Управление реферальной системой"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         async with get_connection() as conn:
@@ -3104,16 +3114,16 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             )
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="✏️ Дни для приглашающего", callback_data="admin_referral_inviter"))
-        builder.row(InlineKeyboardButton(text="✏️ Дни для приглашенного", callback_data="admin_referral_invited"))
-        builder.row(InlineKeyboardButton(text="✏️ % дней за оплату друга", callback_data="admin_referral_purchase_pct"))
-        builder.row(InlineKeyboardButton(text="✏️ TG-подарок каждые N годовых Plus", callback_data="admin_referral_yearly_n"))
-        gift_label = f"🎁 TG-подарки ({pending_gifts})" if pending_gifts else "🎁 TG-подарки"
+        builder.row(btn("Дни для приглашающего", "edit", callback_data="admin_referral_inviter"))
+        builder.row(btn("Дни для приглашенного", "edit", callback_data="admin_referral_invited"))
+        builder.row(btn("% дней за оплату друга", "edit", callback_data="admin_referral_purchase_pct"))
+        builder.row(btn("TG-подарок каждые N годовых Plus", "edit", callback_data="admin_referral_yearly_n"))
+        gift_label = f"{E.gift} TG-подарки ({pending_gifts})" if pending_gifts else f"{E.gift} TG-подарки"
         builder.row(InlineKeyboardButton(text=gift_label, callback_data="admin_referral_tg_gifts"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         await callback.message.edit_text(
-            f"🎁 <b>Управление реферальной системой</b>\n\n"
+            f"{E.gift} <b>Управление реферальной системой</b>\n\n"
             f"Текущие настройки:\n"
             f"• Приглашающий получает: <b>{inviter_days} дней</b>\n"
             f"• Приглашенный получает: <b>{invited_days} дней</b>\n"
@@ -3130,14 +3140,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_referral_inviter(callback: CallbackQuery, state: FSMContext):
         """Настройка дней для приглашающего"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_referral"))
+        builder.row(btn("Назад", "back", callback_data="admin_referral"))
         
         await callback.message.edit_text(
-            "✏️ <b>Дни для приглашающего</b>\n\n"
+            f"{E.edit} <b>Дни для приглашающего</b>\n\n"
             "Введите количество дней, которое получает приглашающий за каждого приглашенного друга:",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -3149,14 +3159,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_referral_invited(callback: CallbackQuery, state: FSMContext):
         """Настройка дней для приглашенного"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_referral"))
+        builder.row(btn("Назад", "back", callback_data="admin_referral"))
         
         await callback.message.edit_text(
-            "✏️ <b>Дни для приглашенного</b>\n\n"
+            f"{E.edit} <b>Дни для приглашенного</b>\n\n"
             "Введите количество дней, которое получает приглашенный друг:",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -3168,17 +3178,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_referral_inviter_days(message: Message, state: FSMContext):
         """Обработка дней для приглашающего"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
         try:
             days = int(message.text.strip())
             if days < 0:
-                await message.answer("❌ Количество дней не может быть отрицательным")
+                await message.answer(f"{E.error} Количество дней не может быть отрицательным")
                 return
         except ValueError:
-            await message.answer("❌ Введите число")
+            await message.answer(f"{E.error} Введите число")
             return
         
         async with get_connection() as conn:
@@ -3198,10 +3208,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 ''', days)
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад к реферальной системе", callback_data="admin_referral"))
+        builder.row(btn("Назад к реферальной системе", "back", callback_data="admin_referral"))
         
         await message.answer(
-            f"✅ Количество дней для приглашающего установлено: {days}",
+            f"{E.success} Количество дней для приглашающего установлено: {days}",
             reply_markup=builder.as_markup()
         )
         await state.clear()
@@ -3210,17 +3220,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_referral_invited_days(message: Message, state: FSMContext):
         """Обработка дней для приглашенного"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
         try:
             days = int(message.text.strip())
             if days < 0:
-                await message.answer("❌ Количество дней не может быть отрицательным")
+                await message.answer(f"{E.error} Количество дней не может быть отрицательным")
                 return
         except ValueError:
-            await message.answer("❌ Введите число")
+            await message.answer(f"{E.error} Введите число")
             return
         
         async with get_connection() as conn:
@@ -3240,10 +3250,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 ''', days)
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад к реферальной системе", callback_data="admin_referral"))
+        builder.row(btn("Назад к реферальной системе", "back", callback_data="admin_referral"))
         
         await message.answer(
-            f"✅ Количество дней для приглашенного установлено: {days}",
+            f"{E.success} Количество дней для приглашенного установлено: {days}",
             reply_markup=builder.as_markup()
         )
         await state.clear()
@@ -3251,12 +3261,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data == "admin_referral_purchase_pct")
     async def handle_referral_purchase_pct(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_referral"))
+        builder.row(btn("Назад", "back", callback_data="admin_referral"))
         await callback.message.edit_text(
-            "✏️ <b>% дней за оплату друга</b>\n\n"
+            f"{E.edit} <b>% дней за оплату друга</b>\n\n"
             "Введите процент (0–100): сколько дней Plus получит пригласивший "
             "от базовой длительности покупки друга.",
             reply_markup=builder.as_markup(),
@@ -3274,7 +3284,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             if pct < 0 or pct > 100:
                 raise ValueError("out of range")
         except ValueError:
-            await message.answer("❌ Введите целое число от 0 до 100")
+            await message.answer(f"{E.error} Введите целое число от 0 до 100")
             return
         async with get_connection() as conn:
             existing = await conn.fetchrow('SELECT id FROM referral_settings ORDER BY id DESC LIMIT 1')
@@ -3297,9 +3307,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     pct,
                 )
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад к реферальной системе", callback_data="admin_referral"))
+        builder.row(btn("Назад к реферальной системе", "back", callback_data="admin_referral"))
         await message.answer(
-            f"✅ Процент за оплату друга установлен: {pct}%",
+            f"{E.success} Процент за оплату друга установлен: {pct}%",
             reply_markup=builder.as_markup(),
         )
         await state.clear()
@@ -3307,12 +3317,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data == "admin_referral_yearly_n")
     async def handle_referral_yearly_n(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_referral"))
+        builder.row(btn("Назад", "back", callback_data="admin_referral"))
         await callback.message.edit_text(
-            "✏️ <b>TG-подарок за годовую Plus</b>\n\n"
+            f"{E.edit} <b>TG-подарок за годовую Plus</b>\n\n"
             "Введите N: за каждую N-ю годовую Plus от друзей пользователь "
             "получает TG-подарок (800–1500₽). Минимум 1.",
             reply_markup=builder.as_markup(),
@@ -3330,7 +3340,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             if n < 1:
                 raise ValueError("too small")
         except ValueError:
-            await message.answer("❌ Введите целое число от 1 и выше")
+            await message.answer(f"{E.error} Введите целое число от 1 и выше")
             return
         async with get_connection() as conn:
             existing = await conn.fetchrow('SELECT id FROM referral_settings ORDER BY id DESC LIMIT 1')
@@ -3353,9 +3363,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     n,
                 )
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад к реферальной системе", callback_data="admin_referral"))
+        builder.row(btn("Назад к реферальной системе", "back", callback_data="admin_referral"))
         await message.answer(
-            f"✅ TG-подарок выдаётся каждые {n} годовых Plus",
+            f"{E.success} TG-подарок выдаётся каждые {n} годовых Plus",
             reply_markup=builder.as_markup(),
         )
         await state.clear()
@@ -3363,7 +3373,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data == "admin_referral_tg_gifts")
     async def handle_admin_referral_tg_gifts(callback: CallbackQuery):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         async with get_connection() as conn:
             rows = await conn.fetch(
@@ -3381,11 +3391,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         builder = InlineKeyboardBuilder()
         if not rows:
             text = (
-                "🎁 <b>TG-подарки</b>\n\n"
+                f"{E.gift} <b>TG-подарки</b>\n\n"
                 "Нет ожидающих подарков."
             )
         else:
-            lines = ["🎁 <b>Ожидают TG-подарка</b>\n"]
+            lines = [f"{E.gift} <b>Ожидают TG-подарка</b>\n"]
             for row in rows:
                 name = row["first_name"] or "Пользователь"
                 uname = row["username"]
@@ -3397,25 +3407,24 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     f"  #{row['milestone_no']} · {product} · {dt}"
                 )
                 builder.row(
-                    InlineKeyboardButton(
-                        text=f"✅ Выдан · {who[:20]}",
+                    btn("Выдан · {who[:20]}", "success",
                         callback_data=f"admin_tg_gift_fulfill:{row['id']}",
                     )
                 )
             text = "\n".join(lines)
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_referral"))
+        builder.row(btn("Назад", "back", callback_data="admin_referral"))
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
 
     @dp.callback_query(F.data.startswith("admin_tg_gift_fulfill:"))
     async def handle_admin_tg_gift_fulfill(callback: CallbackQuery):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         try:
             claim_id = int(callback.data.split(":")[1])
         except (IndexError, ValueError):
-            await safe_callback_answer(callback, "❌ Неверный ID", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Неверный ID", show_alert=True)
             return
         async with get_connection() as conn:
             row = await conn.fetchrow(
@@ -3430,7 +3439,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         if not row:
             await safe_callback_answer(callback, "Уже обработано", show_alert=True)
             return
-        await safe_callback_answer(callback, "✅ Подарок отмечен как выданный")
+        await safe_callback_answer(callback, f"{E.success} Подарок отмечен как выданный")
 
         async with get_connection() as conn:
             rows = await conn.fetch(
@@ -3447,9 +3456,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             )
         builder = InlineKeyboardBuilder()
         if not rows:
-            text = "🎁 <b>TG-подарки</b>\n\nНет ожидающих подарков."
+            text = f"{E.gift} <b>TG-подарки</b>\n\nНет ожидающих подарков."
         else:
-            lines = ["🎁 <b>Ожидают TG-подарка</b>\n"]
+            lines = [f"{E.gift} <b>Ожидают TG-подарка</b>\n"]
             for gift_row in rows:
                 name = gift_row["first_name"] or "Пользователь"
                 uname = gift_row["username"]
@@ -3461,13 +3470,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                     f"  #{gift_row['milestone_no']} · {product} · {dt}"
                 )
                 builder.row(
-                    InlineKeyboardButton(
-                        text=f"✅ Выдан · {who[:20]}",
+                    btn("Выдан · {who[:20]}", "success",
                         callback_data=f"admin_tg_gift_fulfill:{gift_row['id']}",
                     )
                 )
             text = "\n".join(lines)
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_referral"))
+        builder.row(btn("Назад", "back", callback_data="admin_referral"))
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
 
     # ==================== УПРАВЛЕНИЕ ПРОБНЫМ ПЕРИОДОМ ====================
@@ -3476,7 +3484,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_trial(callback: CallbackQuery):
         """Управление пробным периодом"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         async with get_connection() as conn:
@@ -3486,11 +3494,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         status_text = f"{trial_days} {'день' if trial_days == 1 else 'дня' if trial_days < 5 else 'дней'}" if trial_days > 0 else "Выключен (0 дней)"
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="✏️ Количество дней", callback_data="admin_trial_days"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Количество дней", "edit", callback_data="admin_trial_days"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         await callback.message.edit_text(
-            f"🆓 <b>Управление пробным периодом</b>\n\n"
+            f"{E.free} <b>Управление пробным периодом</b>\n\n"
             f"Текущее значение: <b>{status_text}</b>\n"
             f"(0 = пробный период отключен)\n\n"
             f"Выберите действие:",
@@ -3503,14 +3511,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_trial_days(callback: CallbackQuery, state: FSMContext):
         """Установка количества дней пробного периода"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_trial"))
+        builder.row(btn("Назад", "back", callback_data="admin_trial"))
         
         await callback.message.edit_text(
-            "✏️ <b>Количество дней пробного периода</b>\n\n"
+            f"{E.edit} <b>Количество дней пробного периода</b>\n\n"
             "Введите количество дней для пробного периода:\n\n"
             "• <code>0</code> - пробный период отключен\n"
             "• <code>1</code> - пробный период на 1 день\n"
@@ -3527,17 +3535,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_trial_days(message: Message, state: FSMContext):
         """Обработка количества дней для пробного периода"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
         try:
             days = int(message.text.strip())
             if days < 0:
-                await message.answer("❌ Количество дней не может быть отрицательным")
+                await message.answer(f"{E.error} Количество дней не может быть отрицательным")
                 return
         except ValueError:
-            await message.answer("❌ Введите число")
+            await message.answer(f"{E.error} Введите число")
             return
         
         async with get_connection() as conn:
@@ -3556,11 +3564,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 ''', days)
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад к пробному периоду", callback_data="admin_trial"))
+        builder.row(btn("Назад к пробному периоду", "back", callback_data="admin_trial"))
         
         status_text = f"{days} {'день' if days == 1 else 'дня' if days < 5 else 'дней'}" if days > 0 else "Выключен (0 дней)"
         await message.answer(
-            f"✅ Пробный период установлен: <b>{status_text}</b>",
+            f"{E.success} Пробный период установлен: <b>{status_text}</b>",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
         )
@@ -3572,7 +3580,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_servers_callback(callback: CallbackQuery):
         """Управление серверами"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         # Сначала отвечаем на callback, чтобы избежать таймаута
@@ -3591,23 +3599,23 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             
             if not servers:
                 builder = InlineKeyboardBuilder()
-                builder.row(InlineKeyboardButton(text="➕ Добавить сервер", callback_data="admin_server_add"))
-                builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+                builder.row(btn("Добавить сервер", "add", callback_data="admin_server_add"))
+                builder.row(btn("Назад", "back", callback_data="admin_back"))
                 
                 await callback.message.edit_text(
-                    "🖥️ <b>Управление серверами</b>\n\n"
+                    f"{E.servers} <b>Управление серверами</b>\n\n"
                     "Серверы не найдены.\n\n"
                     "Выберите действие:",
                     reply_markup=builder.as_markup(),
                     parse_mode="HTML"
                 )
             else:
-                text = "🖥️ <b>Управление серверами</b>\n\n"
+                text = f"{E.servers} <b>Управление серверами</b>\n\n"
                 builder = InlineKeyboardBuilder()
                 
                 for server in servers:
-                    status = "✅ Активен" if server["is_active"] else "⏸️ На паузе"
-                    hid = " 🙈" if server.get("exclude_from_subscription") else ""
+                    status = f"{E.success} Активен" if server["is_active"] else f"{E.pause_vs} На паузе"
+                    hid = f" {E.see_no}" if server.get("exclude_from_subscription") else ""
                     button_text = f"{server['name']} ({server['ip']}) - {status}{hid}"
                     builder.row(
                         InlineKeyboardButton(
@@ -3616,8 +3624,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                         )
                     )
                 
-                builder.row(InlineKeyboardButton(text="➕ Добавить сервер", callback_data="admin_server_add"))
-                builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+                builder.row(btn("Добавить сервер", "add", callback_data="admin_server_add"))
+                builder.row(btn("Назад", "back", callback_data="admin_back"))
                 
                 await callback.message.edit_text(
                     text,
@@ -3627,7 +3635,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         except Exception as e:
             logger.error(f"Error in handle_admin_servers: {e}", exc_info=True)
             await callback.message.edit_text(
-                f"❌ <b>Ошибка загрузки серверов</b>\n\n"
+                f"{E.error} <b>Ошибка загрузки серверов</b>\n\n"
                 f"<code>{str(e)}</code>",
                 parse_mode="HTML"
             )
@@ -3636,7 +3644,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_server_view_callback(callback: CallbackQuery):
         """Просмотр информации о сервере"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         server_id = int(callback.data.split(":")[1])
@@ -3654,19 +3662,19 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 )
                 
                 if not server:
-                    await safe_callback_answer(callback, "❌ Сервер не найден", show_alert=True)
+                    await safe_callback_answer(callback, f"{E.error} Сервер не найден", show_alert=True)
                     return
                 
                 # Статистика по серверу
                 keys_count = await conn.fetchval('SELECT COUNT(*) FROM vpn_keys WHERE server_id = $1', server_id)
                 active_keys = await conn.fetchval('SELECT COUNT(*) FROM vpn_keys WHERE server_id = $1 AND is_active = TRUE', server_id)
             
-            status = "✅ Активен" if server["is_active"] else "⏸️ На паузе"
+            status = f"{E.success} Активен" if server["is_active"] else f"{E.pause_vs} На паузе"
             excl = bool(server.get("exclude_from_subscription"))
             sub_line = (
-                "🙈 <b>Скрыт из подписки Happ</b> — в общем списке vless не показывается (узел «ТГ безлимит» и лимиты работают)."
+                f"{E.see_no} <b>Скрыт из подписки Happ</b> — в общем списке vless не показывается (узел «ТГ безлимит» и лимиты работают)."
                 if excl
-                else "📋 В подписке Happ — как обычный узел для всех с активной подпиской."
+                else f"{E.clipboard} В подписке Happ — как обычный узел для всех с активной подпиской."
             )
             created_at = server["created_at"].strftime("%d.%m.%Y %H:%M") if server["created_at"] else "Неизвестно"
             
@@ -3676,7 +3684,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 base_url = base_url[:97] + "..."
             
             text = (
-                f"🖥️ <b>Информация о сервере</b>\n\n"
+                f"{E.servers} <b>Информация о сервере</b>\n\n"
                 f"<b>ID:</b> {server['id']}\n"
                 f"<b>Название:</b> {server['name']}\n"
                 f"<b>IP:</b> {server['ip']}\n"
@@ -3685,7 +3693,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 f"<b>Base URL:</b> <code>{base_url}</code>\n"
                 f"<b>Inbound ID:</b> {server['inbound_id']}\n"
                 f"<b>Порядок в списке:</b> {server.get('display_order', 100)}\n"
-                f"<b>Тип:</b> {'⚙️ Системный (скрыт)' if server.get('is_system') else '🌍 Публичный'}\n"
+                f"<b>Тип:</b> {'{E.gear} Системный (скрыт)' if server.get('is_system') else '{E.world} Публичный'}\n"
                 f"<b>Статус:</b> {status}\n"
                 f"{sub_line}\n"
                 f"<b>Создан:</b> {created_at}\n\n"
@@ -3696,36 +3704,34 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             
             # Проверяем длину сообщения (лимит Telegram - 4096 символов)
             if len(text) > 4096:
-                text = text[:4050] + "\n\n⚠️ <i>Сообщение обрезано из-за ограничения длины</i>"
+                text = text[:4050] + f"\n\n{E.warning} <i>Сообщение обрезано из-за ограничения длины</i>"
             
             builder = InlineKeyboardBuilder()
             builder.row(
-                InlineKeyboardButton(
-                    text="⏸️ Пауза" if server["is_active"] else "▶️ Активировать",
-                    callback_data=f"admin_server_toggle:{server_id}",
-                )
+                btn("Пауза", "pause_vs", callback_data=f"admin_server_toggle:{server_id}")
+                if server["is_active"]
+                else btn("Активировать", "forward", callback_data=f"admin_server_toggle:{server_id}")
             )
             builder.row(
-                InlineKeyboardButton(
-                    text="📋 Показывать в подписке Happ" if excl else "🙈 Скрыть из подписки Happ",
-                    callback_data=f"admin_server_toggle_sub_exclude:{server_id}",
-                )
+                btn("Показывать в подписке Happ", "clipboard", callback_data=f"admin_server_toggle_sub_exclude:{server_id}")
+                if excl
+                else btn("Скрыть из подписки Happ", "see_no", callback_data=f"admin_server_toggle_sub_exclude:{server_id}")
             )
-            builder.row(InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"admin_server_edit:{server_id}"))
-            builder.row(InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"admin_server_delete:{server_id}"))
-            builder.row(InlineKeyboardButton(text="◀️ Назад к серверам", callback_data="admin_servers"))
+            builder.row(btn("Редактировать", "edit", callback_data=f"admin_server_edit:{server_id}"))
+            builder.row(btn("Удалить", "trash_vs", callback_data=f"admin_server_delete:{server_id}"))
+            builder.row(btn("Назад к серверам", "back", callback_data="admin_servers"))
             
             await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
             await safe_callback_answer(callback)
         except Exception as e:
             logger.error(f"Error in handle_admin_server_view: {e}", exc_info=True)
-            await safe_callback_answer(callback, f"❌ Ошибка: {str(e)}", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Ошибка: {str(e)}", show_alert=True)
     
     @dp.callback_query(F.data.startswith("admin_server_toggle:"))
     async def handle_admin_server_toggle_callback(callback: CallbackQuery):
         """Переключение статуса сервера (пауза/активация)"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         server_id = int(callback.data.split(":")[1])
@@ -3734,7 +3740,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             async with get_connection() as conn:
                 server = await conn.fetchrow('SELECT is_active FROM servers WHERE id = $1', server_id)
                 if not server:
-                    await safe_callback_answer(callback, "❌ Сервер не найден", show_alert=True)
+                    await safe_callback_answer(callback, f"{E.error} Сервер не найден", show_alert=True)
                     return
                 
                 new_status = not server['is_active']
@@ -3775,20 +3781,20 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                             )
             
             status_text = "активирован" if new_status else "приостановлен"
-            await safe_callback_answer(callback, f"✅ Сервер {status_text}")
+            await safe_callback_answer(callback, f"{E.success} Сервер {status_text}")
 
             # Обновляем интерфейс
             new_callback = callback.model_copy(update={"data": f"admin_server_view:{server_id}"})
             await handle_admin_server_view_callback(new_callback)
         except Exception as e:
             logger.error(f"Error in handle_admin_server_toggle: {e}", exc_info=True)
-            await safe_callback_answer(callback, f"❌ Ошибка: {str(e)}", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Ошибка: {str(e)}", show_alert=True)
 
     @dp.callback_query(F.data.startswith("admin_server_toggle_sub_exclude:"))
     async def handle_admin_server_toggle_sub_exclude_callback(callback: CallbackQuery):
         """Скрыть/показать сервер в общей подписке Happ (vless-список)."""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         server_id = int(callback.data.split(":")[1])
         try:
@@ -3806,13 +3812,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             await handle_admin_server_view_callback(new_callback)
         except Exception as e:
             logger.error(f"Error in handle_admin_server_toggle_sub_exclude: {e}", exc_info=True)
-            await safe_callback_answer(callback, f"❌ Ошибка: {str(e)}", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Ошибка: {str(e)}", show_alert=True)
 
     @dp.callback_query(F.data.startswith("admin_server_delete:"))
     async def handle_admin_server_delete_callback(callback: CallbackQuery):
         """Удаление сервера"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         server_id = int(callback.data.split(":")[1])
@@ -3821,7 +3827,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             async with get_connection() as conn:
                 server = await conn.fetchrow('SELECT name FROM servers WHERE id = $1', server_id)
                 if not server:
-                    await safe_callback_answer(callback, "❌ Сервер не найден", show_alert=True)
+                    await safe_callback_answer(callback, f"{E.error} Сервер не найден", show_alert=True)
                     return
                 
                 # Удаляем все ключи этого сервера перед удалением (чтобы не нарушить foreign key constraint)
@@ -3840,24 +3846,24 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 # Удаляем сервер
                 await conn.execute('DELETE FROM servers WHERE id = $1', server_id)
             
-            await safe_callback_answer(callback, f"✅ Сервер '{server['name']}' удален")
+            await safe_callback_answer(callback, f"{E.success} Сервер '{server['name']}' удален")
             await handle_admin_servers_callback(callback)
         except Exception as e:
             logger.error(f"Error in handle_admin_server_delete: {e}", exc_info=True)
-            await safe_callback_answer(callback, f"❌ Ошибка: {str(e)}", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Ошибка: {str(e)}", show_alert=True)
     
     @dp.callback_query(F.data == "admin_server_add")
     async def handle_admin_server_add_callback(callback: CallbackQuery, state: FSMContext):
         """Начало добавления сервера"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_servers"))
+        builder.row(btn("Назад", "back", callback_data="admin_servers"))
         
         await callback.message.edit_text(
-            "➕ <b>Добавление сервера</b>\n\n"
+            f"{E.add} <b>Добавление сервера</b>\n\n"
             "Введите название сервера:",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -3870,7 +3876,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_server_edit_callback(callback: CallbackQuery, state: FSMContext):
         """Начало редактирования сервера"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         server_id = int(callback.data.split(":")[1])
@@ -3882,25 +3888,25 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             ''', server_id)
             
             if not server:
-                await safe_callback_answer(callback, "❌ Сервер не найден", show_alert=True)
+                await safe_callback_answer(callback, f"{E.error} Сервер не найден", show_alert=True)
                 return
         
         await state.update_data(server_id=server_id, edit_mode=True)
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="✏️ Название", callback_data=f"admin_server_edit_field:name:{server_id}"))
-        builder.row(InlineKeyboardButton(text="✏️ IP", callback_data=f"admin_server_edit_field:ip:{server_id}"))
-        builder.row(InlineKeyboardButton(text="✏️ Порт", callback_data=f"admin_server_edit_field:port:{server_id}"))
-        builder.row(InlineKeyboardButton(text="✏️ Протокол", callback_data=f"admin_server_edit_field:protocol:{server_id}"))
-        builder.row(InlineKeyboardButton(text="✏️ Username", callback_data=f"admin_server_edit_field:username:{server_id}"))
-        builder.row(InlineKeyboardButton(text="✏️ Password", callback_data=f"admin_server_edit_field:password:{server_id}"))
-        builder.row(InlineKeyboardButton(text="✏️ Inbound ID", callback_data=f"admin_server_edit_field:inbound_id:{server_id}"))
-        builder.row(InlineKeyboardButton(text="🔢 Порядок отображения", callback_data=f"admin_server_edit_field:display_order:{server_id}"))
-        builder.row(InlineKeyboardButton(text="⚙️ Сделать системным/обычным", callback_data=f"admin_server_edit_field:is_system:{server_id}"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"admin_server_view:{server_id}"))
+        builder.row(btn("Название", "edit", callback_data=f"admin_server_edit_field:name:{server_id}"))
+        builder.row(btn("IP", "edit", callback_data=f"admin_server_edit_field:ip:{server_id}"))
+        builder.row(btn("Порт", "edit", callback_data=f"admin_server_edit_field:port:{server_id}"))
+        builder.row(btn("Протокол", "edit", callback_data=f"admin_server_edit_field:protocol:{server_id}"))
+        builder.row(btn("Username", "edit", callback_data=f"admin_server_edit_field:username:{server_id}"))
+        builder.row(btn("Password", "edit", callback_data=f"admin_server_edit_field:password:{server_id}"))
+        builder.row(btn("Inbound ID", "edit", callback_data=f"admin_server_edit_field:inbound_id:{server_id}"))
+        builder.row(btn("Порядок отображения", "numbers", callback_data=f"admin_server_edit_field:display_order:{server_id}"))
+        builder.row(btn("Сделать системным/обычным", "gear", callback_data=f"admin_server_edit_field:is_system:{server_id}"))
+        builder.row(btn("Назад", "back", callback_data=f"admin_server_view:{server_id}"))
         
         await callback.message.edit_text(
-            f"✏️ <b>Редактирование сервера</b>\n\n"
+            f"{E.edit} <b>Редактирование сервера</b>\n\n"
             f"<b>Текущие данные:</b>\n"
             f"Название: <i>{server['name']}</i>\n"
             f"IP: <i>{server['ip']}</i>\n"
@@ -3920,7 +3926,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_server_edit_field(callback: CallbackQuery, state: FSMContext):
         """Обработка выбора поля для редактирования"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         parts = callback.data.split(":")
@@ -3931,7 +3937,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         if field == 'is_system':
             async with get_connection() as conn:
                 await conn.execute('UPDATE servers SET is_system = NOT is_system, updated_at = CURRENT_TIMESTAMP WHERE id = $1', server_id)
-            await safe_callback_answer(callback, "✅ Тип сервера изменен")
+            await safe_callback_answer(callback, f"{E.success} Тип сервера изменен")
             # Возвращаемся в меню редактирования
             new_callback = callback.model_copy(update={'data': f"admin_server_edit:{server_id}"})
             await handle_admin_server_edit(new_callback)
@@ -3952,10 +3958,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         }
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"admin_server_edit:{server_id}"))
+        builder.row(btn("Назад", "back", callback_data=f"admin_server_edit:{server_id}"))
         
         await callback.message.edit_text(
-            f"✏️ <b>Редактирование {field_names.get(field, field)}</b>\n\n"
+            f"{E.edit} <b>Редактирование {field_names.get(field, field)}</b>\n\n"
             f"Введите новое значение:",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -3968,7 +3974,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_server_edit_callback(message: Message, state: FSMContext):
         """Обработка редактирования сервера"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -3977,7 +3983,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         field = data.get('edit_field')
         
         if not server_id or not field:
-            await message.answer("❌ Ошибка данных")
+            await message.answer(f"{E.error} Ошибка данных")
             await state.clear()
             return
         
@@ -3988,18 +3994,18 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             try:
                 new_value = int(new_value)
             except ValueError:
-                await message.answer("❌ Порт должен быть числом")
+                await message.answer(f"{E.error} Порт должен быть числом")
                 return
         elif field == 'protocol':
             new_value = new_value.lower()
             if new_value not in ['http', 'https']:
-                await message.answer("❌ Протокол должен быть http или https")
+                await message.answer(f"{E.error} Протокол должен быть http или https")
                 return
         elif field in ['inbound_id', 'display_order']:
             try:
                 new_value = int(new_value)
             except ValueError:
-                await message.answer(f"❌ {'Inbound ID' if field == 'inbound_id' else 'Порядок'} должен быть числом")
+                await message.answer(f"{E.error} {'Inbound ID' if field == 'inbound_id' else 'Порядок'} должен быть числом")
                 return
         
         async with get_connection() as conn:
@@ -4027,11 +4033,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 logger.error(f"Error scheduling VLESS links update for server {server_id}: {e}")
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад к серверу", callback_data=f"admin_server_view:{server_id}"))
+        builder.row(btn("Назад к серверу", "back", callback_data=f"admin_server_view:{server_id}"))
         
         await message.answer(
-            f"✅ Поле <b>{field}</b> обновлено!\n\n"
-            f"🔄 VLESS ссылки пользователей обновляются...",
+            f"{E.success} Поле <b>{field}</b> обновлено!\n\n"
+            f"{E.refresh} VLESS ссылки пользователей обновляются...",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
         )
@@ -4041,7 +4047,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_server_name_callback(message: Message, state: FSMContext):
         """Обработка названия сервера (для callback)"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -4053,7 +4059,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_server_ip_callback(message: Message, state: FSMContext):
         """Обработка IP сервера (для callback)"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -4065,7 +4071,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_server_port_callback(message: Message, state: FSMContext):
         """Обработка порта сервера (для callback)"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -4079,7 +4085,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_server_protocol_callback(message: Message, state: FSMContext):
         """Обработка протокола сервера (для callback)"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -4100,7 +4106,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_server_username_callback(message: Message, state: FSMContext):
         """Обработка username сервера (для callback)"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -4112,7 +4118,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_server_password_callback(message: Message, state: FSMContext):
         """Обработка password сервера (для callback)"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -4124,14 +4130,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_server_inbound_id_callback(message: Message, state: FSMContext):
         """Обработка Inbound ID и сохранение сервера (для callback)"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
         try:
             inbound_id = int(message.text.strip())
         except ValueError:
-            await message.answer("❌ Inbound ID должен быть числом. Попробуйте снова:")
+            await message.answer(f"{E.error} Inbound ID должен быть числом. Попробуйте снова:")
             return
         
         data = await state.get_data()
@@ -4158,7 +4164,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 await test_client.close()
             error_msg = str(e)
             await message.answer(
-                f"❌ <b>Ошибка подключения к серверу:</b>\n"
+                f"{E.error} <b>Ошибка подключения к серверу:</b>\n"
                 f"<code>{error_msg}</code>\n\n"
                 f"Проверьте данные и попробуйте снова. Используйте /admin для возврата в админ-панель.",
                 parse_mode="HTML"
@@ -4186,16 +4192,16 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 logger.error(f"Error scheduling key creation for new server: {e}")
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад к серверам", callback_data="admin_servers"))
+        builder.row(btn("Назад к серверам", "back", callback_data="admin_servers"))
         
         await message.answer(
-            f"✅ <b>Сервер успешно добавлен!</b>\n\n"
+            f"{E.success} <b>Сервер успешно добавлен!</b>\n\n"
             f"ID: <i>{server_id}</i>\n"
             f"Название: <i>{name}</i>\n"
             f"IP: <i>{ip}</i>\n"
             f"Протокол: <i>{protocol.upper()}</i>\n"
             f"Порт: <i>{port}</i>\n\n"
-            f"🔑 Ключи для активных пользователей создаются автоматически...",
+            f"{E.key} Ключи для активных пользователей создаются автоматически...",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
         )
@@ -4207,7 +4213,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_device_apps(callback: CallbackQuery):
         """Управление приложениями для устройств"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         # Получаем список всех приложений
@@ -4226,7 +4232,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 devices_dict[device_type] = []
             devices_dict[device_type].append(app)
         
-        text = "📱 <b>Управление приложениями для устройств</b>\n\n"
+        text = f"{E.devices} <b>Управление приложениями для устройств</b>\n\n"
         
         if not devices_dict:
             text += "Приложений пока нет.\n"
@@ -4235,30 +4241,27 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 device_name = DEVICE_TYPES.get(device_type, device_type)
                 text += f"<b>{device_name}:</b>\n"
                 for app in apps_list:
-                    status = "✅" if app['is_active'] else "❌"
+                    status = f"{E.success}" if app['is_active'] else f"{E.error}"
                     text += f"  {status} {app['app_name']} - {app['app_url'][:50]}...\n"
                 text += "\n"
         
         builder = InlineKeyboardBuilder()
         for device_key, device_name in DEVICE_TYPES.items():
-            builder.row(InlineKeyboardButton(
-                text=f"➕ Добавить для {device_name}",
+            builder.row(btn("Добавить для {device_name}", "add",
                 callback_data=f"admin_add_device_app:{device_key}"
             ))
         
         # Кнопка просмотра/редактирования существующих
         if devices_dict:
-            builder.row(InlineKeyboardButton(
-                text="✏️ Управление приложениями",
+            builder.row(btn("Управление приложениями", "edit",
                 callback_data="admin_list_device_apps"
             ))
         
-        builder.row(InlineKeyboardButton(
-            text="📸 Управление фото инструкций",
+        builder.row(btn("Управление фото инструкций", "camera",
             callback_data="admin_device_instructions"
         ))
         
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
@@ -4267,7 +4270,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_add_device_app(callback: CallbackQuery, state: FSMContext):
         """Добавление приложения для устройства"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         device_type = callback.data.split(":")[1]
@@ -4277,7 +4280,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         await state.set_state(AdminStates.DEVICE_APP_NAME)
         
         await callback.message.edit_text(
-            f"📱 <b>Добавление приложения для {device_name}</b>\n\n"
+            f"{E.devices} <b>Добавление приложения для {device_name}</b>\n\n"
             "Введите название приложения (например: Happ):",
             parse_mode="HTML"
         )
@@ -4287,20 +4290,20 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_device_app_name(message: Message, state: FSMContext):
         """Обработка названия приложения"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
         app_name = message.text.strip()
         if not app_name:
-            await message.answer("❌ Название не может быть пустым. Попробуйте снова:")
+            await message.answer(f"{E.error} Название не может быть пустым. Попробуйте снова:")
             return
         
         await state.update_data(app_name=app_name)
         await state.set_state(AdminStates.DEVICE_APP_URL)
         
         await message.answer(
-            "📎 Теперь отправьте URL ссылку на приложение\n"
+            f"{E.attach} Теперь отправьте URL ссылку на приложение\n"
             "(например: https://apps.apple.com/kz/app/happ-proxy-utility/id6504287215):"
         )
     
@@ -4308,20 +4311,20 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_device_app_url(message: Message, state: FSMContext):
         """Обработка URL приложения"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
         app_url = message.text.strip()
         if not app_url.startswith(('http://', 'https://')):
-            await message.answer("❌ URL должен начинаться с http:// или https://. Попробуйте снова:")
+            await message.answer(f"{E.error} URL должен начинаться с http:// или https://. Попробуйте снова:")
             return
         
         await state.update_data(app_url=app_url)
         await state.set_state(AdminStates.DEVICE_APP_ORDER)
         
         await message.answer(
-            "🔢 Введите порядковый номер для отображения (чем меньше, тем выше в списке)\n"
+            f"{E.numbers} Введите порядковый номер для отображения (чем меньше, тем выше в списке)\n"
             "Или отправьте 0 для автоматического порядка:"
         )
     
@@ -4329,14 +4332,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_device_app_order(message: Message, state: FSMContext):
         """Обработка порядка отображения"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
         try:
             display_order = int(message.text.strip())
         except ValueError:
-            await message.answer("❌ Введите число. Попробуйте снова:")
+            await message.answer(f"{E.error} Введите число. Попробуйте снова:")
             return
         
         data = await state.get_data()
@@ -4353,12 +4356,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 
                 device_name = DEVICE_TYPES.get(device_type, device_type)
                 await message.answer(
-                    f"✅ Приложение <b>{app_name}</b> успешно добавлено для {device_name}!",
+                    f"{E.success} Приложение <b>{app_name}</b> успешно добавлено для {device_name}!",
                     parse_mode="HTML"
                 )
             except Exception as e:
                 logger.error(f"Error adding device app: {e}")
-                await message.answer(f"❌ Ошибка при добавлении приложения: {str(e)}")
+                await message.answer(f"{E.error} Ошибка при добавлении приложения: {str(e)}")
         
         await state.clear()
     
@@ -4366,7 +4369,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_list_device_apps(callback: CallbackQuery):
         """Список всех приложений для управления"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         async with get_connection() as conn:
@@ -4378,9 +4381,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         if not apps:
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_device_apps"))
+            builder.row(btn("Назад", "back", callback_data="admin_device_apps"))
             await callback.message.edit_text(
-                "📱 <b>Список приложений</b>\n\nПриложений пока нет.",
+                f"{E.devices} <b>Список приложений</b>\n\nПриложений пока нет.",
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
@@ -4390,15 +4393,15 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         builder = InlineKeyboardBuilder()
         for app in apps:
             device_name = DEVICE_TYPES.get(app['device_type'], app['device_type'])
-            status = "✅" if app['is_active'] else "❌"
+            status = f"{E.success}" if app['is_active'] else f"{E.error}"
             builder.row(InlineKeyboardButton(
                 text=f"{status} {device_name} - {app['app_name']}",
                 callback_data=f"admin_edit_device_app:{app['id']}"
             ))
         
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_device_apps"))
+        builder.row(btn("Назад", "back", callback_data="admin_device_apps"))
         
-        text = "📱 <b>Список приложений</b>\n\nВыберите приложение для редактирования:"
+        text = f"{E.devices} <b>Список приложений</b>\n\nВыберите приложение для редактирования:"
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
     
@@ -4406,7 +4409,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_edit_device_app(callback: CallbackQuery):
         """Редактирование приложения"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         app_id = int(callback.data.split(":")[1])
@@ -4419,14 +4422,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             ''', app_id)
         
         if not app:
-            await callback.answer("❌ Приложение не найдено", show_alert=True)
+            await callback.answer(f"{E.error} Приложение не найдено", show_alert=True)
             return
         
         device_name = DEVICE_TYPES.get(app['device_type'], app['device_type'])
-        status_text = "✅ Активно" if app['is_active'] else "❌ Неактивно"
+        status_text = f"{E.success} Активно" if app['is_active'] else f"{E.error} Неактивно"
         
         text = (
-            f"📱 <b>Редактирование приложения</b>\n\n"
+            f"{E.devices} <b>Редактирование приложения</b>\n\n"
             f"Устройство: <b>{device_name}</b>\n"
             f"Название: <b>{app['app_name']}</b>\n"
             f"URL: <code>{app['app_url']}</code>\n"
@@ -4435,15 +4438,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         )
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(
-            text="🔄 Изменить статус",
+        builder.row(btn("Изменить статус", "refresh",
             callback_data=f"admin_toggle_device_app:{app_id}"
         ))
-        builder.row(InlineKeyboardButton(
-            text="🗑️ Удалить",
+        builder.row(btn("Удалить", "trash_vs",
             callback_data=f"admin_delete_device_app:{app_id}"
         ))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_list_device_apps"))
+        builder.row(btn("Назад", "back", callback_data="admin_list_device_apps"))
         
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
@@ -4452,7 +4453,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_toggle_device_app(callback: CallbackQuery):
         """Переключение статуса приложения"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         app_id = int(callback.data.split(":")[1])
@@ -4460,13 +4461,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         async with get_connection() as conn:
             app = await conn.fetchrow('SELECT is_active FROM device_apps WHERE id = $1', app_id)
             if not app:
-                await callback.answer("❌ Приложение не найдено", show_alert=True)
+                await callback.answer(f"{E.error} Приложение не найдено", show_alert=True)
                 return
             
             new_status = not app['is_active']
             await conn.execute('UPDATE device_apps SET is_active = $1 WHERE id = $2', new_status, app_id)
         
-        await callback.answer(f"✅ Статус изменен на {'активен' if new_status else 'неактивен'}")
+        await callback.answer(f"{E.success} Статус изменен на {'активен' if new_status else 'неактивен'}")
         # Обновляем экран
         await handle_admin_edit_device_app(callback)
     
@@ -4474,7 +4475,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_delete_device_app(callback: CallbackQuery, state: FSMContext):
         """Удаление приложения"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         app_id = int(callback.data.split(":")[1])
@@ -4482,12 +4483,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         async with get_connection() as conn:
             app = await conn.fetchrow('SELECT app_name FROM device_apps WHERE id = $1', app_id)
             if not app:
-                await callback.answer("❌ Приложение не найдено", show_alert=True)
+                await callback.answer(f"{E.error} Приложение не найдено", show_alert=True)
                 return
             
             await conn.execute('DELETE FROM device_apps WHERE id = $1', app_id)
         
-        await callback.answer(f"✅ Приложение {app['app_name']} удалено")
+        await callback.answer(f"{E.success} Приложение {app['app_name']} удалено")
         
         # Возвращаемся к списку
         new_callback = callback.model_copy(update={'data': "admin_list_device_apps"})
@@ -4497,10 +4498,10 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_device_instructions(callback: CallbackQuery):
         """Управление фото инструкций для устройств"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
-        text = "📸 <b>Управление фото инструкций</b>\n\n"
+        text = f"{E.camera} <b>Управление фото инструкций</b>\n\n"
         
         # Получаем количество фото для каждого устройства
         for device_key, device_name in DEVICE_TYPES.items():
@@ -4512,12 +4513,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         builder = InlineKeyboardBuilder()
         for device_key, device_name in DEVICE_TYPES.items():
-            builder.row(InlineKeyboardButton(
-                text=f"📸 Управление фото {device_name}",
+            builder.row(btn("Управление фото {device_name}", "camera",
                 callback_data=f"admin_manage_device_photos:{device_key}"
             ))
         
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_device_apps"))
+        builder.row(btn("Назад", "back", callback_data="admin_device_apps"))
         
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
@@ -4526,7 +4526,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_manage_device_photos(callback: CallbackQuery):
         """Управление фото для конкретного устройства"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         device_type = callback.data.split(":")[1]
@@ -4534,7 +4534,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         photos = await get_device_instruction_photos_list(device_type)
         
-        text = f"📸 <b>Управление фото инструкций для {device_name}</b>\n\n"
+        text = f"{E.camera} <b>Управление фото инструкций для {device_name}</b>\n\n"
         
         if not photos:
             text += "Фото пока не загружены.\n\n"
@@ -4547,20 +4547,18 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         builder = InlineKeyboardBuilder()
         
         # Кнопка для добавления фото
-        builder.row(InlineKeyboardButton(
-            text="➕ Добавить фото",
+        builder.row(btn("Добавить фото", "add",
             callback_data=f"admin_add_device_photo:{device_type}"
         ))
         
         # Кнопки для удаления существующих фото
         if photos:
             for photo in photos[:10]:  # Ограничиваем 10 фото для удобства
-                builder.row(InlineKeyboardButton(
-                    text=f"🗑️ Удалить фото #{photo['id']}",
+                builder.row(btn("Удалить фото #{photo['id']}", "trash_vs",
                     callback_data=f"admin_delete_device_photo:{photo['id']}"
                 ))
         
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_device_instructions"))
+        builder.row(btn("Назад", "back", callback_data="admin_device_instructions"))
         
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await safe_callback_answer(callback)
@@ -4569,7 +4567,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_add_device_photo(callback: CallbackQuery, state: FSMContext):
         """Добавление фото инструкции для устройства"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         device_type = callback.data.split(":")[1]
@@ -4579,7 +4577,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         await state.set_state(AdminStates.DEVICE_INSTRUCTION_PHOTO_MULTIPLE)
         
         await callback.message.edit_text(
-            f"📸 <b>Загрузка фото инструкции для {device_name}</b>\n\n"
+            f"{E.camera} <b>Загрузка фото инструкции для {device_name}</b>\n\n"
             "Отправьте одно или несколько фото (скриншоты инструкции по подключению).\n"
             "Каждое фото будет добавлено к существующим.\n\n"
             "Для завершения отправки нажмите /cancel или вернитесь назад.",
@@ -4591,7 +4589,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_device_instruction_photo_multiple(message: Message, state: FSMContext):
         """Обработка фото инструкции (можно несколько)"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -4609,14 +4607,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         count = len(photos)
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(
-            text="✅ Завершить",
+        builder.row(btn("Завершить", "success",
             callback_data=f"admin_manage_device_photos:{device_type}"
         ))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_device_instructions"))
+        builder.row(btn("Назад", "back", callback_data="admin_device_instructions"))
         
         await message.answer(
-            f"✅ Фото добавлено!\n\n"
+            f"{E.success} Фото добавлено!\n\n"
             f"Для <b>{device_name}</b> сейчас загружено: <b>{count}</b> фото.\n\n"
             f"Отправьте ещё фото или нажмите 'Завершить'.",
             reply_markup=builder.as_markup(),
@@ -4627,7 +4624,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_device_instruction_photo_multiple_invalid(message: Message, state: FSMContext):
         """Обработка некорректного сообщения (не фото)"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
         
@@ -4639,48 +4636,47 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             if device_type:
                 device_name = DEVICE_TYPES.get(device_type, device_type)
                 builder = InlineKeyboardBuilder()
-                builder.row(InlineKeyboardButton(
-                    text="◀️ Назад к управлению фото",
+                builder.row(btn("Назад к управлению фото", "back",
                     callback_data=f"admin_manage_device_photos:{device_type}"
                 ))
                 await message.answer(
-                    f"✅ Загрузка фото отменена.\n\n"
+                    f"{E.success} Загрузка фото отменена.\n\n"
                     f"Вы вернулись из режима загрузки фото для {device_name}.",
                     reply_markup=builder.as_markup(),
                     parse_mode="HTML"
                 )
             else:
                 builder = InlineKeyboardBuilder()
-                builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_device_instructions"))
-                await message.answer("✅ Загрузка фото отменена.", reply_markup=builder.as_markup())
+                builder.row(btn("Назад", "back", callback_data="admin_device_instructions"))
+                await message.answer(f"{E.success} Загрузка фото отменена.", reply_markup=builder.as_markup())
             return
         
-        await message.answer("❌ Пожалуйста, отправьте фото (не текст или другой тип файла)\n\nДля завершения отправьте /cancel")
+        await message.answer(f"{E.error} Пожалуйста, отправьте фото (не текст или другой тип файла)\n\nДля завершения отправьте /cancel")
     
     @dp.callback_query(F.data.startswith("admin_delete_device_photo:"))
     async def handle_admin_delete_device_photo(callback: CallbackQuery):
         """Удаление фото инструкции"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         try:
             photo_db_id = int(callback.data.split(":")[1])
         except (ValueError, IndexError):
-            await callback.answer("❌ Неверный формат данных", show_alert=True)
+            await callback.answer(f"{E.error} Неверный формат данных", show_alert=True)
             return
         
         # Получаем device_type перед удалением
         async with get_connection() as conn:
             result = await conn.fetchrow('SELECT device_type FROM device_instruction_photos WHERE id = $1', photo_db_id)
             if not result:
-                await callback.answer("❌ Фото не найдено", show_alert=True)
+                await callback.answer(f"{E.error} Фото не найдено", show_alert=True)
                 return
             device_type = result['device_type']
         
         await delete_device_instruction_photo(photo_db_id)
         
-        await callback.answer("✅ Фото удалено")
+        await callback.answer(f"{E.success} Фото удалено")
         
         # Возвращаемся к управлению фото
         new_callback = callback.model_copy(update={'data': f"admin_manage_device_photos:{device_type}"})
@@ -4694,7 +4690,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_utm(callback: CallbackQuery):
         """Главная страница UTM"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         async with get_connection() as conn:
@@ -4706,36 +4702,35 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             ) or 0
         
         text = (
-            f"📈 <b>UTM метки</b>\n\n"
-            f"📊 Всего переходов: <b>{total_visits}</b>\n"
-            f"👤 Новых пользователей: <b>{total_new}</b>\n"
-            f"📅 Переходов сегодня: <b>{visits_today}</b>\n\n"
+            f"{E.trend_up} <b>UTM метки</b>\n\n"
+            f"{E.chart} Всего переходов: <b>{total_visits}</b>\n"
+            f"{E.user} Новых пользователей: <b>{total_new}</b>\n"
+            f"{E.calendar} Переходов сегодня: <b>{visits_today}</b>\n\n"
         )
         
         if campaigns:
             text += "<b>Настроенные кампании:</b>\n"
             for c in campaigns:
-                status = "✅" if c['is_active'] else "❌"
+                status = f"{E.success}" if c['is_active'] else f"{E.error}"
                 bonus = f"+{c['bonus_days']}д" if c['bonus_days'] else "без бонуса"
                 text += f"{status} <code>{c['tag']}</code> — {c['description'] or 'без описания'} ({bonus})\n"
         else:
             text += "<i>Нет настроенных кампаний</i>\n"
         
         text += (
-            "\n💡 Любая ссылка вида <code>https://t.me/SvoyVPN_robot?start=tag</code> "
+            f"\n{E.bulb} Любая ссылка вида <code>https://t.me/SvoyVPN_robot?start=tag</code> "
             "будет засчитана автоматически, даже без создания кампании в админке."
         )
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="➕ Создать кампанию", callback_data="utm_create"))
-        builder.row(InlineKeyboardButton(text="📊 Детальная статистика", callback_data="utm_stats_detail"))
+        builder.row(btn("Создать кампанию", "add", callback_data="utm_create"))
+        builder.row(btn("Детальная статистика", "chart", callback_data="utm_stats_detail"))
         if campaigns:
             for c in campaigns:
-                builder.row(InlineKeyboardButton(
-                    text=f"⚙️ {c['tag']}",
+                builder.row(btn("{c['tag']}", "gear",
                     callback_data=f"utm_manage:{c['tag']}"
                 ))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
         await safe_callback_answer(callback)
@@ -4744,12 +4739,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_utm_create(callback: CallbackQuery, state: FSMContext):
         """Начать создание UTM кампании"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         await state.set_state(AdminStates.UTM_TAG)
         await callback.message.edit_text(
-            "📈 <b>Создание UTM кампании</b>\n\n"
+            f"{E.trend_up} <b>Создание UTM кампании</b>\n\n"
             "Введите тег (латиницей, без пробелов).\n"
             "Пример: <code>googleads</code>, <code>youtube_channel</code>, <code>blogger_ivan</code>\n\n"
             "Ссылка будет: <code>https://t.me/SvoyVPN_robot?start=ваш_тег</code>",
@@ -4762,17 +4757,17 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         """Сохранить UTM тег"""
         tag = message.text.strip().lower().replace(' ', '_')
         if not tag or len(tag) < 2:
-            await message.answer("❌ Тег слишком короткий (минимум 2 символа)")
+            await message.answer(f"{E.error} Тег слишком короткий (минимум 2 символа)")
             return
         if tag.startswith('ref_'):
-            await message.answer("❌ Тег не может начинаться с <code>ref_</code> (зарезервировано для рефералов)", parse_mode="HTML")
+            await message.answer(f"{E.error} Тег не может начинаться с <code>ref_</code> (зарезервировано для рефералов)", parse_mode="HTML")
             return
         
         # Проверяем уникальность
         async with get_connection() as conn:
             existing = await conn.fetchrow('SELECT id FROM utm_campaigns WHERE tag = $1', tag)
             if existing:
-                await message.answer(f"❌ Тег <code>{tag}</code> уже существует", parse_mode="HTML")
+                await message.answer(f"{E.error} Тег <code>{tag}</code> уже существует", parse_mode="HTML")
                 return
         
         await state.update_data(utm_tag=tag)
@@ -4807,7 +4802,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             if bonus_days < 0:
                 raise ValueError
         except ValueError:
-            await message.answer("❌ Введите неотрицательное число")
+            await message.answer(f"{E.error} Введите неотрицательное число")
             return
         
         data = await state.get_data()
@@ -4827,11 +4822,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         bonus_text = f"+{bonus_days} дней VPN" if bonus_days > 0 else "без бонуса"
         await message.answer(
-            f"✅ UTM кампания создана!\n\n"
-            f"🏷 Тег: <code>{tag}</code>\n"
-            f"📝 Описание: {desc or '—'}\n"
-            f"🎁 Бонус: {bonus_text}\n\n"
-            f"🔗 Ссылка:\n<code>{link}</code>",
+            f"{E.success} UTM кампания создана!\n\n"
+            f"{E.tag} Тег: <code>{tag}</code>\n"
+            f"{E.note} Описание: {desc or '—'}\n"
+            f"{E.gift} Бонус: {bonus_text}\n\n"
+            f"{E.vpn_connect} Ссылка:\n<code>{link}</code>",
             parse_mode="HTML"
         )
 
@@ -4839,7 +4834,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_utm_manage(callback: CallbackQuery):
         """Управление конкретной UTM кампанией"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         tag = callback.data.split(":", 1)[1]
@@ -4847,7 +4842,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         async with get_connection() as conn:
             campaign = await conn.fetchrow('SELECT * FROM utm_campaigns WHERE tag = $1', tag)
             if not campaign:
-                await safe_callback_answer(callback, "❌ Кампания не найдена", show_alert=True)
+                await safe_callback_answer(callback, f"{E.error} Кампания не найдена", show_alert=True)
                 return
             
             total_visits = await conn.fetchval(
@@ -4870,36 +4865,39 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 ''', tag) or 0
         
         conversion_rate = (conversions / new_users * 100) if conversions is not None and new_users > 0 else 0
-        status = "✅ Активна" if campaign['is_active'] else "❌ Неактивна"
+        status = f"{E.success} Активна" if campaign['is_active'] else f"{E.error} Неактивна"
         bonus = f"+{campaign['bonus_days']} дней" if campaign['bonus_days'] else "без бонуса"
         
         bot_info = await bot.get_me()
         link = f"https://t.me/{bot_info.username}?start={tag}"
         
         stats_lines = [
-            f"📈 Всего переходов: <b>{total_visits}</b>",
-            f"👤 Новых пользователей: <b>{new_users}</b>",
+            f"{E.trend_up} Всего переходов: <b>{total_visits}</b>",
+            f"{E.user} Новых пользователей: <b>{new_users}</b>",
         ]
         if conversions is not None:
             stats_lines.append(
-                f"💰 Конверсия в оплату: <b>{conversions}</b> ({conversion_rate:.1f}%)"
+                f"{E.money} Конверсия в оплату: <b>{conversions}</b> ({conversion_rate:.1f}%)"
             )
-        stats_lines.append(f"📅 За 7 дней: <b>{visits_7d}</b>")
+        stats_lines.append(f"{E.calendar} За 7 дней: <b>{visits_7d}</b>")
 
         text = (
-            f"⚙️ <b>Кампания: {tag}</b>\n\n"
-            f"📝 Описание: {campaign['description'] or '—'}\n"
-            f"📊 Статус: {status}\n"
-            f"🎁 Бонус: {bonus}\n\n"
+            f"{E.gear} <b>Кампания: {tag}</b>\n\n"
+            f"{E.note} Описание: {campaign['description'] or '—'}\n"
+            f"{E.chart} Статус: {status}\n"
+            f"{E.gift} Бонус: {bonus}\n\n"
             + "\n".join(stats_lines)
-            + f"\n\n🔗 Ссылка:\n<code>{link}</code>"
+            + f"\n\n{E.vpn_connect} Ссылка:\n<code>{link}</code>"
         )
         
-        toggle_text = "🔴 Деактивировать" if campaign['is_active'] else "🟢 Активировать"
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text=toggle_text, callback_data=f"utm_toggle:{tag}"))
-        builder.row(InlineKeyboardButton(text="🗑 Удалить", callback_data=f"utm_delete:{tag}"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_utm"))
+        builder.row(
+            btn("Деактивировать", "off", callback_data=f"utm_toggle:{tag}")
+            if campaign["is_active"]
+            else btn("Активировать", "on", callback_data=f"utm_toggle:{tag}")
+        )
+        builder.row(btn("Удалить", "trash", callback_data=f"utm_delete:{tag}"))
+        builder.row(btn("Назад", "back", callback_data="admin_utm"))
         
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
         await safe_callback_answer(callback)
@@ -4908,7 +4906,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_utm_toggle(callback: CallbackQuery):
         """Переключить активность кампании"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         tag = callback.data.split(":", 1)[1]
@@ -4917,7 +4915,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 'UPDATE utm_campaigns SET is_active = NOT is_active WHERE tag = $1', tag
             )
         
-        await safe_callback_answer(callback, "✅ Статус изменён")
+        await safe_callback_answer(callback, f"{E.success} Статус изменён")
         # Возвращаемся к управлению кампанией
         new_callback = callback.model_copy(update={'data': f"utm_manage:{tag}"})
         await handle_utm_manage(new_callback)
@@ -4926,14 +4924,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_utm_delete(callback: CallbackQuery):
         """Удалить UTM кампанию"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         tag = callback.data.split(":", 1)[1]
         async with get_connection() as conn:
             await conn.execute('DELETE FROM utm_campaigns WHERE tag = $1', tag)
         
-        await safe_callback_answer(callback, "✅ Кампания удалена")
+        await safe_callback_answer(callback, f"{E.success} Кампания удалена")
         new_callback = callback.model_copy(update={'data': 'admin_utm'})
         await handle_admin_utm(new_callback)
 
@@ -4941,7 +4939,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_utm_stats_detail(callback: CallbackQuery):
         """Детальная статистика по всем UTM меткам"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         
         async with get_connection() as conn:
@@ -4962,20 +4960,20 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             ''')
         
         if not stats:
-            text = "📊 <b>UTM статистика</b>\n\n<i>Нет данных о переходах</i>"
+            text = f"{E.chart} <b>UTM статистика</b>\n\n<i>Нет данных о переходах</i>"
         else:
-            text = "📊 <b>Детальная UTM статистика</b>\n\n"
+            text = f"{E.chart} <b>Детальная UTM статистика</b>\n\n"
             for s in stats:
                 last_visit = s['last_visit'].strftime('%d.%m %H:%M') if s['last_visit'] else '—'
                 text += (
-                    f"🏷 <code>{s['utm_tag']}</code>\n"
+                    f"{E.tag} <code>{s['utm_tag']}</code>\n"
                     f"   Всего: {s['total_visits']} | Новых: {s['new_users']} "
                     f"| 7д: {s['visits_7d']} | 30д: {s['visits_30d']}\n"
                     f"   Последний: {last_visit}\n\n"
                 )
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_utm"))
+        builder.row(btn("Назад", "back", callback_data="admin_utm"))
         
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
         await safe_callback_answer(callback)
@@ -5000,7 +4998,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         try:
             orig = callback.message.html_text or callback.message.text or ""
             await callback.message.edit_text(
-                orig + "\n\n✅ <b>" + html_std.escape(msg) + "</b>",
+                orig + f"\n\n{E.success} <b>" + html_std.escape(msg) + "</b>",
                 parse_mode="HTML",
                 reply_markup=None,
             )
@@ -5029,7 +5027,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         try:
             orig = callback.message.html_text or callback.message.text or ""
             await callback.message.edit_text(
-                orig + "\n\n⛔ <b>" + html_std.escape(msg) + "</b>",
+                orig + f"\n\n{E.stop} <b>" + html_std.escape(msg) + "</b>",
                 parse_mode="HTML",
                 reply_markup=None,
             )
@@ -5044,14 +5042,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_admin_user_info_start(callback: CallbackQuery, state: FSMContext):
         """Запрос ID для поиска информации"""
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back"))
+        builder.row(btn("Назад", "back", callback_data="admin_back"))
 
         await callback.message.edit_text(
-            "👤 <b>Поиск информации о пользователе</b>\n\n"
+            f"{E.user} <b>Поиск информации о пользователе</b>\n\n"
             "Введите Telegram <b>ID</b> пользователя:",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
@@ -5063,20 +5061,20 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def process_admin_user_info(message: Message, state: FSMContext):
         """Вывод детальной информации о пользователе"""
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
 
         user_id_str = message.text.strip()
         if not user_id_str.isdigit():
-            await message.answer("❌ ID должен состоять только из цифр. Попробуйте снова:")
+            await message.answer(f"{E.error} ID должен состоять только из цифр. Попробуйте снова:")
             return
 
         target_user_id = int(user_id_str)
         card = await _build_admin_user_card(target_user_id)
         if not card:
             await message.answer(
-                f"❌ Пользователь с ID <code>{target_user_id}</code> не найден в базе.",
+                f"{E.error} Пользователь с ID <code>{target_user_id}</code> не найден в базе.",
                 parse_mode="HTML",
             )
             await state.clear()
@@ -5089,11 +5087,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data.startswith("admin_block_confirm:"))
     async def handle_admin_block_confirm(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         target_user_id = int(callback.data.split(":")[1])
         if target_user_id in config.bot.admin_ids:
-            await safe_callback_answer(callback, "❌ Нельзя заблокировать админа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нельзя заблокировать админа", show_alert=True)
             return
         await state.set_state(AdminStates.BLOCK_REASON)
         await state.update_data(
@@ -5102,13 +5100,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         )
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(
-                text="◀️ Отмена",
+            btn("Отмена", "back",
                 callback_data=f"admin_user_card:{target_user_id}",
             )
         )
         await callback.message.edit_text(
-            f"🚫 <b>Блокировка</b> пользователя <code>{target_user_id}</code>\n\n"
+            f"{E.blocked} <b>Блокировка</b> пользователя <code>{target_user_id}</code>\n\n"
             "Введите <b>причину блокировки</b> одним сообщением.\n"
             "Она сохранится в карточке пользователя и будет видна при разборе жалоб.\n\n"
             "<i>Будет отключены VPN, подписка и доступ к боту.</i>",
@@ -5120,11 +5117,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data.startswith("admin_block_fraud:"))
     async def handle_admin_block_fraud_confirm(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         target_user_id = int(callback.data.split(":")[1])
         if target_user_id in config.bot.admin_ids:
-            await safe_callback_answer(callback, "❌ Нельзя заблокировать админа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нельзя заблокировать админа", show_alert=True)
             return
         await state.set_state(AdminStates.BLOCK_REASON)
         await state.update_data(
@@ -5133,13 +5130,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         )
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(
-                text="◀️ Отмена",
+            btn("Отмена", "back",
                 callback_data=f"admin_user_card:{target_user_id}",
             )
         )
         await callback.message.edit_text(
-            f"🚫 <b>Блокировка с откатом рефералов</b> — <code>{target_user_id}</code>\n\n"
+            f"{E.blocked} <b>Блокировка с откатом рефералов</b> — <code>{target_user_id}</code>\n\n"
             "Введите <b>причину блокировки</b> одним сообщением "
             "(например, нарушение п. 8.6 оферты).\n\n"
             "<i>Также будут заблокированы приглашённые им аккаунты из реферальной программы.</i>",
@@ -5151,52 +5147,50 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.message(AdminStates.BLOCK_REASON)
     async def process_admin_block_reason(message: Message, state: FSMContext):
         if not is_admin(message.from_user.id, config):
-            await message.answer("❌ Нет доступа")
+            await message.answer(f"{E.error} Нет доступа")
             await state.clear()
             return
 
         reason = (message.text or "").strip()
         if len(reason) < 3:
             await message.answer(
-                "❌ Укажите причину подробнее (минимум 3 символа). Отправьте текст снова:"
+                f"{E.error} Укажите причину подробнее (минимум 3 символа). Отправьте текст снова:"
             )
             return
         if len(reason) > 500:
             await message.answer(
-                "❌ Слишком длинный текст (максимум 500 символов). Сократите и отправьте снова:"
+                f"{E.error} Слишком длинный текст (максимум 500 символов). Сократите и отправьте снова:"
             )
             return
 
         data = await state.get_data()
         target_user_id = data.get("target_user_id")
         if not target_user_id:
-            await message.answer("❌ Сессия блокировки истекла. Найдите пользователя заново.")
+            await message.answer(f"{E.error} Сессия блокировки истекла. Найдите пользователя заново.")
             await state.clear()
             return
 
         await state.update_data(block_reason=reason)
         fraud = bool(data.get("revert_referral_fraud"))
         fraud_note = (
-            "\n\n⚠️ Будет выполнен <b>откат реферальных бонусов</b>."
+            f"\n\n{E.warning} Будет выполнен <b>откат реферальных бонусов</b>."
             if fraud
             else ""
         )
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(
-                text="✅ Подтвердить блокировку",
+            btn("Подтвердить блокировку", "success",
                 callback_data="admin_block_apply",
             )
         )
         builder.row(
-            InlineKeyboardButton(
-                text="◀️ Отмена",
+            btn("Отмена", "back",
                 callback_data=f"admin_user_card:{target_user_id}",
             )
         )
         await message.answer(
             f"Подтвердите блокировку <code>{target_user_id}</code>:{fraud_note}\n\n"
-            f"📝 <b>Причина:</b> {html_std.escape(reason)}",
+            f"{E.note} <b>Причина:</b> {html_std.escape(reason)}",
             reply_markup=builder.as_markup(),
             parse_mode="HTML",
         )
@@ -5204,7 +5198,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data == "admin_block_apply")
     async def handle_admin_block_apply(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
 
         data = await state.get_data()
@@ -5213,11 +5207,11 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         fraud = bool(data.get("revert_referral_fraud"))
 
         if not target_user_id or len(reason) < 3:
-            await safe_callback_answer(callback, "❌ Сессия истекла, начните снова", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Сессия истекла, начните снова", show_alert=True)
             await state.clear()
             return
         if target_user_id in config.bot.admin_ids:
-            await safe_callback_answer(callback, "❌ Нельзя заблокировать админа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нельзя заблокировать админа", show_alert=True)
             await state.clear()
             return
 
@@ -5232,19 +5226,19 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         if not result.get("blocked"):
             await safe_callback_answer(
                 callback,
-                f"❌ Не удалось: {result.get('error', 'ошибка')}",
+                f"{E.error} Не удалось: {result.get('error', 'ошибка')}",
                 show_alert=True,
             )
             return
 
-        await safe_callback_answer(callback, "✅ Пользователь заблокирован")
+        await safe_callback_answer(callback, f"{E.success} Пользователь заблокирован")
         card = await _build_admin_user_card(int(target_user_id))
         if card:
             report, builder = card
             header = (
-                f"✅ <b>Заблокирован</b> (п. 8.6, рефералов: {result.get('referrals_blocked', 0)})\n\n"
+                f"{E.success} <b>Заблокирован</b> (п. 8.6, рефералов: {result.get('referrals_blocked', 0)})\n\n"
                 if fraud
-                else f"✅ <b>Заблокирован</b> (ключей отключено: {result.get('keys_revoked', 0)})\n\n"
+                else f"{E.success} <b>Заблокирован</b> (ключей отключено: {result.get('keys_revoked', 0)})\n\n"
             )
             await callback.message.edit_text(
                 header + report,
@@ -5255,20 +5249,20 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data.startswith("admin_unblock:"))
     async def handle_admin_unblock(callback: CallbackQuery):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         target_user_id = int(callback.data.split(":")[1])
         ok = await unblock_user(target_user_id, admin_id=callback.from_user.id)
         invalidate_blacklist_cache(target_user_id)
         if not ok:
-            await safe_callback_answer(callback, "❌ Пользователь не был заблокирован", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Пользователь не был заблокирован", show_alert=True)
             return
-        await safe_callback_answer(callback, "✅ Разблокирован")
+        await safe_callback_answer(callback, f"{E.success} Разблокирован")
         card = await _build_admin_user_card(target_user_id)
         if card:
             report, builder = card
             await callback.message.edit_text(
-                f"✅ <b>Разблокирован</b>\n\n{report}",
+                f"{E.success} <b>Разблокирован</b>\n\n{report}",
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML",
             )
@@ -5276,13 +5270,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     @dp.callback_query(F.data.startswith("admin_user_card:"))
     async def handle_admin_user_card_refresh(callback: CallbackQuery, state: FSMContext):
         if not is_admin(callback.from_user.id, config):
-            await safe_callback_answer(callback, "❌ Нет доступа", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Нет доступа", show_alert=True)
             return
         await state.clear()
         target_user_id = int(callback.data.split(":")[1])
         card = await _build_admin_user_card(target_user_id)
         if not card:
-            await safe_callback_answer(callback, "❌ Пользователь не найден", show_alert=True)
+            await safe_callback_answer(callback, f"{E.error} Пользователь не найден", show_alert=True)
             return
         report, builder = card
         await callback.message.edit_text(

@@ -24,6 +24,7 @@ from .plans import (
 from .referral_purchases import TG_GIFT_RUB_RANGE, get_referrer_purchase_stats
 from .referral_rewards import get_referral_bonus_days
 from .subscriptions import create_or_activate_keys_for_all_servers
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,7 @@ def format_earn_screen(ctx: dict[str, Any]) -> str:
         f"Заработано: <b>{'; '.join(earned_parts)}</b>",
     ]
     if pending_gifts > 0:
-        stats_lines.append(f"🎁 На проверке: <b>{_ru_tg_gifts_phrase(pending_gifts)}</b>")
+        stats_lines.append(f"{E.gift} На проверке: <b>{_ru_tg_gifts_phrase(pending_gifts)}</b>")
 
     return (
         f"{GIFT_BUTTON}{earn_help_link_html()}\n\n"

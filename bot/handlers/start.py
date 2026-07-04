@@ -27,6 +27,7 @@ from ..subscriptions import (
 )
 from ..traffic import ensure_bypass_period
 from ..help_content import get_help_page_text, help_page_count
+from ..custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +57,8 @@ def _svoyvpn_why_and_footer_html() -> str:
         "• И многое другое"
     )
     footer = (
-        f"\n\n👉 Начни прямо сейчас полностью бесплатно! <b>🔗 Подключить VPN</b> жми и все готово!\n\n"
-        f"‼️ Используя сервис, вы соглашаетесь с {offer_link}."
+        f"\n\n{E.point_right} Начни прямо сейчас полностью бесплатно! <b>{E.vpn_connect} Подключить VPN</b> жми и все готово!\n\n"
+        f"{E.alert_double} Используя сервис, вы соглашаетесь с {offer_link}."
     )
     return why_block + footer
 
@@ -75,10 +76,10 @@ def build_utm_bonus_welcome_message() -> str:
         "· <b>Бесплатный</b> обход Белых списков\n"
         "· Стабильные <b>быстрые</b> страны\n"
         "· Работа <b>YouTube/TikTok/ChatGPT</b> и др.\n"
-        'Просто жми кнопку "🔗 Подключить VPN" и все <b>готово</b>!\n\n'
+        f'Просто жми кнопку "{E.vpn_connect} Подключить VPN" и все <b>готово</b>!\n\n'
         "А также можешь забрать до <b>2000₽</b> подарками тг - /invite "
-        '(или раздел "🎁 Подарок")\n\n'
-        f"‼️ Используя сервис, вы соглашаетесь с {offer_link}."
+        f'(или раздел "{E.gift} Подарок")\n\n'
+        f"{E.alert_double} Используя сервис, вы соглашаетесь с {offer_link}."
     )
 
 
@@ -89,17 +90,16 @@ def get_promo_welcome_keyboard(*, show_trial: bool = True):
     builder = InlineKeyboardBuilder()
     if show_trial:
         builder.row(
-            InlineKeyboardButton(
-                text="🎁 Plus за 1₽ — попробовать",
+            btn("Plus за 1₽ — попробовать", "gift",
                 callback_data="activate_trial",
             ),
         )
     builder.row(
-        InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="get_vpn_link"),
+        btn("Подключить VPN", "vpn_connect", callback_data="get_vpn_link"),
     )
     builder.row(
-        InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
-        InlineKeyboardButton(text="🆘 Помощь", callback_data="open_help"),
+        btn("Подарок", "gift", callback_data="open_invite"),
+        btn("Помощь", "help", callback_data="open_help"),
     )
     return builder.as_markup()
 
@@ -115,7 +115,7 @@ async def build_new_user_welcome_message(
     if has_referral:
         days = max(int(referral_bonus_days or 0), 1)
         gift_line = (
-            f"🎁 Ваш друг подарил вам подписку на <b>{days} дн.</b> — "
+            f"{E.gift} Ваш друг подарил вам подписку на <b>{days} дн.</b> — "
             "просто подключайтесь и пользуйтесь свободным интернетом без ограничений"
         )
         return f"{header}{gift_line}\n\n{body}"
@@ -134,23 +134,22 @@ def _build_help_keyboard(
     nav: list[InlineKeyboardButton] = []
     if page > 0:
         nav.append(
-            InlineKeyboardButton(text="◀️ Назад", callback_data=f"help_page:{page - 1}")
+            btn("Назад", "back", callback_data=f"help_page:{page - 1}")
         )
     if page < total - 1:
         nav.append(
-            InlineKeyboardButton(text="Вперёд ▶️", callback_data=f"help_page:{page + 1}")
+            btn("Вперёд ", "forward", callback_data=f"help_page:{page + 1}")
         )
     if nav:
         builder.row(*nav)
     if support_link:
-        builder.row(InlineKeyboardButton(text="🛟 Техподдержка", url=support_link))
+        builder.row(btn("Техподдержка", "support", url=support_link))
     builder.row(
-        InlineKeyboardButton(
-            text="📄 Оферта и политика конфиденциальности",
+        btn("Оферта и политика конфиденциальности", "doc",
             url=OFFER_PRIVACY_TELEGRAPH_URL,
         )
     )
-    builder.row(InlineKeyboardButton(text="⏪ В главное меню", callback_data="go_back"))
+    builder.row(btn("В главное меню", "main_menu", callback_data="go_back"))
     return builder
 
 
@@ -214,7 +213,7 @@ async def setup_start_handler(dp, bot: Bot, config):
             from ..webhook_server import WebhookServer
             WebhookServer.confirm_telegram_auth(nonce, user_id)
             await message.answer(
-                f"✅ <b>Личность подтверждена!</b>\n\n"
+                f"{E.success} <b>Личность подтверждена!</b>\n\n"
                 "Вы успешно вошли в приложение SvoyVPN. Теперь можете вернуться в приложение.",
                 parse_mode="HTML"
             )
@@ -342,7 +341,7 @@ async def setup_start_handler(dp, bot: Bot, config):
                     try:
                         await bot.send_message(
                             admin_id,
-                            f"👤 <b>Новая регистрация</b>\n\n"
+                            f"{E.user} <b>Новая регистрация</b>\n\n"
                             f"ID: <code>{user_id}</code>\n"
                             f"Имя: {first_name}\n"
                             f"Username: @{username if username else 'нет'}\n"
@@ -464,8 +463,7 @@ async def setup_start_handler(dp, bot: Bot, config):
 
                             b = InlineKeyboardBuilder()
                             b.row(
-                                InlineKeyboardButton(
-                                    text="🎁 Plus за 1₽ — попробовать",
+                                btn("Plus за 1₽ — попробовать", "gift",
                                     callback_data="activate_trial",
                                 )
                             )
@@ -491,9 +489,9 @@ async def get_main_text(first_name: str, subscription_status: str, user_id: int 
     ann = await get_announcement_text()
 
     if is_new_user:
-        greeting = f"👋 Добро пожаловать, <b>{first_name}</b>!"
+        greeting = f"{E.wave} Добро пожаловать, <b>{first_name}</b>!"
     else:
-        greeting = f"👋 Рады видеть тебя снова, <b>{first_name}</b>!"
+        greeting = f"{E.wave} Рады видеть тебя снова, <b>{first_name}</b>!"
 
     parts = [greeting, "", subscription_status]
     if ann and ann.strip():
@@ -537,7 +535,7 @@ async def get_main_keyboard(user_id: int, config):
     
     # Проверяем админа
     if user_id in config.bot.admin_ids:
-        builder.row(InlineKeyboardButton(text="🔐 Админ панель", callback_data="admin_panel"))
+        builder.row(btn("Админ панель", "admin", callback_data="admin_panel"))
     
     # Проверка на Пробный период
     show_trial = False
@@ -551,24 +549,24 @@ async def get_main_keyboard(user_id: int, config):
         logger.error(f"Error checking trial logic: {e}")
         
     if show_trial:
-        builder.row(InlineKeyboardButton(text="🎁 Plus за 1₽ — попробовать", callback_data="activate_trial"))
+        builder.row(btn("Plus за 1₽ — попробовать", "gift", callback_data="activate_trial"))
 
     from ..menu_labels import GIFT_BUTTON
 
     builder.row(
-        InlineKeyboardButton(text="🆘 Помощь", callback_data="open_help"),
-        InlineKeyboardButton(text="⏫ Лимиты", callback_data="open_bypass_packs"),
+        btn("Помощь", "help", callback_data="open_help"),
+        btn("Лимиты", "limits", callback_data="open_bypass_packs"),
     )
     if await should_show_devices_menu(user_id):
         builder.row(
-            InlineKeyboardButton(text="📱 Устройства", callback_data="my_devices"),
+            btn("Устройства", "devices", callback_data="my_devices"),
         )
     builder.row(
-        InlineKeyboardButton(text="🚀 Подписка", callback_data="open_tiers"),
+        btn("Подписка", "subscription", callback_data="open_tiers"),
         InlineKeyboardButton(text=GIFT_BUTTON, callback_data="open_invite"),
     )
     builder.row(
-        InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="get_vpn_link"),
+        btn("Подключить VPN", "vpn_connect", callback_data="get_vpn_link"),
     )
 
     return builder.as_markup()
@@ -633,7 +631,7 @@ async def setup_other_handlers(dp, bot: Bot, config):
         except Exception as e:
             logger.error("test_delete_user failed user=%s: %s", user_id, e, exc_info=True)
             await message.answer(
-                "❌ Не удалось удалить аккаунт полностью. Попробуйте позже или напишите в поддержку.",
+                f"{E.error} Не удалось удалить аккаунт полностью. Попробуйте позже или напишите в поддержку.",
             )
             return
 
@@ -650,7 +648,7 @@ async def setup_other_handlers(dp, bot: Bot, config):
         xui_err = result.get("xui_errors", 0)
 
         await message.answer(
-            "✅ <b>Аккаунт удалён</b>\n\n"
+            f"{E.success} <b>Аккаунт удалён</b>\n\n"
             f"<b>БД:</b>\n{summary}\n\n"
             f"<b>X-UI:</b> удалено {xui_ok}, ошибок {xui_err}\n\n"
             "Нажмите /start — зарегистрируетесь заново, как новый пользователь.",

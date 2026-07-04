@@ -26,6 +26,7 @@ from .traffic import (
 )
 from .remnawave_client import RemnawaveClient, build_remnawave_client, is_remnawave_server
 from .xui_client import XUIClient
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -1147,7 +1148,7 @@ async def send_upcoming_subscription_reminders(bot, config):
                 builder, _ = await build_expiry_reminder_markup(user_id)
                 
                 text = (
-                    f"⏰ <b>{user['first_name'] or 'Пользователь'}, подписка скоро закончится</b>\n\n"
+                    f"{E.clock} <b>{user['first_name'] or 'Пользователь'}, подписка скоро закончится</b>\n\n"
                     f"Plus заканчивается через <b>3 дня</b> ({end_date_str}).\n\n"
                     f"Продлите заранее, чтобы VPN работал без перерыва.\n\n"
                     f"Доступны тарифы <b>Plus на месяц</b> и <b>Plus на год</b>:"
@@ -1169,7 +1170,7 @@ async def send_upcoming_subscription_reminders(bot, config):
                 builder, _ = await build_expiry_reminder_markup(user_id)
 
                 text = (
-                    f"⏰ <b>Внимание! Подписка почти закончилась</b>\n\n"
+                    f"{E.clock} <b>Внимание! Подписка почти закончилась</b>\n\n"
                     f"Plus истекает <b>завтра</b> ({end_date_str}).\n\n"
                     f"Продлите сейчас — <b>Plus на месяц</b> или <b>Plus на год</b>:"
                 )

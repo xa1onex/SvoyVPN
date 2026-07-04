@@ -14,6 +14,7 @@ from .plans import SUBSCRIPTION_PLANS_BASE, TIER_PLANS_BASE
 from .referral_commission import is_commissionable_payment
 from .referral_rewards import _add_subscription_days
 from .subscriptions import create_or_activate_keys_for_all_servers
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -274,7 +275,7 @@ async def apply_referral_purchase_reward(
         try:
             await bot.send_message(
                 referrer_id,
-                f"🎁 <b>Друг оплатил {product_label}!</b>\n\n"
+                f"{E.gift} <b>Друг оплатил {product_label}!</b>\n\n"
                 f"Вам начислено <b>+{reward_days} дн.</b> SvoyVPN Plus "
                 f"({bonus_percent}% от {base_days} дн.).",
                 parse_mode="HTML",
@@ -282,7 +283,7 @@ async def apply_referral_purchase_reward(
             if tg_gift_created:
                 await bot.send_message(
                     referrer_id,
-                    f"🎉 <b>Подарок Telegram!</b>\n\n"
+                    f"{E.party} <b>Подарок Telegram!</b>\n\n"
                     f"За {yearly_count}-ю годовую Plus от друга вам полагается подарок "
                     f"на <b>{TG_GIFT_RUB_RANGE}</b>.\n\n"
                     "Мы свяжемся с вами в Telegram для отправки. "
@@ -306,7 +307,7 @@ async def apply_referral_purchase_reward(
 
                 config = load_config()
                 admin_text = (
-                    f"🎁 <b>Реферальный TG-подарок</b>\n\n"
+                    f"{E.gift} <b>Реферальный TG-подарок</b>\n\n"
                     f"Кому: <code>{referrer_id}</code>\n"
                     f"Друг: {who} (<code>{payer_user_id}</code>)\n"
                     f"Покупка: {product_label}\n"

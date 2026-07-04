@@ -13,6 +13,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .config import AppConfig
 from .flyer_client import FlyerClient
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +86,9 @@ def build_tasks_keyboard(tasks: list[dict[str, Any]]) -> InlineKeyboardBuilder:
         label = _task_button_text(task)
         for link in links:
             if link:
-                builder.row(InlineKeyboardButton(text=f"📢 {label}", url=str(link)))
+                builder.row(btn("{label}", "megaphone", url=str(link)))
     builder.row(
-        InlineKeyboardButton(text="✅ Проверить подписку", callback_data=FLYER_RECHECK_CALLBACK)
+        btn("Проверить подписку", "success", callback_data=FLYER_RECHECK_CALLBACK)
     )
     return builder
 
@@ -103,12 +104,12 @@ async def send_flyer_subscription_prompt(
 ) -> None:
     tasks = await flyer.get_tasks(user_id, language_code=language_code, limit=5)
     text = (
-        "📢 <b>Для продолжения подпишитесь на указанные ресурсы</b>\n\n"
+        f"{E.megaphone} <b>Для продолжения подпишитесь на указанные ресурсы</b>\n\n"
         "Выполните задания по кнопкам ниже, затем нажмите «Проверить подписку»."
     )
     if not tasks:
         text = (
-            "📢 <b>Для продолжения нужна подписка на партнёрские каналы</b>\n\n"
+            f"{E.megaphone} <b>Для продолжения нужна подписка на партнёрские каналы</b>\n\n"
             "Подпишитесь на каналы из сообщения Flyer (если оно уже пришло), "
             "затем нажмите «Проверить подписку»."
         )
@@ -165,7 +166,7 @@ class FlyerSubscriptionMiddleware(BaseMiddleware):
                 language_code=language_code,
                 message={
                     "text": (
-                        "📢 <b>Подпишитесь на каналы</b>, чтобы пользоваться ботом.\n\n"
+                        f"{E.megaphone} <b>Подпишитесь на каналы</b>, чтобы пользоваться ботом.\n\n"
                         "После подписки нажмите «Проверить»."
                     ),
                     "button_channel": "Подписаться",
@@ -217,7 +218,7 @@ class FlyerSubscriptionMiddleware(BaseMiddleware):
 
         if subscribed:
             await callback.message.edit_text(
-                "✅ <b>Подписка подтверждена!</b>\n\nМожете пользоваться ботом.",
+                f"{E.success} <b>Подписка подтверждена!</b>\n\nМожете пользоваться ботом.",
                 parse_mode="HTML",
             )
             await callback.answer("Готово!")

@@ -12,6 +12,7 @@ from datetime import date, datetime
 from typing import Any, Dict
 
 from .database import get_connection
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ SUBSCRIPTION_PLANS_BASE = {
 
 RENEWAL_PLANS_BASE = {
     "1_month_renew": {
-        "title": "1 месяц 🔥",
+        "title": f"1 месяц {E.hot}",
         "duration": 1,
         "traffic_gb": 100,
         "price_rub": 14900,
@@ -162,7 +163,7 @@ RENEWAL_PLANS_BASE = {
         "new_user": False,
     },
     "3_months_renew": {
-        "title": "3 месяца 🔥",
+        "title": f"3 месяца {E.hot}",
         "duration": 3,
         "traffic_gb": 300,
         "price_rub": 39900,
@@ -170,7 +171,7 @@ RENEWAL_PLANS_BASE = {
         "new_user": False,
     },
     "6_months_renew": {
-        "title": "6 месяцев 🔥",
+        "title": f"6 месяцев {E.hot}",
         "duration": 6,
         "traffic_gb": 600,
         "price_rub": 74900,
@@ -178,7 +179,7 @@ RENEWAL_PLANS_BASE = {
         "new_user": False,
     },
     "12_months_renew": {
-        "title": "12 месяцев 🔥",
+        "title": f"12 месяцев {E.hot}",
         "duration": 12,
         "traffic_gb": 1200,
         "price_rub": 119900,
@@ -514,15 +515,14 @@ async def build_expiry_reminder_markup(user_id: int):
         if not plan:
             continue
         builder.row(
-            InlineKeyboardButton(
-                text=f"💳 {plan['title']} — {format_price_rub(plan['price_rub'])}",
+            btn("{plan['title']} — {format_price_rub(plan['price_rub'])}", "card",
                 callback_data=f"tier_pay:{plan_id}",
             )
         )
 
     builder.row(
-        InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_tiers"),
-        InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
+        btn("Все тарифы", "plus", callback_data="open_tiers"),
+        btn("Подарок", "gift", callback_data="open_invite"),
     )
     return builder, "Plus"
 
@@ -538,7 +538,7 @@ def format_price_rub(price_cents: int) -> str:
 
 def format_price_stars(price_stars: int) -> str:
     """Форматирует цену в звездах"""
-    return f"{price_stars}⭐"
+    return f"{price_stars}{E.star}"
 
 
 def format_price_both(price_rub: int, price_stars: int) -> str:

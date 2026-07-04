@@ -28,6 +28,7 @@ from .subscriptions import (
     sync_user_keys,
 )
 from .traffic import apply_subscription_anchor_on_payment, ensure_bypass_period
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +38,13 @@ def format_tier_activated_message(tier_info: dict, plan_data: dict) -> str:
     tier_name = tier_info.get("name", "")
     bypass_gb = plan_data["bypass_gb"]
     return (
-        f"✅ <b>Тариф {tier_name} активирован!</b>\n\n"
+        f"{E.success} <b>Тариф {tier_name} активирован!</b>\n\n"
         f"Теперь у вас:\n"
         f"· Bypass: <b>{bypass_gb} ГБ/мес</b>\n"
         f"· Безлимит на устройства\n"
         f"· Приоритет к подключениям\n"
         f"· Доступ ко всем локациям и новым обходам"
-        f"<i>Чтобы применились изменения - просто обновите подписку в happ, через 🔄 или через раздел '🔗 Подключить VPN' 👇</i>"
+        f"<i>Чтобы применились изменения - просто обновите подписку в happ, через {E.refresh} или через раздел '{E.vpn_connect} Подключить VPN' {E.point_down}</i>"
     )
 
 
@@ -178,8 +179,8 @@ async def process_tier_stars_payment(
 ) -> bool:
     """Stars для подписки отключены."""
     await message.answer(
-        "❌ Оплата подписки через Telegram Stars недоступна.\n"
-        "Используйте оплату картой в разделе «🚀 Подписка».",
+        f"{E.error} Оплата подписки через Telegram Stars недоступна.\n"
+        f"Используйте оплату картой в разделе «{E.subscription} Подписка».",
         parse_mode="HTML",
     )
     return False
@@ -194,8 +195,8 @@ async def process_tier_upgrade_stars_payment(
 ) -> bool:
     """Stars для подписки отключены."""
     await message.answer(
-        "❌ Оплата подписки через Telegram Stars недоступна.\n"
-        "Используйте оплату картой в разделе «🚀 Подписка».",
+        f"{E.error} Оплата подписки через Telegram Stars недоступна.\n"
+        f"Используйте оплату картой в разделе «{E.subscription} Подписка».",
         parse_mode="HTML",
     )
     return False
@@ -221,7 +222,7 @@ async def process_bypass_pack_stars_payment(
             charge_id,
         )
         if existing and existing["status"] == "completed":
-            await message.answer("✅ Этот платёж уже обработан.")
+            await message.answer(f"{E.success} Этот платёж уже обработан.")
             return False
 
         pack = await conn.fetchrow(
@@ -229,7 +230,7 @@ async def process_bypass_pack_stars_payment(
             pack_id,
         )
         if not pack:
-            await message.answer("❌ Пакет недоступен.")
+            await message.answer(f"{E.error} Пакет недоступен.")
             return False
 
         async with conn.transaction():
@@ -253,7 +254,7 @@ async def process_bypass_pack_stars_payment(
                 )
 
     await message.answer(
-        f"✅ <b>+{pack['gb_amount']} ГБ bypass</b> добавлено!\n\n"
+        f"{E.success} <b>+{pack['gb_amount']} ГБ bypass</b> добавлено!\n\n"
         f"Пакет: {pack['title']}\n"
         f"Оплачено: {total_amount} Stars",
         parse_mode="HTML",
@@ -415,7 +416,7 @@ async def process_tier_webhook_payment(
     if bot and not is_autopay_renewal:
         try:
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"))
+            b.row(btn("Получить VPN", "vpn_connect", callback_data="get_vpn_link"))
             await bot.send_message(
                 user_id,
                 format_tier_activated_message(tier_info, plan_data),
@@ -508,9 +509,9 @@ async def process_tier_upgrade_webhook_payment(
         try:
             await bot.send_message(
                 user_id,
-                f"✅ <b>Тариф повышен до {tier_info.get('name', '')}!</b>\n\n"
-                f"🔓 Bypass: {plan_data['bypass_gb']} ГБ/мес\n"
-                f"📱 Устройств: до {plan_data['max_devices']}",
+                f"{E.success} <b>Тариф повышен до {tier_info.get('name', '')}!</b>\n\n"
+                f"{E.bypass} Bypass: {plan_data['bypass_gb']} ГБ/мес\n"
+                f"{E.devices} Устройств: до {plan_data['max_devices']}",
                 parse_mode="HTML",
             )
         except Exception:
@@ -581,7 +582,7 @@ async def process_bypass_pack_webhook_payment(
         try:
             await bot.send_message(
                 user_id,
-                f"✅ <b>+{pack['gb_amount']} ГБ bypass</b> добавлено!\n\nПакет: {pack['title']}",
+                f"{E.success} <b>+{pack['gb_amount']} ГБ bypass</b> добавлено!\n\nПакет: {pack['title']}",
                 parse_mode="HTML",
             )
         except Exception:

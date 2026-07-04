@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 
 from dotenv import load_dotenv
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 # После публикации статей на Telegraph — в .env:
 # BYPASS_HELP_TELEGRAPH_URL=https://telegra.ph/ваш-слаг
@@ -19,18 +20,18 @@ def _telegraph_url(env_key: str) -> str:
 
 
 def bypass_help_link_html() -> str:
-    """«(см. 🛈)» в конце строки bypass — иконка ведёт на статью."""
+    ""f"«(см. {E.info_link})» в конце строки bypass — иконка ведёт на статью."""
     url = _telegraph_url("BYPASS_HELP_TELEGRAPH_URL")
     if url:
-        return f' (<a href="{url}">см. 🛈</a>)'
+        return f' (<a href="{url}">см. {E.info_link}</a>)'
     return ""
 
 
 def earn_help_link_html() -> str:
-    """«(см. 🛈)» рядом с заголовком «Подарок» — ссылка на правила."""
+    ""f"«(см. {E.info_link})» рядом с заголовком «Подарок» — ссылка на правила."""
     url = _telegraph_url("EARN_HELP_TELEGRAPH_URL")
     if url:
-        return f' (<a href="{url}">см. 🛈</a>)'
+        return f' (<a href="{url}">см. {E.info_link}</a>)'
     return ""
 
 
@@ -42,10 +43,10 @@ def format_bypass_status_line(
     exceeded: bool = False,
     prefix: str = "\n",
 ) -> str:
-    """Строка «Bypass(Лимит): used / limit ГБ (+N ГБ пакет) (см. 🛈)»."""
+    ""f"Строка «Bypass(Лимит): used / limit ГБ (+N ГБ пакет) (см. {E.info_link})»."""
     line = f"{prefix}<b>Bypass(Лимит)</b>: {used:.1f} / {limit:.0f} ГБ"
     if exceeded:
-        line += " ⚠️"
+        line += f" {E.warning}"
     if bonus > 0:
         line += f" (+{bonus} ГБ пакет)"
     line += bypass_help_link_html()

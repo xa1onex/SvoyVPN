@@ -10,6 +10,7 @@ from typing import Any
 from .database import get_connection
 from .plans import FREE_TIER_ID
 from .subscriptions import revoke_all_vpn_access
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ OFFER_URL = (
 )
 
 BLOCKED_USER_MESSAGE = (
-    "🚫 <b>Доступ к сервису ограничен</b>\n\n"
+    f"{E.blocked} <b>Доступ к сервису ограничен</b>\n\n"
     "Аккаунт заблокирован за нарушение "
     f'<a href="{OFFER_URL}">оферты</a> '
     "(в т.ч. п. 8.6 — злоупотребление партнёрской программой).\n\n"

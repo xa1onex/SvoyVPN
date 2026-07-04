@@ -7,6 +7,7 @@ import asyncio
 import logging
 
 from .database import get_connection
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -16,23 +17,23 @@ _MAX_DETAIL = 500
 _SKIP_ACTIONS = frozenset({"flyer_recheck"})
 
 ACTION_LABELS: dict[str, str] = {
-    "/start": "▶️ Старт",
-    "get_vpn_link": "🔗 Подключить VPN",
-    "open_invite": "🎁 Подарок",
-    "open_help": "🆘 Помощь",
-    "open_balance": "💰 Баланс",
-    "open_subscription": "💎 Подписка",
-    "open_tiers": "💎 Тарифы",
-    "activate_trial": "🆓 Пробный Plus",
-    "successful_payment": "💳 Оплата",
-    "text": "💬 Текст",
-    "photo": "🖼 Фото",
-    "document": "📎 Файл",
-    "contact": "📇 Контакт",
-    "sticker": "🙂 Стикер",
-    "sent:connect_nudge_1h": "📨 Nudge 1ч",
-    "sent:connect_nudge_1d": "📨 Nudge 1д",
-    "sent:connect_nudge_4d_before_end": "📨 Nudge −4д",
+    "/start": f"{E.forward} Старт",
+    "get_vpn_link": f"{E.vpn_connect} Подключить VPN",
+    "open_invite": f"{E.gift} Подарок",
+    "open_help": f"{E.help} Помощь",
+    "open_balance": f"{E.money} Баланс",
+    "open_subscription": f"{E.plus} Подписка",
+    "open_tiers": f"{E.plus} Тарифы",
+    "activate_trial": f"{E.free} Пробный Plus",
+    "successful_payment": f"{E.card} Оплата",
+    "text": f"{E.chat} Текст",
+    "photo": f"{E.photo} Фото",
+    "document": f"{E.attach} Файл",
+    "contact": f"{E.contact} Контакт",
+    "sticker": f"{E.smile} Стикер",
+    "sent:connect_nudge_1h": f"{E.envelope_msg} Nudge 1ч",
+    "sent:connect_nudge_1d": f"{E.envelope_msg} Nudge 1д",
+    "sent:connect_nudge_4d_before_end": f"{E.envelope_msg} Nudge −4д",
 }
 
 
@@ -57,17 +58,17 @@ def format_activity_label(event_kind: str, action: str) -> str:
     if action in ACTION_LABELS:
         return ACTION_LABELS[action]
     if action.startswith("sent:"):
-        return f"📨 {action[5:]}"
+        return f"{E.envelope_msg} {action[5:]}"
     base = normalize_action(action)
     if base in ACTION_LABELS:
         suffix = action[len(base) :]
         return ACTION_LABELS[base] + (suffix if suffix else "")
     icons = {
-        "callback": "🔘",
-        "command": "⌨️",
-        "message": "💬",
-        "payment": "💳",
-        "notification": "📨",
+        "callback": f"{E.radio}",
+        "command": f"{E.keyboard}",
+        "message": f"{E.chat}",
+        "payment": f"{E.card}",
+        "notification": f"{E.envelope_msg}",
     }
     icon = icons.get(event_kind, "•")
     return f"{icon} <code>{action[:48]}</code>"

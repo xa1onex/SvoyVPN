@@ -16,6 +16,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from .config import AppConfig
 from .database import get_connection
 from .plans import ALL_PAID_TIER_IDS, TIERS, TIER_PLANS_BASE, get_tier_plans, TIER_ORDER
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +92,7 @@ async def run_referral_trial_backfill(bot: Bot) -> None:
                     "referral_trial_1rub_offer",
                 )
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(
-                text="🎁 Plus за 1₽ — попробовать",
+            b.row(btn("Plus за 1₽ — попробовать", "gift",
                 callback_data="activate_trial",
             ))
             await bot.send_message(
@@ -139,18 +139,17 @@ async def _notify_idle_new_users(bot: Bot) -> None:
                 continue
         try:
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(
-                text="🎁 Plus за 1₽ — попробовать",
+            b.row(btn("Plus за 1₽ — попробовать", "gift",
                 callback_data="activate_trial",
             ))
             await bot.send_message(
                 user_id,
-                "🎁 <b>У нас для тебя подарок!</b>\n\n"
+                f"{E.gift} <b>У нас для тебя подарок!</b>\n\n"
                 "Мы подготовили VPN, который работает быстро и стабильно — "
                 "YouTube, TikTok, ChatGPT без блокировок.\n\n"
-                "🔓 50 ГБ bypass в месяц\n"
-                "📱 Безлимит устройств\n"
-                "⚡ Подключение за 30 сек\n\n"
+                f"{E.bypass} 50 ГБ bypass в месяц\n"
+                f"{E.devices} Безлимит устройств\n"
+                f"{E.activate} Подключение за 30 сек\n\n"
                 "Попробуй тариф <b>Plus</b> за <b>1₽</b> — никаких обязательств!",
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
@@ -207,13 +206,12 @@ async def _notify_trial_inactive(bot: Bot, config: AppConfig) -> None:
         user_id = row["user_id"]
         try:
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(
-                text=f"🔥 Plus за {discount_price_rub:.0f}₽/мес (-30%)",
+            b.row(btn("Plus за {discount_price_rub:.0f}₽/мес (-30%)", "hot",
                 callback_data="promo_plus_30",
             ))
             await bot.send_message(
                 user_id,
-                "👋 <b>Привет!</b>\n\n"
+                f"{E.wave} <b>Привет!</b>\n\n"
                 "Мы видим, что пробный период закончился. "
                 "Наш VPN — YouTube, TikTok, AI без блокировок.\n\n"
                 f"Специально для тебя — <b>скидка 30%</b> на тариф Plus:\n"
@@ -274,13 +272,12 @@ async def _notify_cancelled_users(bot: Bot, config: AppConfig) -> None:
 
         try:
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(
-                text=f"💎 Plus за {offer_price:.0f}₽/мес",
+            b.row(btn("Plus за {offer_price:.0f}₽/мес", "plus",
                 callback_data="tier_select:plus:plus_1m",
             ))
             await bot.send_message(
                 user_id,
-                "👋 <b>Мы по тебе скучаем!</b>\n\n"
+                f"{E.wave} <b>Мы по тебе скучаем!</b>\n\n"
                 "YouTube, TikTok и AI снова в зоне доступа — "
                 "оформите тариф <b>Plus</b> и пользуйтесь без ограничений:\n\n"
                 "• 50 ГБ bypass/мес\n"
@@ -356,19 +353,18 @@ async def _reset_trial_for_lapsed_paid_users(bot: Bot) -> None:
                 )
 
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(
-                text="🎁 Plus за 1₽ — попробовать снова",
+            b.row(btn("Plus за 1₽ — попробовать снова", "gift",
                 callback_data="activate_trial",
             ))
             await bot.send_message(
                 user_id,
-                "👋 <b>Давно не виделись!</b>\n\n"
+                f"{E.wave} <b>Давно не виделись!</b>\n\n"
                 "Прошёл месяц с момента окончания вашей подписки.\n\n"
                 "Специально для вас мы возвращаем <b>предложение Plus за 1₽</b> — "
                 "попробуйте снова:\n\n"
-                "🔓 50 ГБ bypass в месяц\n"
-                "📱 Безлимит устройств\n"
-                "⚡ YouTube / TikTok / AI работают\n\n"
+                f"{E.bypass} 50 ГБ bypass в месяц\n"
+                f"{E.devices} Безлимит устройств\n"
+                f"{E.activate} YouTube / TikTok / AI работают\n\n"
                 "Воспользуйтесь предложением — оно ждёт вас в главном меню!",
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
@@ -423,13 +419,12 @@ async def check_device_reset_upsell(bot: Bot, user_id: int) -> None:  # noqa: N8
         plus_info = TIERS["plus"]
         try:
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(
-                text="💎 Перейти на Plus",
+            b.row(btn("Перейти на Plus", "plus",
                 callback_data="open_tiers",
             ))
             await bot.send_message(
                 user_id,
-                "💡 <b>Часто сбрасываете устройства?</b>\n\n"
+                f"{E.bulb} <b>Часто сбрасываете устройства?</b>\n\n"
                 "На тарифе <b>Plus</b> — <b>безлимит устройств</b>, "
                 "ничего не нужно отключать!\n\n"
                 f"• {plus_info['bypass_gb']} ГБ bypass/мес\n"

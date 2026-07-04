@@ -1,3 +1,4 @@
 """Подписи кнопок и заголовков меню (единое место)."""
 
-GIFT_BUTTON = "🎁 Подарок"
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
+GIFT_BUTTON = f"{E.gift} Подарок"

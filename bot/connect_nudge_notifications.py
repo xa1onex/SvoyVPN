@@ -21,6 +21,7 @@ from .plans import (
     format_subscription_end_for_display,
     is_sentinel_subscription_end,
 )
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +38,11 @@ _BATCH = 80
 def build_connect_nudge_keyboard():
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="get_vpn_link"),
+        btn("Подключить VPN", "vpn_connect", callback_data="get_vpn_link"),
     )
     builder.row(
-        InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"),
-        InlineKeyboardButton(text="🆘 Помощь", callback_data="open_help"),
+        btn("Подарок", "gift", callback_data="open_invite"),
+        btn("Помощь", "help", callback_data="open_help"),
     )
     return builder.as_markup()
 
@@ -49,14 +50,14 @@ def build_connect_nudge_keyboard():
 def _message_text(variant: str, *, end_str: str | None = None) -> str:
     if variant == NOTIFY_1H:
         return (
-            "🤔 <b>Не получается подключиться?</b> Мы поможем!\n\n"
+            f"{E.think} <b>Не получается подключиться?</b> Мы поможем!\n\n"
             "Попробуйте подключить VPN — это пара минут через кнопку ниже.\n"
             "Спешите: <b>подарочная подписка</b> может закончиться, "
             "если вы не воспользуетесь сервисом."
         )
     if variant == NOTIFY_1D:
         return (
-            "⏰ <b>VPN всё ещё не подключён</b>\n\n"
+            f"{E.clock} <b>VPN всё ещё не подключён</b>\n\n"
             "Вы зарегистрировались, но подписка в Happ ещё не открывалась.\n"
             "Нажмите <b>«Подключить VPN»</b> — подскажем по шагам.\n\n"
             "Подарочный период не бесконечный — успейте попробовать!"
@@ -64,12 +65,12 @@ def _message_text(variant: str, *, end_str: str | None = None) -> str:
     if variant == NOTIFY_4D:
         date_part = f" до <b>{end_str}</b>" if end_str else ""
         return (
-            f"⚠️ <b>Через 4 дня заканчивается подарочный Plus</b>{date_part}\n\n"
+            f"{E.warning} <b>Через 4 дня заканчивается подарочный Plus</b>{date_part}\n\n"
             "Вы ещё не подключали VPN. Успейте воспользоваться — "
             "осталось мало времени.\n\n"
             "Нужна помощь — кнопка <b>«Помощь»</b> ниже."
         )
-    return "🔗 Подключите VPN через кнопку ниже."
+    return f"{E.vpn_connect} Подключите VPN через кнопку ниже."
 
 
 async def _mark_sent(conn, user_id: int, notification_type: str) -> None:

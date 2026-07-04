@@ -18,6 +18,7 @@ from .config import AppConfig
 from .database import get_connection
 from .subscriptions import create_or_activate_keys_for_all_servers, extend_subscription, set_new_subscription
 from .traffic import apply_subscription_anchor_on_payment, ensure_traffic_anchor_and_period
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ async def _finalize_esim_delivery(
         try:
             if ok and delivery.get("activationCode"):
                 cap = (
-                    f"✅ <b>eSIM готов</b>\n\n"
+                    f"{E.success} <b>eSIM готов</b>\n\n"
                     f"Код активации:\n<code>{delivery.get('activationCode', '')}</code>\n\n"
                     f"SMDP+:\n<code>{delivery.get('smdpAddress', '')}</code>"
                 )
@@ -172,7 +173,7 @@ async def _finalize_esim_delivery(
             else:
                 await bot.send_message(
                     user_id,
-                    "✅ Оплата получена. Оформление eSIM временно не удалось — напишите в поддержку, пришлите скрин оплаты.",
+                    f"{E.success} Оплата получена. Оформление eSIM временно не удалось — напишите в поддержку, пришлите скрин оплаты.",
                     parse_mode="HTML",
                 )
         except Exception as e:
@@ -301,7 +302,7 @@ async def process_gb_pack_webhook_payment(
             await bot.send_message(
                 user_id,
                 (
-                    f"✅ <b>Пакет трафика активирован</b>\n\n"
+                    f"{E.success} <b>Пакет трафика активирован</b>\n\n"
                     f"+{pack['gb_amount']} ГБ добавлено к лимиту текущего периода.\n"
                     f"Товар: <i>{pack['title']}</i>"
                 ),
@@ -356,7 +357,7 @@ async def process_telegram_gb_pack_payment(
             )
 
         if existing_payment and existing_payment["status"] == "completed":
-            await message.answer("✅ Этот платёж уже был обработан.")
+            await message.answer(f"{E.success} Этот платёж уже был обработан.")
             return False
 
         pack = await conn.fetchrow(
@@ -368,7 +369,7 @@ async def process_telegram_gb_pack_payment(
             pack_id,
         )
         if not pack:
-            await message.answer("❌ Пакет недоступен.")
+            await message.answer(f"{E.error} Пакет недоступен.")
             return False
 
         active = await conn.fetchval(
@@ -382,7 +383,7 @@ async def process_telegram_gb_pack_payment(
             user_id,
         )
         if not active:
-            await message.answer("❌ Пакеты трафика доступны только при активной подписке.")
+            await message.answer(f"{E.error} Пакеты трафика доступны только при активной подписке.")
             return False
 
         plan_key = f"gb_pack:{pack_id}"
@@ -440,7 +441,7 @@ async def process_telegram_gb_pack_payment(
 
     await message.answer(
         (
-            f"✅ <b>+{pack['gb_amount']} ГБ</b> добавлено к лимиту текущего периода.\n"
+            f"{E.success} <b>+{pack['gb_amount']} ГБ</b> добавлено к лимиту текущего периода.\n"
             f"Пакет: <i>{pack['title']}</i>\n"
             f"Оплачено: <i>{formatted_price}</i>"
         ),
@@ -562,7 +563,7 @@ async def process_esim_telegram_invoice_payment(
     package_row = next((p for p in pkgs if p.get("packageCode") == package_code), None)
     if not package_row:
         logger.error("eSIM telegram: bad package %s %s", location_code, package_code)
-        await message.answer("❌ Тариф не найден. Обратитесь в поддержку.")
+        await message.answer(f"{E.error} Тариф не найден. Обратитесь в поддержку.")
         return False
 
     price_k = int(
@@ -574,7 +575,7 @@ async def process_esim_telegram_invoice_payment(
             logger.error(
                 "eSIM stars amount mismatch: got %s expected %s", total_amount, expected
             )
-            await message.answer("❌ Сумма платежа не совпадает с тарифом.")
+            await message.answer(f"{E.error} Сумма платежа не совпадает с тарифом.")
             return False
         amount_cents = int(total_amount)
     else:
@@ -583,7 +584,7 @@ async def process_esim_telegram_invoice_payment(
             logger.error(
                 "eSIM rub invoice mismatch: got %s expected %s", total_amount, expected_k
             )
-            await message.answer("❌ Сумма платежа не совпадает с тарифом.")
+            await message.answer(f"{E.error} Сумма платежа не совпадает с тарифом.")
             return False
         amount_cents = int(total_amount)
 
@@ -600,7 +601,7 @@ async def process_esim_telegram_invoice_payment(
                 charge_id,
             )
         if existing_payment and existing_payment["status"] == "completed":
-            await message.answer("✅ Этот платёж уже был обработан.")
+            await message.answer(f"{E.success} Этот платёж уже был обработан.")
             return False
 
         await _finalize_esim_delivery(
@@ -620,7 +621,7 @@ async def process_esim_telegram_invoice_payment(
             config=config,
         )
 
-    await message.answer("✅ Оплата принята! eSIM отправлен вам в отдельном сообщении.")
+    await message.answer(f"{E.success} Оплата принята! eSIM отправлен вам в отдельном сообщении.")
     return True
 
 
@@ -672,7 +673,7 @@ async def process_telegram_stars_payment(
         if existing_payment and existing_payment['status'] == 'completed':
             logger.warning(f"Payment {charge_id}/{provider_charge_id} already processed, skipping")
             await message.answer(
-                "✅ Этот платеж уже был обработан ранее."
+                f"{E.success} Этот платеж уже был обработан ранее."
             )
             return False
         
@@ -736,7 +737,7 @@ async def process_telegram_stars_payment(
         
         # Отправляем квитанцию пользователю
         receipt = (
-            f"💳 <b>VPN подписка</b> успешно активирована!\n\n"
+            f"{E.card} <b>VPN подписка</b> успешно активирована!\n\n"
             f"<b>Чек на оплату</b>\n"
             f"Дата активации: <i>{datetime.now().strftime('%d.%m.%Y')}</i>\n"
             f"Дата окончания: <i>{end_date_str}</i>\n"
@@ -746,12 +747,12 @@ async def process_telegram_stars_payment(
             f"• План: <i>{plan_data['title']}</i>\n"
             f"• Месячный лимит трафика задаётся в настройках сервиса (см. приложение)\n"
             f"• Срок: <i>{duration_months} месяцев</i>\n\n"
-            f"✅ Теперь вы можете получить VPN ссылку через кнопку <b>🔗 Получить VPN</b>!\n\n"
+            f"{E.success} Теперь вы можете получить VPN ссылку через кнопку <b>{E.vpn_connect} Получить VPN</b>!\n\n"
             f"ID транзакции: <code>{charge_id}</code>"
         )
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"))
+        builder.row(btn("Получить VPN", "vpn_connect", callback_data="get_vpn_link"))
         
         await message.answer(receipt, parse_mode='HTML', reply_markup=builder.as_markup())
         
@@ -764,7 +765,7 @@ async def process_telegram_stars_payment(
                 try:
                     await bot.send_message(
                         admin_id,
-                        f"💳 <b>Покупка подписки</b>\n\n"
+                        f"{E.card} <b>Покупка подписки</b>\n\n"
                         f"Пользователь: {first_name} (@{username})\n"
                         f"ID: <code>{user_id}</code>\n"
                         f"План: {plan_data['title']}\n"
@@ -1017,19 +1018,19 @@ async def process_webhook_payment(
                 try:
                     formatted_price = f"{amount_rub:.2f} ₽"
                     text = (
-                        f"✅ <b>Оплата успешно получена!</b>\n\n"
-                        f"💳 <b>Детали платежа:</b>\n"
+                        f"{E.success} <b>Оплата успешно получена!</b>\n\n"
+                        f"{E.card} <b>Детали платежа:</b>\n"
                         f"• Способ: <i>{method_data['title']}</i>\n"
                         f"• Сумма: <i>{formatted_price}</i>\n"
                         f"• ID транзакции: <code>{payment_id}</code>\n\n"
-                        f"💎 <b>Подписка:</b>\n"
+                        f"{E.plus} <b>Подписка:</b>\n"
                         f"• План: <i>{plan_data['title']}</i>\n"
                         f"• Активна до: <b>{end_str}</b>\n\n"
                         f"Нажмите кнопку ниже, чтобы получить настройки VPN."
                     )
                     
                     builder = InlineKeyboardBuilder()
-                    builder.row(InlineKeyboardButton(text="🔗 Получить VPN", callback_data="get_vpn_link"))
+                    builder.row(btn("Получить VPN", "vpn_connect", callback_data="get_vpn_link"))
                     
                     await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=builder.as_markup())
                 except Exception as e:
@@ -1052,7 +1053,7 @@ async def process_webhook_payment(
                         try:
                             await bot.send_message(
                                 admin_id,
-                                f"💳 <b>Покупка подписки ({method_data['title']})</b>\n\n"
+                                f"{E.card} <b>Покупка подписки ({method_data['title']})</b>\n\n"
                                 f"Пользователь: {first_name} (@{username})\n"
                                 f"ID: <code>{user_id}</code>\n"
                                 f"План: {plan_data['title']}\n"

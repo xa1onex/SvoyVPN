@@ -12,6 +12,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from .database import get_connection
 from .referral_rewards import get_referral_bonus_days
 from .referral_tiers import MSK, month_label_ru
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -82,11 +83,11 @@ async def send_referral_monthly_summaries(bot: Bot) -> None:
             days_total = invited_count * bonus_days
             label = month_label_ru(year, month)
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(text="🎁 Подарок", callback_data="open_invite"))
+            b.row(btn("Подарок", "gift", callback_data="open_invite"))
 
             await bot.send_message(
                 referrer_id,
-                f"📊 <b>Итоги подарков за {label}</b>\n\n"
+                f"{E.chart} <b>Итоги подарков за {label}</b>\n\n"
                 f"Приглашено друзей: <b>{invited_count}</b>\n"
                 f"Начислено Plus: <b>{days_total} дн.</b> "
                 f"(по <b>{bonus_days}</b> за каждого)\n\n"

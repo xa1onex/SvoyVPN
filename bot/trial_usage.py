@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import asyncpg
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 # Пробный платёж: 1₽, plan plus_1m.
 TRIAL_PAYMENT_AMOUNT_KOPECKS = 100
@@ -271,16 +272,16 @@ async def sync_trial_used_flag(conn: asyncpg.Connection, user_id: int) -> bool:
 async def trial_status_for_admin(conn: asyncpg.Connection, user_id: int) -> str:
     """Текст для карточки пользователя в админке."""
     if not await has_completed_trial_payment(conn, user_id):
-        return "❌ Нет"
+        return f"{E.error} Нет"
     if await user_eligible_for_trial_offer(conn, user_id):
-        return "🔄 Доступен повторно (1₽)"
-    return "✅ Использовал"
+        return f"{E.refresh} Доступен повторно (1₽)"
+    return f"{E.success} Использовал"
 
 
 def referral_trial_offer_text(trial_days: int) -> str:
     """Текст экрана «Plus за 1₽» для реферальных/UTM пользователей."""
     return (
-        f"🎁 <b>Plus за 1₽</b>\n\n"
+        f"{E.gift} <b>Plus за 1₽</b>\n\n"
         f"Период: <b>{trial_days} дней</b>\n"
         f"Стоимость сейчас: <b>1₽</b>\n\n"
         f"· Безлимит устройств\n"
@@ -289,6 +290,6 @@ def referral_trial_offer_text(trial_days: int) -> str:
         f"· YouTube / TikTok / ChatGPT\n\n"
         f"Привяжите карту — после пробного периода подписка продлится автоматически "
         f"по актуальной цене Plus.\n\n"
-        f"<i>Plus активируется после оплаты — обновите подписку в Happ (🔄) "
-        f"или через бота → «🔗 Подключить VPN»</i>"
+        f"<i>Plus активируется после оплаты — обновите подписку в Happ ({E.refresh}) "
+        f"или через бота → «{E.vpn_connect} Подключить VPN»</i>"
     )

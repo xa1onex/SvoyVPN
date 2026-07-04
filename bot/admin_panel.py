@@ -18,6 +18,7 @@ from .plans import (
     format_price_rub,
 )
 from .activity_log import ACTION_LABELS
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 
 def get_admin_panel_keyboard():
@@ -26,50 +27,50 @@ def get_admin_panel_keyboard():
 
     # Мониторинг
     builder.row(
-        InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"),
-        InlineKeyboardButton(text="🔔 Логи", callback_data="admin_realtime_logs"),
+        btn("Статистика", "chart", callback_data="admin_stats"),
+        btn("Логи", "bell", callback_data="admin_realtime_logs"),
     )
     builder.row(
-        InlineKeyboardButton(text="👤 Пользователь", callback_data="admin_user_info"),
+        btn("Пользователь", "user", callback_data="admin_user_info"),
     )
 
     # Тарифы и продукт
     builder.row(
-        InlineKeyboardButton(text="💎 Plus / bypass", callback_data="admin_tier_prices"),
-        InlineKeyboardButton(text="📶 Трафик", callback_data="admin_traffic"),
+        btn("Plus / bypass", "plus", callback_data="admin_tier_prices"),
+        btn("Трафик", "signal", callback_data="admin_traffic"),
     )
     builder.row(
-        InlineKeyboardButton(text="🎁 Скидки", callback_data="admin_discounts"),
-        InlineKeyboardButton(text="🆓 Пробный", callback_data="admin_trial"),
+        btn("Скидки", "gift", callback_data="admin_discounts"),
+        btn("Пробный", "free", callback_data="admin_trial"),
     )
 
     # Инфраструктура
     builder.row(
-        InlineKeyboardButton(text="🖥️ Серверы", callback_data="admin_servers"),
-        InlineKeyboardButton(text="📱 Happ", callback_data="admin_device_apps"),
+        btn("Серверы", "servers", callback_data="admin_servers"),
+        btn("Happ", "devices", callback_data="admin_device_apps"),
     )
 
     # Маркетинг
     builder.row(
-        InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast"),
-        InlineKeyboardButton(text="✏️ Объявление", callback_data="edit_announcement"),
+        btn("Рассылка", "megaphone", callback_data="admin_broadcast"),
+        btn("Объявление", "edit", callback_data="edit_announcement"),
     )
     builder.row(
-        InlineKeyboardButton(text="🎁 Рефералы", callback_data="admin_referral"),
-        InlineKeyboardButton(text="📈 UTM", callback_data="admin_utm"),
+        btn("Рефералы", "gift", callback_data="admin_referral"),
+        btn("UTM", "trend_up", callback_data="admin_utm"),
     )
 
     # Управление
     builder.row(
-        InlineKeyboardButton(text="💳 Баланс", callback_data="admin_balance"),
-        InlineKeyboardButton(text="👥 Админы", callback_data="admin_manage_admins"),
+        btn("Баланс", "card", callback_data="admin_balance"),
+        btn("Админы", "users", callback_data="admin_manage_admins"),
     )
     builder.row(
-        InlineKeyboardButton(text="🛟 Менеджеры", callback_data="admin_manage_managers"),
+        btn("Менеджеры", "support", callback_data="admin_manage_managers"),
     )
 
     builder.row(
-        InlineKeyboardButton(text="◀️ В бот", callback_data="admin_back_to_main"),
+        btn("В бот", "back", callback_data="admin_back_to_main"),
     )
     return builder.as_markup()
 
@@ -468,8 +469,8 @@ async def build_admin_stats_text(conn) -> str:
     msk = datetime.now(pytz.timezone("Europe/Moscow")).strftime("%d.%m.%Y %H:%M")
 
     return (
-        "📊 <b>Статистика SvoyVPN</b>\n\n"
-        "<b>👥 Пользователи</b>\n"
+        f"{E.chart} <b>Статистика SvoyVPN</b>\n\n"
+        f"<b>{E.users} Пользователи</b>\n"
         f"• Всего: <b>{total_users}</b>\n"
         f"• Free (активных): <b>{free_users or 0}</b>\n"
         f"• Plus (активных): <b>{plus_users or 0}</b>\n"
@@ -477,23 +478,23 @@ async def build_admin_stats_text(conn) -> str:
         + f"• С привязанной картой: <b>{with_card or 0}</b>\n"
         f"• В отсрочке автоплатежа: <b>{in_grace or 0}</b>\n"
         f"• Новых сегодня / за 7д: <b>{new_today or 0}</b> / <b>{new_week or 0}</b>\n\n"
-        "<b>📈 Активность</b>\n"
+        f"<b>{E.trend_up} Активность</b>\n"
         f"• В боте 7д / 30д: <b>{active_7d or 0}</b> / <b>{active_30d or 0}</b>\n"
         f"• Неактивны 30+ дней: <i>{inactive_30d or 0}</i>\n"
         f"• VPN DAU / WAU / MAU: <b>{sub_dau or 0}</b> / <b>{sub_wau or 0}</b> / <b>{sub_mau or 0}</b>\n"
         f"• Запросов /sub сегодня: <b>{sub_requests_today or 0}</b>\n"
         f"• В боте (клики/команды) DAU / WAU: <b>{bot_dau or 0}</b> / <b>{bot_wau or 0}</b>\n\n"
-        "<b>🧭 Воронка (7 дней)</b>\n"
+        f"<b>{E.compass} Воронка (7 дней)</b>\n"
         f"• Регистраций: <b>{reg7}</b>\n"
         f"• Нажали кнопку: <b>{funnel['clicked_btn'] or 0}</b> ({_pct(funnel['clicked_btn'] or 0)})\n"
         f"• «Подключить VPN»: <b>{funnel['vpn_btn'] or 0}</b> ({_pct(funnel['vpn_btn'] or 0)})\n"
         f"• Запросили /sub: <b>{funnel['sub_req'] or 0}</b> ({_pct(funnel['sub_req'] or 0)})\n"
         f"• Только /start, без кнопок: <i>{funnel['only_start'] or 0}</i>\n\n"
-        "<b>🔝 Действия в боте (7д)</b>\n"
+        f"<b>{E.top} Действия в боте (7д)</b>\n"
         f"{actions_text}\n"
-        "<b>📱 Клиенты (7д)</b>\n"
+        f"<b>{E.devices} Клиенты (7д)</b>\n"
         f"{platforms_text}\n"
-        "<b>💰 Финансы (30 дней)</b>\n"
+        f"<b>{E.money} Финансы (30 дней)</b>\n"
         f"• Доход: <b>{(revenue_30d_rub or 0) / 100:.0f}₽</b> "
         f"(сегодня {(revenue_today_rub or 0) / 100:.0f}₽, {payments_today or 0} пл.)\n"
         f"• Всего за всё время: {(total_revenue_rub or 0) / 100:.0f}₽\n"
@@ -503,15 +504,15 @@ async def build_admin_stats_text(conn) -> str:
         f"{type_lines}\n"
         "<b>По источнику:</b>\n"
         f"{source_lines}\n"
-        "<b>📉 Plus без карты</b> (истекают ≤7д): "
+        f"<b>{E.trend_down} Plus без карты</b> (истекают ≤7д): "
         f"<b>{expiring_no_card or 0}</b>\n\n"
-        "<b>🧪 Пробный Plus</b>\n"
+        f"<b>{E.test} Пробный Plus</b>\n"
         f"• Активировали: {trial_activated or 0}\n"
         f"• Оплатили после: {trial_converted or 0} ({trial_rate:.0f}%)\n\n"
-        "<b>🔑 VPN</b>\n"
+        f"<b>{E.key} VPN</b>\n"
         f"• Ключей активных / всего: {active_keys or 0} / {total_keys or 0}\n"
         f"• Серверов активных: {active_servers or 0} / {total_servers or 0}\n\n"
-        "<b>🎁 Рефералы</b>\n"
+        f"<b>{E.gift} Рефералы</b>\n"
         f"• Приглашений всего: {total_referrals or 0}\n\n"
-        f"🕒 {msk}"
+        f"{E.time} {msk}"
     )

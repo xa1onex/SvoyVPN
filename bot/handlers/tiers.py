@@ -42,6 +42,7 @@ from ..plans import (
 )
 from ..traffic import user_bypass_traffic_snapshot
 from ..yookassa_client import YooKassaClient
+from ..custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ async def _load_tier_screen_context(user_id: int) -> dict:
 
 def _tier_header_sections(ctx: dict) -> list[str]:
     """Верх экрана: заголовок и строка о текущем тарифе (одинаково на всех шагах)."""
-    sections: list[str] = ["🚀 <b>Подписка VPN</b>"]
+    sections: list[str] = [f"{E.subscription} <b>Подписка VPN</b>"]
     if ctx["is_active"] and ctx["is_plus"]:
         if ctx["has_card"]:
             sections.append("Тариф <b>Plus</b> подключен")
@@ -142,7 +143,7 @@ async def build_tiers_message(user_id: int, *, view: str = "main"):
         async with get_connection() as conn:
             trial_days = await get_trial_days(conn)
         sections.append(
-            f"🎁 <b>Специальное предложение</b>\n"
+            f"{E.gift} <b>Специальное предложение</b>\n"
             f"Plus на <b>{trial_days} дней</b> за <b>1₽</b> — только для тех, "
             f"кто пришёл по реферальной или партнёрской ссылке.\n\n"
             + "\n".join([f"<b>Plus</b>"] + plus_features)
@@ -172,101 +173,90 @@ async def build_tiers_message(user_id: int, *, view: str = "main"):
         sections.append("\n".join(free_lines))
         sections.append("\n".join(plus_lines))
         if show_referral_trial:
-            sections.append("🎁 <b>Plus за 1₽</b> — специальное предложение для вас")
+            sections.append(f"{E.gift} <b>Plus за 1₽</b> — специальное предложение для вас")
 
     text = "\n\n".join(sections)
     builder = InlineKeyboardBuilder()
 
     if view == "referral_trial":
         builder.row(
-            InlineKeyboardButton(
-                text="🎁 Plus за 1₽ — попробовать",
+            btn("Plus за 1₽ — попробовать", "gift",
                 callback_data="activate_trial",
             ),
         )
         builder.row(
-            InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"),
+            btn("Назад", "back", callback_data="open_tiers"),
         )
     elif view == "plus_plans":
         builder.row(
-            InlineKeyboardButton(
-                text=f"💎 Plus · {format_price_rub(ctx['price_1m'])}/мес",
+            btn("Plus · {format_price_rub(ctx['price_1m'])}/мес", "plus",
                 callback_data="tier_select:plus:plus_1m",
             ),
-            InlineKeyboardButton(
-                text=f"🌟 Plus · {format_price_rub(int(ctx['price_12m'] / 12))}/мес",
+            btn("Plus · {format_price_rub(int(ctx['price_12m'] / 12))}/мес", "star_plus",
                 callback_data="tier_select:plus:plus_12m",
             ),
         )
         if trial_used:
             builder.row(
-                InlineKeyboardButton(
-                    text="🎁 Пригласи друга — получи бонус",
+                btn("Пригласи друга — получи бонус", "gift",
                     callback_data="open_invite",
                 ),
             )
         builder.row(
-            InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"),
+            btn("Назад", "back", callback_data="open_tiers"),
         )
     elif ctx["is_active"] and ctx["is_plus"]:
         if ctx["has_card"]:
             builder.row(
-                InlineKeyboardButton(
-                    text="🆓 Free (отменить)", callback_data="cancel_sub_start"
+                btn("Free (отменить)", "free", callback_data="cancel_sub_start"
                 ),
             )
             builder.row(
-                InlineKeyboardButton(
-                    text="✅ Plus — подключен", callback_data="tier_info:plus"
+                btn("Plus — подключен", "success", callback_data="tier_info:plus"
                 ),
-                InlineKeyboardButton(
-                    text="⏫ Лимиты", callback_data="open_bypass_packs"
+                btn("Лимиты", "limits", callback_data="open_bypass_packs"
                 ),
             )
         else:
             builder.row(
-                InlineKeyboardButton(
-                    text="💎 Plus — продлить",
+                btn("Plus — продлить", "plus",
                     callback_data="tier_select:plus",
                 ),
             )
             builder.row(
-                InlineKeyboardButton(
-                    text="⏫ Лимиты", callback_data="open_bypass_packs"
+                btn("Лимиты", "limits", callback_data="open_bypass_packs"
                 ),
             )
         builder.row(
-            InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"),
+            btn("Назад", "back", callback_data="go_back_subscription"),
         )
     else:
         free_label = (
-            "✅ Free — ваш"
+            f"{E.success} Free — ваш"
             if (ctx["is_active"] and not ctx["is_plus"])
-            else "🆓 Free — бесплатно"
+            else f"{E.free} Free — бесплатно"
         )
         builder.row(
             InlineKeyboardButton(text=free_label, callback_data=f"tier_info:{FREE_TIER_ID}"),
         )
         if show_referral_trial:
             builder.row(
-                InlineKeyboardButton(
-                    text="🎁 Plus за 1₽ — попробовать",
+                btn("Plus за 1₽ — попробовать", "gift",
                     callback_data="activate_trial",
                 ),
             )
         else:
             builder.row(
-                InlineKeyboardButton(text="💎 Plus", callback_data="tier_select:plus"),
+                btn("Plus", "plus", callback_data="tier_select:plus"),
             )
             if trial_used:
                 builder.row(
-                    InlineKeyboardButton(
-                        text="🎁 Пригласи друга — получи бонус",
+                    btn("Пригласи друга — получи бонус", "gift",
                         callback_data="open_invite",
                     ),
                 )
         builder.row(
-            InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"),
+            btn("Назад", "back", callback_data="go_back_subscription"),
         )
 
     return text, builder.as_markup()
@@ -314,7 +304,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             plan_id = parts[2]
             await _do_tier_pay(callback, plan_id)
             return
-        await callback.answer("❌ Нет доступных планов", show_alert=True)
+        await callback.answer(f"{E.error} Нет доступных планов", show_alert=True)
 
     # ------------------------------------------------------------------
     # Buy tier (legacy callback kept for backward compat, redirects to pay)
@@ -334,7 +324,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
 
         plans = await get_tier_plans()
         if plan_id not in plans:
-            await callback.answer("❌ План не найден", show_alert=True)
+            await callback.answer(f"{E.error} План не найден", show_alert=True)
             return
 
         plan = plans[plan_id]
@@ -342,7 +332,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         t = TIERS.get(tier_id, {})
 
         if not config.yookassa.enabled:
-            await callback.answer("❌ ЮKassa не настроена", show_alert=True)
+            await callback.answer(f"{E.error} ЮKassa не настроена", show_alert=True)
             return
         price = plan["price_rub"]
 
@@ -380,27 +370,27 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                 f"{format_price_rub(price)}/год" if duration_months >= 12
                 else f"{format_price_rub(price)}/мес"
             )
-            text = f"💎 <b>{t.get('name', tier_id)}</b> · {price_display}\n\n"
+            text = f"{E.plus} <b>{t.get('name', tier_id)}</b> · {price_display}\n\n"
             for feat in t.get("features", []):
                 text += f"• {feat}\n"
 
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
-            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="tier_select:plus"))
+            b.row(btn("Перейти к оплате", "card", url=payment_data["confirmation_url"]))
+            b.row(btn("Назад", "back", callback_data="tier_select:plus"))
             await callback.message.edit_text(
                 text, parse_mode="HTML", reply_markup=b.as_markup()
             )
             await callback.answer()
         except Exception as e:
             logger.error("tier yookassa error: %s", e, exc_info=True)
-            await callback.answer("❌ Ошибка создания платежа", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка создания платежа", show_alert=True)
 
     @dp.callback_query(F.data.startswith("tier_pay:"))
     async def handle_tier_pay(callback: CallbackQuery):
         """Router for tier_pay: callbacks."""
         parts = callback.data.split(":")
         if len(parts) < 2:
-            await callback.answer("❌ Ошибка данных", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка данных", show_alert=True)
             return
         plan_id = parts[1]
         await _do_tier_pay(callback, plan_id)
@@ -415,7 +405,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         plans = await get_tier_plans()
         plan = plans.get("plus_1m")
         if not plan:
-            await callback.answer("❌ План не найден", show_alert=True)
+            await callback.answer(f"{E.error} План не найден", show_alert=True)
             return
         price = int(plan["price_rub"] * 0.7)
         if price < 100:
@@ -445,11 +435,11 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                     payment_data["id"],
                 )
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
-            b.row(InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers"))
+            b.row(btn("Перейти к оплате", "card", url=payment_data["confirmation_url"]))
+            b.row(btn("К тарифам", "back", callback_data="open_tiers"))
             full_price = plan["price_rub"] / 100.0
             await callback.message.edit_text(
-                f"🔥 <b>Plus со скидкой 30%</b>\n\n"
+                f"{E.hot} <b>Plus со скидкой 30%</b>\n\n"
                 f"<s>{full_price:.0f}₽</s> → <b>{amount_rub:.0f}₽/мес</b>\n\n"
                 f"• 50 ГБ bypass/мес\n• YouTube / TikTok / AI работают\n• Безлимит устройств",
                 parse_mode="HTML",
@@ -458,7 +448,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             await callback.answer()
         except Exception as e:
             logger.error("promo_plus_30 error: %s", e, exc_info=True)
-            await callback.answer("❌ Ошибка", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка", show_alert=True)
 
     # ------------------------------------------------------------------
     # Tier info (current tier details)
@@ -490,7 +480,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         if tier_id == FREE_TIER_ID and actual_tier in ALL_PAID_TIER_IDS:
             free_t = TIERS[FREE_TIER_ID]
             preview = (
-                f"🆓 <b>{free_t['name']}</b>\n\n"
+                f"{E.free} <b>{free_t['name']}</b>\n\n"
                 "Переход на бесплатный тариф — через <b>отмену</b> платной подписки. "
                 "До конца оплаченного периода останется текущий тариф.\n\n"
                 + "\n".join(f"• {f}" for f in free_t["features"])
@@ -498,12 +488,11 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             b = InlineKeyboardBuilder()
             if has_card:
                 b.row(
-                    InlineKeyboardButton(
-                        text="❌ Отменить подписку",
+                    btn("Отменить подписку", "error",
                         callback_data="cancel_sub_start",
                     )
                 )
-            b.row(InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers"))
+            b.row(btn("К тарифам", "back", callback_data="open_tiers"))
             await callback.message.edit_text(
                 preview, parse_mode="HTML", reply_markup=b.as_markup()
             )
@@ -522,9 +511,9 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         percent = snap["bypassPercentUsed"]
 
         text = (
-            f"📊 <b>Ваш тариф: {tier_info.get('name', tier_id)}</b>\n\n"
-            f"📅 Подписка до: <b>{end_str}</b>\n\n"
-            f"🔓 <b>Bypass трафик:</b>\n"
+            f"{E.chart} <b>Ваш тариф: {tier_info.get('name', tier_id)}</b>\n\n"
+            f"{E.calendar} Подписка до: <b>{end_str}</b>\n\n"
+            f"{E.bypass} <b>Bypass трафик:</b>\n"
             f"  Использовано: {used_gb:.1f} / {limit_gb:.0f} ГБ ({percent:.0f}%)"
         )
         from ..help_urls import bypass_help_link_html
@@ -535,38 +524,35 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         )
         max_dev = tier_info.get("max_devices", 1)
         devices_display = "безлимит" if max_dev >= 999 else f"до {max_dev}"
-        text += f"\n🌐 Обычный VPN: <b>безлимит</b>\n"
-        text += f"📱 Устройств: {devices_display}\n"
+        text += f"\n{E.globe} Обычный VPN: <b>безлимит</b>\n"
+        text += f"{E.devices} Устройств: {devices_display}\n"
 
         if snap["bypassExceeded"]:
-            text += "\n⚠️ <b>Bypass лимит исчерпан!</b> Докупите ГБ или перейдите на Plus.\n"
+            text += f"\n{E.warning} <b>Bypass лимит исчерпан!</b> Докупите ГБ или перейдите на Plus.\n"
 
         is_paid_active = tier_id in ALL_PAID_TIER_IDS and has_card
 
         builder = InlineKeyboardBuilder()
         if tier_id != FREE_TIER_ID:
             builder.row(
-                InlineKeyboardButton(
-                    text="⏫ Лимиты",
+                btn("Лимиты", "limits",
                     callback_data="open_bypass_packs",
                 )
             )
         elif tier_id == FREE_TIER_ID:
             builder.row(
-                InlineKeyboardButton(
-                    text="🚀 Перейти на Plus",
+                btn("Перейти на Plus", "subscription",
                     callback_data="open_tiers",
                 )
             )
         if is_paid_active:
             builder.row(
-                InlineKeyboardButton(
-                    text="❌ Отменить подписку",
+                btn("Отменить подписку", "error",
                     callback_data="cancel_sub_start",
                 )
             )
         builder.row(
-            InlineKeyboardButton(text="◀️ К тарифам", callback_data="open_tiers")
+            btn("К тарифам", "back", callback_data="open_tiers")
         )
 
         await callback.message.edit_text(
@@ -601,17 +587,17 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         if already_used:
             # Already used retention offer — only offer 10 GB
             text = (
-                "😢 <b>Жаль, что вы хотите уйти</b>\n\n"
+                f"{E.sad} <b>Жаль, что вы хотите уйти</b>\n\n"
                 "Мы можем добавить вам <b>+10 ГБ bypass</b> прямо сейчас.\n"
             )
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(text="🎁 Получить +10 ГБ", callback_data="cancel_accept_10gb"))
-            b.row(InlineKeyboardButton(text="❌ Всё равно отменить", callback_data="cancel_sub_final"))
-            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_info:{current_tier}"))
+            b.row(btn("Получить +10 ГБ", "gift", callback_data="cancel_accept_10gb"))
+            b.row(btn("Всё равно отменить", "error", callback_data="cancel_sub_final"))
+            b.row(btn("Назад", "back", callback_data=f"tier_info:{current_tier}"))
         else:
             # First time — offer 50% discount on Plus
             text = (
-                "😢 <b>Жаль, что вы хотите уйти</b>\n\n"
+                f"{E.sad} <b>Жаль, что вы хотите уйти</b>\n\n"
                 "Специально для вас — <b>скидка 50%</b> на следующий месяц!\n"
             )
             b = InlineKeyboardBuilder()
@@ -620,13 +606,12 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             plan = plans.get(plan_id)
             if plan:
                 half_price = plan["price_rub"] // 2
-                b.row(InlineKeyboardButton(
-                    text=f"🔥 Plus за {format_price_rub(half_price)}",
+                b.row(btn("Plus за {format_price_rub(half_price)}", "hot",
                     callback_data=f"cancel_offer_50:{plan_id}",
                 ))
 
-            b.row(InlineKeyboardButton(text="❌ Всё равно отменить", callback_data="cancel_sub_step2"))
-            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tier_info:{current_tier}"))
+            b.row(btn("Всё равно отменить", "error", callback_data="cancel_sub_step2"))
+            b.row(btn("Назад", "back", callback_data=f"tier_info:{current_tier}"))
 
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
         await callback.answer()
@@ -639,7 +624,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
 
         plans = await get_tier_plans()
         if plan_id not in plans:
-            await callback.answer("❌ План не найден", show_alert=True)
+            await callback.answer(f"{E.error} План не найден", show_alert=True)
             return
 
         plan = plans[plan_id]
@@ -678,10 +663,10 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                 )
 
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
-            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"))
+            b.row(btn("Перейти к оплате", "card", url=payment_data["confirmation_url"]))
+            b.row(btn("Назад", "back", callback_data="open_tiers"))
             await callback.message.edit_text(
-                f"🔥 <b>{plan['title']}</b> со скидкой 50%\n\n"
+                f"{E.hot} <b>{plan['title']}</b> со скидкой 50%\n\n"
                 f"Сумма: <b>{format_price_rub(half_price)}</b>",
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
@@ -689,7 +674,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             await callback.answer()
         except Exception as e:
             logger.error("cancel_offer_50 error: %s", e, exc_info=True)
-            await callback.answer("❌ Ошибка", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка", show_alert=True)
 
     @dp.callback_query(F.data == "cancel_sub_step2")
     async def handle_cancel_sub_step2(callback: CallbackQuery):
@@ -701,14 +686,14 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             )
 
         text = (
-            "🎁 <b>Подождите!</b>\n\n"
+            f"{E.gift} <b>Подождите!</b>\n\n"
             "Мы добавим вам <b>+100 ГБ bypass</b> бесплатно прямо сейчас.\n"
             "Они суммируются с вашим текущим лимитом."
         )
         b = InlineKeyboardBuilder()
-        b.row(InlineKeyboardButton(text="🎁 Отлично, забираю!", callback_data="cancel_accept_100gb"))
-        b.row(InlineKeyboardButton(text="❌ Нет, отменить", callback_data="cancel_sub_step3"))
-        b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="cancel_sub_start"))
+        b.row(btn("Отлично, забираю!", "gift", callback_data="cancel_accept_100gb"))
+        b.row(btn("Нет, отменить", "error", callback_data="cancel_sub_step3"))
+        b.row(btn("Назад", "back", callback_data="cancel_sub_start"))
 
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
         await callback.answer()
@@ -723,11 +708,11 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                 user_id,
             )
         await callback.message.edit_text(
-            "✅ <b>Готово!</b>\n\n"
+            f"{E.success} <b>Готово!</b>\n\n"
             "+100 ГБ bypass добавлены на ваш аккаунт.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardBuilder().row(
-                InlineKeyboardButton(text="🏠 На главную", callback_data="go_back")
+                btn("На главную", "home", callback_data="go_back")
             ).as_markup(),
         )
         await callback.answer()
@@ -742,11 +727,11 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                 user_id,
             )
         await callback.message.edit_text(
-            "✅ <b>Готово!</b>\n\n"
+            f"{E.success} <b>Готово!</b>\n\n"
             "+10 ГБ bypass добавлены на ваш аккаунт.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardBuilder().row(
-                InlineKeyboardButton(text="🏠 На главную", callback_data="go_back")
+                btn("На главную", "home", callback_data="go_back")
             ).as_markup(),
         )
         await callback.answer()
@@ -755,19 +740,18 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_cancel_sub_step3(callback: CallbackQuery):
         """Step 3: Offer Plus for 1₽/month."""
         text = (
-            "💰 <b>Последнее предложение!</b>\n\n"
+            f"{E.money} <b>Последнее предложение!</b>\n\n"
             "Тариф <b>Plus</b> всего за <b>1₽</b> на следующий месяц:\n\n"
             "• 50 ГБ bypass/мес\n"
             "• YouTube / TikTok / AI работают\n"
             "• Безлимит устройств"
         )
         b = InlineKeyboardBuilder()
-        b.row(InlineKeyboardButton(
-            text="💎 Plus за 1₽",
+        b.row(btn("Plus за 1₽", "plus",
             callback_data="cancel_offer_1rub:plus_1m",
         ))
-        b.row(InlineKeyboardButton(text="❌ Нет, отменить подписку", callback_data="cancel_sub_final"))
-        b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="cancel_sub_step2"))
+        b.row(btn("Нет, отменить подписку", "error", callback_data="cancel_sub_final"))
+        b.row(btn("Назад", "back", callback_data="cancel_sub_step2"))
 
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
         await callback.answer()
@@ -780,7 +764,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
 
         plans = await get_tier_plans()
         if plan_id not in plans:
-            await callback.answer("❌ План не найден", show_alert=True)
+            await callback.answer(f"{E.error} План не найден", show_alert=True)
             return
 
         plan = plans[plan_id]
@@ -817,10 +801,10 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                 )
 
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=payment_data["confirmation_url"]))
-            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"))
+            b.row(btn("Перейти к оплате", "card", url=payment_data["confirmation_url"]))
+            b.row(btn("Назад", "back", callback_data="open_tiers"))
             await callback.message.edit_text(
-                f"🔥 <b>{plan['title']}</b> за 1₽\n\n"
+                f"{E.hot} <b>{plan['title']}</b> за 1₽\n\n"
                 f"Сумма: <b>1₽</b>",
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
@@ -828,7 +812,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             await callback.answer()
         except Exception as e:
             logger.error("cancel_offer_1rub error: %s", e, exc_info=True)
-            await callback.answer("❌ Ошибка", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка", show_alert=True)
 
     @dp.callback_query(F.data == "cancel_sub_final")
     async def handle_cancel_sub_final(callback: CallbackQuery):
@@ -846,12 +830,12 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             )
 
         await callback.message.edit_text(
-            "✅ <b>Подписка отменена</b>\n\n"
+            f"{E.success} <b>Подписка отменена</b>\n\n"
             "Автоматическое продление отключено. "
             "Текущая подписка будет действовать до конца оплаченного периода.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardBuilder().row(
-                InlineKeyboardButton(text="🏠 На главную", callback_data="go_back")
+                btn("На главную", "home", callback_data="go_back")
             ).as_markup(),
         )
         await callback.answer()
@@ -881,13 +865,13 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
 
         if not ok_sub:
             text = (
-                "📶 <b>Докупка bypass трафика</b>\n\n"
+                f"{E.signal} <b>Докупка bypass трафика</b>\n\n"
                 "Доступно только при <b>активной подписке</b>.\n"
                 "Оформите подписку в разделе «Подписка»."
             )
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(text="💎 Выбрать тариф", callback_data="open_tiers"))
-            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
+            b.row(btn("Выбрать тариф", "plus", callback_data="open_tiers"))
+            b.row(btn("Назад", "back", callback_data="go_back_subscription"))
             await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
             await callback.answer()
             return
@@ -897,7 +881,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         used = snap["bypassUsedGb"]
 
         text = (
-            f"📶 <b>Докупить bypass трафик</b>\n\n"
+            f"{E.signal} <b>Докупить bypass трафик</b>\n\n"
             f"Текущий остаток: <b>{remaining:.1f} ГБ</b> из {limit:.0f} ГБ\n"
             f"Использовано: {used:.1f} ГБ\n\n"
         )
@@ -918,7 +902,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                     )
                 )
 
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_tiers"))
+        builder.row(btn("Назад", "back", callback_data="open_tiers"))
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
         await callback.answer()
 
@@ -929,7 +913,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         try:
             pack_id = int(callback.data.split(":")[1])
         except (IndexError, ValueError):
-            await callback.answer("❌ Ошибка", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка", show_alert=True)
             return
 
         async with get_connection() as conn:
@@ -938,30 +922,28 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                 pack_id,
             )
         if not pack:
-            await callback.answer("❌ Пакет недоступен", show_alert=True)
+            await callback.answer(f"{E.error} Пакет недоступен", show_alert=True)
             return
 
         text = (
-            f"📶 <b>Оплата: +{pack['gb_amount']} ГБ bypass</b>\n\n"
+            f"{E.signal} <b>Оплата: +{pack['gb_amount']} ГБ bypass</b>\n\n"
             f"{pack['title']}\n\n"
             f"Выберите способ оплаты:"
         )
         b = InlineKeyboardBuilder()
         if int(pack["price_stars"] or 0) >= 1:
             b.row(
-                InlineKeyboardButton(
-                    text=f"⭐ Stars ({format_price_stars(pack['price_stars'])})",
+                btn("Stars ({format_price_stars(pack['price_stars'])})", "star",
                     callback_data=f"bypass_pack_pay:{pack_id}:stars",
                 )
             )
         if config.yookassa.enabled and int(pack["price_rub"] or 0) >= 100:
             b.row(
-                InlineKeyboardButton(
-                    text=f"💳 Карта ({format_price_rub(pack['price_rub'])})",
+                btn("Карта ({format_price_rub(pack['price_rub'])})", "card",
                     callback_data=f"bypass_pack_pay:{pack_id}:yookassa",
                 )
             )
-        b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_bypass_packs"))
+        b.row(btn("Назад", "back", callback_data="open_bypass_packs"))
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
         await callback.answer()
 
@@ -970,7 +952,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         """Process bypass pack payment."""
         parts = callback.data.split(":")
         if len(parts) < 3:
-            await callback.answer("❌ Ошибка", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка", show_alert=True)
             return
 
         pack_id = int(parts[1])
@@ -983,13 +965,13 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                 pack_id,
             )
         if not pack:
-            await callback.answer("❌ Пакет недоступен", show_alert=True)
+            await callback.answer(f"{E.error} Пакет недоступен", show_alert=True)
             return
 
         if method_id == "stars":
             price = int(pack["price_stars"] or 0)
             if price < 1:
-                await callback.answer("❌ Неверная цена", show_alert=True)
+                await callback.answer(f"{E.error} Неверная цена", show_alert=True)
                 return
             ts = int(time.time())
             payload = f"bypass_pack|{user_id}|{pack_id}|{ts}"
@@ -1007,12 +989,12 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                 await callback.answer()
             except Exception as e:
                 logger.error("bypass pack stars: %s", e, exc_info=True)
-                await callback.answer("❌ Ошибка создания счёта", show_alert=True)
+                await callback.answer(f"{E.error} Ошибка создания счёта", show_alert=True)
 
         elif method_id == "yookassa":
             price = int(pack["price_rub"] or 0)
             if price < 100:
-                await callback.answer("❌ Минимум 1₽", show_alert=True)
+                await callback.answer(f"{E.error} Минимум 1₽", show_alert=True)
                 return
             try:
                 yk = YooKassaClient(config.yookassa)
@@ -1038,10 +1020,10 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                         "bypass_pack", "pending", payment_data["id"],
                     )
                 b = InlineKeyboardBuilder()
-                b.row(InlineKeyboardButton(text="💳 Оплатить", url=payment_data["confirmation_url"]))
-                b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"bypass_pack_choose:{pack_id}"))
+                b.row(btn("Оплатить", "card", url=payment_data["confirmation_url"]))
+                b.row(btn("Назад", "back", callback_data=f"bypass_pack_choose:{pack_id}"))
                 await callback.message.edit_text(
-                    f"💳 <b>Оплата</b>\n\n+{pack['gb_amount']} ГБ — {format_price_rub(price)}\n\n"
+                    f"{E.card} <b>Оплата</b>\n\n+{pack['gb_amount']} ГБ — {format_price_rub(price)}\n\n"
                     f"Нажмите кнопку для перехода к оплате.",
                     parse_mode="HTML",
                     reply_markup=b.as_markup(),
@@ -1049,4 +1031,4 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
                 await callback.answer()
             except Exception as e:
                 logger.error("bypass pack yookassa: %s", e, exc_info=True)
-                await callback.answer("❌ Ошибка", show_alert=True)
+                await callback.answer(f"{E.error} Ошибка", show_alert=True)

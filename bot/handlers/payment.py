@@ -20,6 +20,7 @@ from ..tier_payments import (
 )
 from ..plans import get_subscription_plans, get_renewal_plans, PAYMENT_METHODS
 from ..config import AppConfig
+from ..custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,6 @@ async def setup_payment_handlers(dp, bot: Bot, config: AppConfig):
         except Exception as e:
             logger.error(f"Ошибка обработки платежа: {e}", exc_info=True)
             await message.answer(
-                "❌ Произошла ошибка при обработке платежа. "
+                f"{E.error} Произошла ошибка при обработке платежа. "
                 "Пожалуйста, обратитесь в поддержку."
             )

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from aiogram.types import FSInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 _IMAGES_DIR = Path(__file__).resolve().parent / "images"
 
@@ -82,18 +83,17 @@ def _blockquote_manual(sub_url: str) -> str:
 def _add_download_buttons(builder: InlineKeyboardBuilder, device: str) -> None:
     if device == "android":
         builder.row(
-            InlineKeyboardButton(text="📥 Google Play", url=HAPP_URLS["android_play"]),
-            InlineKeyboardButton(text="📥 APK", url=HAPP_URLS["android_apk"]),
+            btn("Google Play", "download", url=HAPP_URLS["android_play"]),
+            btn("APK", "download", url=HAPP_URLS["android_apk"]),
         )
     elif device in ("apple", "mac"):
         builder.row(
-            InlineKeyboardButton(text="📥 Основная версия", url=HAPP_URLS["ios_main"]),
-            InlineKeyboardButton(text="📥 Глобальная версия", url=HAPP_URLS["ios_global"]),
+            btn("Основная версия", "download", url=HAPP_URLS["ios_main"]),
+            btn("Глобальная версия", "download", url=HAPP_URLS["ios_global"]),
         )
     elif device == "windows":
         builder.row(
-            InlineKeyboardButton(
-                text="📥 Скачать приложение",
+            btn("Скачать приложение", "download",
                 url=HAPP_URLS["windows_setup"],
             ),
         )
@@ -114,9 +114,9 @@ async def build_happ_instruction_async(
     builder = InlineKeyboardBuilder()
     _add_download_buttons(builder, device)
     builder.row(
-        InlineKeyboardButton(text="⚡ Активировать подписку", url=connect_url)
+        btn("Активировать подписку", "activate", url=connect_url)
     )
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="ob_back_devices"))
+    builder.row(btn("Назад", "back", callback_data="ob_back_devices"))
     return text, builder
 
 
@@ -160,7 +160,7 @@ def _instruction_text(device: str, sub_url: str, connect_url: str) -> str:
             f"{activate}\n"
             f"{manual}\n\n"
             "3. Для подключения выбери страну, нажав на неё, "
-            "а затем нажми кнопку ⏻ включения."
+            f"а затем нажми кнопку {E.power} включения."
         )
 
     return (
@@ -174,5 +174,5 @@ def _instruction_text(device: str, sub_url: str, connect_url: str) -> str:
         f"{activate}\n"
         f"{manual}\n\n"
         "3. Для подключения выбери страну, нажав на неё, "
-        "а затем нажми кнопку ⏻ включения."
+        f"а затем нажми кнопку {E.power} включения."
     )

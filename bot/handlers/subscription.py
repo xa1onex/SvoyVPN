@@ -22,6 +22,7 @@ from ..device_fingerprint import (
     SUBSCRIPTION_DEVICE_COUNTABLE_SQL,
     format_device_display_name,
 )
+from ..custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ async def _build_my_devices_view(conn, user_id: int) -> tuple[str, InlineKeyboar
     """
     devices = await conn.fetch(q, user_id)
     count = len(devices)
-    text = f"📱 <b>Подключённые устройства</b> ({count}/{device_limit})\n\n"
+    text = f"{E.devices} <b>Подключённые устройства</b> ({count}/{device_limit})\n\n"
     builder = InlineKeyboardBuilder()
     if devices:
         for i, d in enumerate(devices, 1):
@@ -57,8 +58,7 @@ async def _build_my_devices_view(conn, user_id: int) -> tuple[str, InlineKeyboar
             fp = d["fp"]
             if fp:
                 builder.row(
-                    InlineKeyboardButton(
-                        text=f"🗑 {i}",
+                    btn("{i}", "trash",
                         callback_data=f"rm_dev:{fp}",
                     )
                 )
@@ -66,11 +66,11 @@ async def _build_my_devices_view(conn, user_id: int) -> tuple[str, InlineKeyboar
         text += "Нет подключённых устройств.\n"
 
     if count > device_limit:
-        text += f"\n⚠️ Лимит превышен ({count}/{device_limit})."
+        text += f"\n{E.warning} Лимит превышен ({count}/{device_limit})."
 
     if count > 0:
-        builder.row(InlineKeyboardButton(text="🔄 Сбросить все сессии", callback_data="reset_devices"))
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
+        builder.row(btn("Сбросить все сессии", "refresh", callback_data="reset_devices"))
+    builder.row(btn("Назад", "back", callback_data="go_back_subscription"))
     return text, builder
 
 
@@ -113,19 +113,19 @@ async def send_traffic_packs_menu(bot: Bot, event: Message | CallbackQuery, conf
 
     if not ok_sub:
         text = (
-            "📶 <b>Дополнительный трафик</b>\n\n"
+            f"{E.signal} <b>Дополнительный трафик</b>\n\n"
             "Доступно только при <b>активной подписке</b>.\n"
             "Сначала оформи или продли VPN в разделе «Подписка»."
         )
     elif not packs:
         text = (
-            "📶 <b>Дополнительный трафик</b>\n\n"
+            f"{E.signal} <b>Дополнительный трафик</b>\n\n"
             "Нехватило трафика? Купи дополнительный объём пакетов гб\n"
             "Пакеты сейчас недоступны. Загляни позже или напиши в поддержку."
         )
     else:
         parts = [
-            "📶 <b>Увеличить лимит трафика</b>\n",
+            f"{E.signal} <b>Увеличить лимит трафика</b>\n",
             "Дополнительный объём суммируется с месячным лимитом.\n",
         ]
         for p in packs:
@@ -145,7 +145,7 @@ async def send_traffic_packs_menu(bot: Bot, event: Message | CallbackQuery, conf
                     callback_data=f"traffic_pack_choose:{int(p['id'])}",
                 )
             )
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
+    builder.row(btn("Назад", "back", callback_data="open_premium"))
     markup = builder.as_markup()
 
     if edit and isinstance(event, CallbackQuery):
@@ -207,16 +207,16 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
 
     def _device_select_markup() -> InlineKeyboardBuilder:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="📱 iPhone / iPad", callback_data="ob_dev_apple"))
-        builder.row(InlineKeyboardButton(text="🤖 Android", callback_data="ob_dev_android"))
-        builder.row(InlineKeyboardButton(text="💻 Windows", callback_data="ob_dev_windows"))
-        builder.row(InlineKeyboardButton(text="🖥 macOS", callback_data="ob_dev_mac"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
+        builder.row(btn("iPhone / iPad", "devices", callback_data="ob_dev_apple"))
+        builder.row(btn("Android", "android", callback_data="ob_dev_android"))
+        builder.row(btn("Windows", "laptop", callback_data="ob_dev_windows"))
+        builder.row(btn("macOS", "desktop", callback_data="ob_dev_mac"))
+        builder.row(btn("Назад", "back", callback_data="go_back_subscription"))
         return builder
 
     def _device_select_text() -> str:
         return (
-            "💻 <b>Выберите ваше устройство</b>\n\n"
+            f"{E.laptop} <b>Выберите ваше устройство</b>\n\n"
             "На чем вы будете использовать VPN? Мы подготовили пошаговую инструкцию для каждой платформы."
         )
 
@@ -250,7 +250,7 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
         from ..database import get_device_instruction_photos
 
         if device not in _DEVICE_NAMES:
-            await callback.answer("❌ Неизвестное устройство")
+            await callback.answer(f"{E.error} Неизвестное устройство")
             return
 
         user_id = callback.from_user.id
@@ -414,15 +414,15 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
     if is_renew:
         from ..subscriptions import get_subscription_status_display
         status_line = await get_subscription_status_display(user_id)
-        text = f"✅ {status_line}\n\n"
-        text += "💡 Продлите Plus в любое время:\n\n"
+        text = f"{E.success} {status_line}\n\n"
+        text += f"{E.bulb} Продлите Plus в любое время:\n\n"
         for plan_id, plan_data in current_tariffs.items():
             text += f"• <b>{plan_data['title']}</b> — {format_price_rub(plan_data['price_rub'])}\n"
         text += "\n"
     else:
         if show_referral_trial and trial_days > 0:
             text = (
-                "🎁 <b>Plus за 1₽</b>\n\n"
+                f"{E.gift} <b>Plus за 1₽</b>\n\n"
                 f"Специальное предложение для вас — <b>{trial_days} дней</b> Plus "
                 f"с автопродлением по актуальной цене.\n\n"
                 "• 50 ГБ bypass в месяц\n"
@@ -430,14 +430,13 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
                 "• Безлимит устройств\n\n"
             )
             builder.row(
-                InlineKeyboardButton(
-                    text="🎁 Plus за 1₽ — попробовать",
+                btn("Plus за 1₽ — попробовать", "gift",
                     callback_data="activate_trial",
                 ),
             )
         else:
             text = (
-                "❌ <b>VPN неактивен</b>\n\n"
+                f"{E.error} <b>VPN неактивен</b>\n\n"
                 "Оформите <b>Plus</b> — быстрый VPN с обходом блокировок:\n"
                 "• 50 ГБ bypass в месяц\n"
                 "• YouTube / TikTok / AI\n"
@@ -461,16 +460,15 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
             )
         builder.adjust(1)
 
-    builder.row(InlineKeyboardButton(text="🚀 Тарифы Plus", callback_data="open_tiers"))
-    builder.row(InlineKeyboardButton(text="📶 Увеличить лимит трафика", callback_data="open_traffic_packs"))
+    builder.row(btn("Тарифы Plus", "subscription", callback_data="open_tiers"))
+    builder.row(btn("Увеличить лимит трафика", "signal", callback_data="open_traffic_packs"))
     if not show_referral_trial and not is_renew:
         builder.row(
-            InlineKeyboardButton(
-                text="🎁 Пригласи друга — получи бонус",
+            btn("Пригласи друга — получи бонус", "gift",
                 callback_data="open_invite",
             ),
         )
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
+    builder.row(btn("Назад", "back", callback_data="go_back_subscription"))
     
     return text, builder
 
@@ -485,7 +483,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         from bot.plans import get_user_tariffs, format_price_rub
         current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
         
-        text = "💳 <b>Выберите план подписки:</b>\n\n"
+        text = f"{E.card} <b>Выберите план подписки:</b>\n\n"
         builder = InlineKeyboardBuilder()
         
         for plan_id, plan_data in current_tariffs.items():
@@ -499,20 +497,18 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         for plan_id, plan_data in list(current_tariffs.items())[:2]:
             if config.yookassa.enabled:
                 builder.row(
-                    InlineKeyboardButton(
-                        text=f"💳 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})",
+                    btn("{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "card",
                         callback_data=f"{action}:{plan_id}:yookassa"
                     )
                 )
             if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
                 builder.row(
-                    InlineKeyboardButton(
-                        text=f"💎 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})",
+                    btn("{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "plus",
                         callback_data=f"{action}:{plan_id}:cryptopay"
                     )
                 )
         
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
+        builder.row(btn("Назад", "back", callback_data="open_premium"))
         
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await callback.answer()
@@ -524,7 +520,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         from bot.plans import get_user_tariffs, format_price_rub
         current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
         
-        text = "💳 <b>Продлить подписку:</b>\n\n"
+        text = f"{E.card} <b>Продлить подписку:</b>\n\n"
         builder = InlineKeyboardBuilder()
         
         for plan_id, plan_data in current_tariffs.items():
@@ -534,20 +530,18 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         for plan_id, plan_data in list(current_tariffs.items())[:2]:
             if config.yookassa.enabled:
                 builder.row(
-                    InlineKeyboardButton(
-                        text=f"💳 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})",
+                    btn("{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "card",
                         callback_data=f"{action}:{plan_id}:yookassa"
                     )
                 )
             if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
                 builder.row(
-                    InlineKeyboardButton(
-                        text=f"💎 {plan_data['title']} ({format_price_rub(plan_data['price_rub'])})",
+                    btn("{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "plus",
                         callback_data=f"{action}:{plan_id}:cryptopay"
                     )
                 )
         
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
+        builder.row(btn("Назад", "back", callback_data="open_premium"))
         
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await callback.answer()
@@ -561,16 +555,15 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         from bot.plans import get_user_tariffs, is_active_tier_plan, is_legacy_subscription_plan
 
         if is_legacy_subscription_plan(plan_id):
-            await callback.answer("❌ Этот тариф больше не доступен. Выберите Plus.", show_alert=True)
+            await callback.answer(f"{E.error} Этот тариф больше не доступен. Выберите Plus.", show_alert=True)
             return
 
         if is_active_tier_plan(plan_id):
             b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(
-                text="💳 Оплатить Plus",
+            b.row(btn("Оплатить Plus", "card",
                 callback_data=f"tier_pay:{plan_id}",
             ))
-            b.row(InlineKeyboardButton(text="💎 Все тарифы", callback_data="open_tiers"))
+            b.row(btn("Все тарифы", "plus", callback_data="open_tiers"))
             await callback.message.edit_text(
                 "Тарифы обновились. Доступны только <b>Plus на месяц</b> и <b>Plus на год</b>.",
                 parse_mode="HTML",
@@ -582,7 +575,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         current_tariffs, is_renew, _ = await get_user_tariffs(user_id)
         
         if plan_id not in current_tariffs:
-            await callback.answer("❌ План недоступен или не найден", show_alert=True)
+            await callback.answer(f"{E.error} План недоступен или не найден", show_alert=True)
             return
             
         plan_data = current_tariffs[plan_id]
@@ -591,7 +584,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         action = "buy_renewal" if is_renew else "buy_subscription"
         
         # Показываем методы оплаты
-        text = f"💳 <b>{plan_data['title']}</b>\n\n"
+        text = f"{E.card} <b>{plan_data['title']}</b>\n\n"
         text += f"Срок: {plan_data['duration']} месяцев\n"
         text += "Лимит трафика — месячный, по дню покупки подписки (см. приложение).\n\n"
         text += "Выберите способ оплаты:"
@@ -600,8 +593,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         
         if config.yookassa.enabled:
             builder.row(
-                InlineKeyboardButton(
-                    text=f"💳 Банковская карта ({format_price_rub(plan_data['price_rub'])})",
+                btn("Банковская карта ({format_price_rub(plan_data['price_rub'])})", "card",
                     callback_data=f"{action}:{plan_id}:yookassa"
                 )
             )
@@ -609,13 +601,12 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         # Кнопка для оплаты Crypto Pay (если включена)
         if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
             builder.row(
-                InlineKeyboardButton(
-                    text=f"💎 Crypto Pay ({format_price_rub(plan_data['price_rub'])})",
+                btn("Crypto Pay ({format_price_rub(plan_data['price_rub'])})", "plus",
                     callback_data=f"{action}:{plan_id}:cryptopay"
                 )
             )
         
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
+        builder.row(btn("Назад", "back", callback_data="open_premium"))
         
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         await callback.answer()
@@ -635,7 +626,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         # Парсим callback_data: buy_subscription:plan_id:method_id
         parts = callback.data.split(":")
         if len(parts) < 3:
-            await callback.answer("❌ Неверный формат данных", show_alert=True)
+            await callback.answer(f"{E.error} Неверный формат данных", show_alert=True)
             return
         
         plan_id = parts[1]
@@ -645,7 +636,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         from bot.plans import get_user_tariffs, is_active_tier_plan, is_legacy_subscription_plan
 
         if is_legacy_subscription_plan(plan_id):
-            await callback.answer("❌ Тариф устарел. Используйте Plus.", show_alert=True)
+            await callback.answer(f"{E.error} Тариф устарел. Используйте Plus.", show_alert=True)
             return
         if is_active_tier_plan(plan_id):
             await callback.answer("Используйте кнопку «Тарифы Plus» для оплаты", show_alert=True)
@@ -656,7 +647,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         
         # Убедимся, что тариф доступен
         if plan_id not in current_tariffs:
-            await callback.answer("❌ План недоступен или устарел", show_alert=True)
+            await callback.answer(f"{E.error} План недоступен или устарел", show_alert=True)
             return
             
         plan_data = current_tariffs[plan_id]
@@ -669,7 +660,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             )
             return
         if method_id not in PAYMENT_METHODS:
-            await callback.answer("❌ Неизвестный метод оплаты", show_alert=True)
+            await callback.answer(f"{E.error} Неизвестный метод оплаты", show_alert=True)
             return
         
         method_data = PAYMENT_METHODS[method_id]
@@ -680,7 +671,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         price = plan_data.get(price_key)
         
         if price is None:
-            await callback.answer(f"❌ Цена не найдена для плана. Ключ: {price_key}", show_alert=True)
+            await callback.answer(f"{E.error} Цена не найдена для плана. Ключ: {price_key}", show_alert=True)
             logger.error(f"Price key '{price_key}' not found in plan_data for plan {plan_id}")
             return
         
@@ -688,12 +679,12 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         try:
             price = int(float(price))
         except (ValueError, TypeError) as e:
-            await callback.answer("❌ Ошибка: неверный формат цены", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка: неверный формат цены", show_alert=True)
             logger.error(f"Invalid price format for plan {plan_id}: {price}, error: {e}")
             return
         
         if price <= 0:
-            await callback.answer("❌ Ошибка: цена должна быть больше нуля", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка: цена должна быть больше нуля", show_alert=True)
             logger.error(f"Invalid price value for plan {plan_id}: {price}")
             return
         
@@ -701,12 +692,12 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         if method_id == "yookassa":
             # Оплата через ЮKassa
             if not config.yookassa.enabled:
-                await callback.answer("❌ ЮKassa не настроена", show_alert=True)
+                await callback.answer(f"{E.error} ЮKassa не настроена", show_alert=True)
                 return
             
             # Проверяем минимальную сумму для ЮKassa (минимум 1 рубль = 100 копеек)
             if price < 100:
-                await callback.answer("❌ Минимальная сумма оплаты - 1 рубль", show_alert=True)
+                await callback.answer(f"{E.error} Минимальная сумма оплаты - 1 рубль", show_alert=True)
                 return
             
             try:
@@ -757,16 +748,16 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 
                 # Отправляем пользователю ссылку на оплату
                 builder = InlineKeyboardBuilder()
-                builder.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=confirmation_url))
-                builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
+                builder.row(btn("Перейти к оплате", "card", url=confirmation_url))
+                builder.row(btn("Назад", "back", callback_data="open_premium"))
                 
                 await callback.message.edit_text(
-                    f"💳 <b>Оплата через ЮKassa</b>\n\n"
+                    f"{E.card} <b>Оплата через ЮKassa</b>\n\n"
                     f"План: <i>{plan_data['title']}</i>\n"
                     f"Сумма: <i>{format_price_rub(price)}</i>\n\n"
                     f"Нажмите кнопку ниже, чтобы перейти к оплате.\n"
                     f"После успешной оплаты подписка будет активирована автоматически.\n\n"
-                    f"⏰ <i>Платеж не должен задерживаться больше 1 часа.</i>",
+                    f"{E.clock} <i>Платеж не должен задерживаться больше 1 часа.</i>",
                     reply_markup=builder.as_markup(),
                     parse_mode="HTML"
                 )
@@ -775,12 +766,12 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 
             except Exception as e:
                 logger.error(f"Error creating YooKassa payment: {e}", exc_info=True)
-                await callback.answer("❌ Ошибка при создании платежа. Попробуйте позже.", show_alert=True)
+                await callback.answer(f"{E.error} Ошибка при создании платежа. Попробуйте позже.", show_alert=True)
                 return
         
         elif method_id == "cryptopay":
             if not hasattr(config, 'cryptopay') or not config.cryptopay.enabled:
-                await callback.answer("❌ Crypto Pay не настроен", show_alert=True)
+                await callback.answer(f"{E.error} Crypto Pay не настроен", show_alert=True)
                 return
             
             amount_rub = price / 100.0
@@ -822,12 +813,12 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                                 )
                             
                             builder = InlineKeyboardBuilder()
-                            builder.row(InlineKeyboardButton(text="💎 Перейти к оплате", url=invoice_url))
-                            builder.row(InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_crypto:{invoice_id}"))
-                            builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="open_premium"))
+                            builder.row(btn("Перейти к оплате", "plus", url=invoice_url))
+                            builder.row(btn("Проверить оплату", "refresh", callback_data=f"check_crypto:{invoice_id}"))
+                            builder.row(btn("Назад", "back", callback_data="open_premium"))
                             
                             await callback.message.edit_text(
-                                f"💎 <b>Оплата через Crypto Pay</b>\n\n"
+                                f"{E.plus} <b>Оплата через Crypto Pay</b>\n\n"
                                 f"План: <i>{plan_data['title']}</i>\n"
                                 f"Сумма: <i>{format_price_rub(price)}</i>\n\n"
                                 f"Нажмите кнопку ниже, чтобы перейти к оплате.\n"
@@ -838,15 +829,15 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                             await callback.answer()
                         else:
                             logger.error(f"Crypto Pay API Error: {res}")
-                            await callback.answer("❌ Ошибка при создании платежа.", show_alert=True)
+                            await callback.answer(f"{E.error} Ошибка при создании платежа.", show_alert=True)
             except Exception as e:
                 logger.error(f"Error creating Crypto Pay payment: {e}", exc_info=True)
-                await callback.answer("❌ Ошибка при создании платежа. Попробуйте позже.", show_alert=True)
+                await callback.answer(f"{E.error} Ошибка при создании платежа. Попробуйте позже.", show_alert=True)
         else:
             # Оплата через Telegram (Stars)
             # Проверяем минимальную сумму
             if price < 1:
-                await callback.answer("❌ Ошибка: сумма слишком мала", show_alert=True)
+                await callback.answer(f"{E.error} Ошибка: сумма слишком мала", show_alert=True)
                 return
             
             # Создаем payload
@@ -867,7 +858,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 await callback.answer()
             except Exception as e:
                 logger.error(f"Error sending invoice: {e}", exc_info=True)
-                await callback.answer("❌ Ошибка при создании инвойса. Попробуйте позже.", show_alert=True)
+                await callback.answer(f"{E.error} Ошибка при создании инвойса. Попробуйте позже.", show_alert=True)
     
     @dp.callback_query(F.data.startswith("check_crypto:"))
     async def handle_check_crypto_payment(callback: CallbackQuery):
@@ -943,17 +934,17 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                                 # Сообщение об успехе уже отправлено в process_webhook_payment
                                 # Но мы можем убрать кнопки на текущем сообщении
                                 await callback.message.edit_reply_markup(reply_markup=None)
-                                await callback.answer("✅ Оплата подтверждена!", show_alert=True)
+                                await callback.answer(f"{E.success} Оплата подтверждена!", show_alert=True)
                             else:
-                                await callback.answer("✅ Оплата уже была обработана.", show_alert=True)
+                                await callback.answer(f"{E.success} Оплата уже была обработана.", show_alert=True)
                         else:
-                            await callback.answer("⏳ Оплата еще не поступила. Попробуйте через минуту.", show_alert=True)
+                            await callback.answer(f"{E.wait} Оплата еще не поступила. Попробуйте через минуту.", show_alert=True)
                     else:
                         logger.error(f"Crypto Pay API Error in check: {res}")
-                        await callback.answer("❌ Ошибка при проверке статуса.", show_alert=True)
+                        await callback.answer(f"{E.error} Ошибка при проверке статуса.", show_alert=True)
         except Exception as e:
             logger.error(f"Error checking Crypto Pay payment: {e}", exc_info=True)
-            await callback.answer("❌ Ошибка при проверке. Попробуйте позже.", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка при проверке. Попробуйте позже.", show_alert=True)
 
     @dp.callback_query(F.data == "open_traffic_packs")
     async def handle_open_traffic_packs(callback: CallbackQuery):
@@ -966,7 +957,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         try:
             pack_id = int(callback.data.split(":")[1])
         except (IndexError, ValueError):
-            await callback.answer("❌ Неверный пакет", show_alert=True)
+            await callback.answer(f"{E.error} Неверный пакет", show_alert=True)
             return
 
         async with get_connection() as conn:
@@ -997,26 +988,24 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             return
 
         text = (
-            f"📶 <b>Оплата пакета</b>\n\n"
+            f"{E.signal} <b>Оплата пакета</b>\n\n"
             f"{pack['title']} — <b>+{pack['gb_amount']} ГБ</b> к лимиту\n\n"
             "Выберите способ оплаты:"
         )
         b = InlineKeyboardBuilder()
         if int(pack["price_stars"] or 0) >= 1:
             b.row(
-                InlineKeyboardButton(
-                    text=f"⭐ Telegram Stars ({format_price_stars(pack['price_stars'])})",
+                btn("Telegram Stars ({format_price_stars(pack['price_stars'])})", "star",
                     callback_data=f"traffic_pack_pay:{pack_id}:stars",
                 )
             )
         if config.yookassa.enabled and int(pack["price_rub"] or 0) >= 100:
             b.row(
-                InlineKeyboardButton(
-                    text=f"💳 Карта ({format_price_rub(pack['price_rub'])})",
+                btn("Карта ({format_price_rub(pack['price_rub'])})", "card",
                     callback_data=f"traffic_pack_pay:{pack_id}:yookassa",
                 )
             )
-        b.row(InlineKeyboardButton(text="◀️ К списку пакетов", callback_data="open_traffic_packs"))
+        b.row(btn("К списку пакетов", "back", callback_data="open_traffic_packs"))
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=b.as_markup())
         await callback.answer()
 
@@ -1024,12 +1013,12 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
     async def handle_traffic_pack_pay(callback: CallbackQuery):
         parts = callback.data.split(":")
         if len(parts) < 3:
-            await callback.answer("❌ Ошибка данных", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка данных", show_alert=True)
             return
         try:
             pack_id = int(parts[1])
         except ValueError:
-            await callback.answer("❌ Ошибка данных", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка данных", show_alert=True)
             return
         method_id = parts[2]
         user_id = callback.from_user.id
@@ -1059,17 +1048,17 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             return
 
         if method_id not in PAYMENT_METHODS:
-            await callback.answer("❌ Неизвестный способ оплаты", show_alert=True)
+            await callback.answer(f"{E.error} Неизвестный способ оплаты", show_alert=True)
             return
         method_data = PAYMENT_METHODS[method_id]
 
         if method_id == "yookassa":
             if not config.yookassa.enabled:
-                await callback.answer("❌ ЮKassa не настроена", show_alert=True)
+                await callback.answer(f"{E.error} ЮKassa не настроена", show_alert=True)
                 return
             price = int(pack["price_rub"])
             if price < 100:
-                await callback.answer("❌ Минимальная сумма — 1 ₽", show_alert=True)
+                await callback.answer(f"{E.error} Минимальная сумма — 1 ₽", show_alert=True)
                 return
             try:
                 yk = YooKassaClient(config.yookassa)
@@ -1104,10 +1093,10 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                         payment_id,
                     )
                 pay_kb = InlineKeyboardBuilder()
-                pay_kb.row(InlineKeyboardButton(text="💳 Перейти к оплате", url=confirmation_url))
-                pay_kb.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"traffic_pack_choose:{pack_id}"))
+                pay_kb.row(btn("Перейти к оплате", "card", url=confirmation_url))
+                pay_kb.row(btn("Назад", "back", callback_data=f"traffic_pack_choose:{pack_id}"))
                 await callback.message.edit_text(
-                    f"💳 <b>Оплата пакета</b>\n\n"
+                    f"{E.card} <b>Оплата пакета</b>\n\n"
                     f"{pack['title']} — +{pack['gb_amount']} ГБ\n"
                     f"Сумма: <i>{format_price_rub(price)}</i>\n\n"
                     "После оплаты ГБ начислятся автоматически.",
@@ -1117,13 +1106,13 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 await callback.answer()
             except Exception as e:
                 logger.error("traffic_pack yookassa: %s", e, exc_info=True)
-                await callback.answer("❌ Ошибка создания платежа", show_alert=True)
+                await callback.answer(f"{E.error} Ошибка создания платежа", show_alert=True)
             return
 
         if method_id == "stars":
             price = int(pack["price_stars"] or 0)
             if price < 1:
-                await callback.answer("❌ Неверная цена", show_alert=True)
+                await callback.answer(f"{E.error} Неверная цена", show_alert=True)
                 return
             ts = int(time.time())
             payload = f"stars_gbpack_{user_id}_{pack_id}_{ts}"
@@ -1141,10 +1130,10 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 await callback.answer()
             except Exception as e:
                 logger.error("traffic_pack stars invoice: %s", e, exc_info=True)
-                await callback.answer("❌ Не удалось выставить счёт", show_alert=True)
+                await callback.answer(f"{E.error} Не удалось выставить счёт", show_alert=True)
             return
 
-        await callback.answer("❌ Способ оплаты не поддерживается", show_alert=True)
+        await callback.answer(f"{E.error} Способ оплаты не поддерживается", show_alert=True)
 
     @dp.callback_query(F.data == "my_devices")
     async def handle_my_devices(callback: CallbackQuery, state: FSMContext):
@@ -1184,7 +1173,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 fp,
             )
             text, builder = await _build_my_devices_view(conn, user_id)
-        await callback.answer("✅ Устройство удалено из списка.", show_alert=True)
+        await callback.answer(f"{E.success} Устройство удалено из списка.", show_alert=True)
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
     @dp.callback_query(F.data == "reset_devices")
@@ -1213,13 +1202,13 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         except Exception as e:
             logger.debug("device_reset_upsell error: %s", e)
 
-        await callback.answer("✅ Сессии сброшены! Подключите нужные устройства заново.", show_alert=True)
+        await callback.answer(f"{E.success} Сессии сброшены! Подключите нужные устройства заново.", show_alert=True)
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="📱 Устройства", callback_data="my_devices"))
-        builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back_subscription"))
+        builder.row(btn("Устройства", "devices", callback_data="my_devices"))
+        builder.row(btn("Назад", "back", callback_data="go_back_subscription"))
         await callback.message.edit_text(
-            "✅ <b>Все сессии сброшены</b>\n\n"
+            f"{E.success} <b>Все сессии сброшены</b>\n\n"
             "Теперь подключите только нужные устройства — они будут учтены заново.",
             parse_mode="HTML",
             reply_markup=builder.as_markup(),
@@ -1279,23 +1268,23 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             if not await user_show_referral_trial_offer(conn, user_id):
                 if await has_completed_trial_payment(conn, user_id):
                     await callback.answer(
-                        "❌ Вы уже использовали пробный период!",
+                        f"{E.error} Вы уже использовали пробный период!",
                         show_alert=True,
                     )
                 else:
                     await callback.answer(
-                        "❌ Пробный период недоступен (активная Plus или отключён в настройках).",
+                        f"{E.error} Пробный период недоступен (активная Plus или отключён в настройках).",
                         show_alert=True,
                     )
                 return
 
             trial_days = await get_trial_days(conn)
             if trial_days <= 0:
-                await callback.answer("❌ Пробный период сейчас недоступен.", show_alert=True)
+                await callback.answer(f"{E.error} Пробный период сейчас недоступен.", show_alert=True)
                 return
 
         if not config.yookassa.enabled:
-            await callback.answer("❌ Оплата недоступна", show_alert=True)
+            await callback.answer(f"{E.error} Оплата недоступна", show_alert=True)
             return
 
         try:
@@ -1330,8 +1319,8 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
 
             from aiogram.utils.keyboard import InlineKeyboardBuilder as _IKB
             b = _IKB()
-            b.row(InlineKeyboardButton(text="💳 Перейти к оплате (1₽)", url=payment_data["confirmation_url"]))
-            b.row(InlineKeyboardButton(text="◀️ Назад", callback_data="go_back"))
+            b.row(btn("Перейти к оплате (1₽)", "card", url=payment_data["confirmation_url"]))
+            b.row(btn("Назад", "back", callback_data="go_back"))
             await callback.message.edit_text(
                 referral_trial_offer_text(trial_days),
                 parse_mode="HTML",
@@ -1340,4 +1329,4 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
             await callback.answer()
         except Exception as e:
             logger.error("activate_trial error: %s", e, exc_info=True)
-            await callback.answer("❌ Ошибка создания платежа", show_alert=True)
+            await callback.answer(f"{E.error} Ошибка создания платежа", show_alert=True)
