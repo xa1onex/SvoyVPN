@@ -73,4 +73,10 @@ def test_xhttp_single_server_uses_minimal_happ_layout():
     assert cfg["inbounds"][0]["sniffing"]["routeOnly"] is False
     assert "burstObservatory" not in cfg
     assert "policy" not in cfg
-    assert len(cfg["routing"]["rules"]) == 1
+    rules = cfg["routing"]["rules"]
+    # youtube-rf выключен по умолчанию (SVOYVPN_YOUTUBE_RF_ENABLED)
+    assert all(r.get("outboundTag") != "youtube-rf" for r in rules)
+    tags = [o.get("tag") for o in cfg["outbounds"]]
+    assert "youtube-rf" not in tags
+    assert tags[0] == "proxy"
+    assert "direct" in tags and "block" in tags

@@ -1,9 +1,13 @@
 """Tests for Hysteria2 static server → Happ profile."""
 
+import os
+
 from bot.profile_generator import (
     _build_single_server_config,
     generate_happ_configs_list,
+    generate_xray_profile,
     parse_hysteria2_link,
+    parse_vless_link,
 )
 from bot.static_servers import youtube_adfree_link
 
@@ -54,7 +58,9 @@ def test_hy2_not_in_autoselect_pool():
     hy2_cfgs = [
         c
         for c in configs
-        if c.get("outbounds") and c["outbounds"][0].get("protocol") == "hysteria"
+        if c.get("outbounds")
+        and c["outbounds"][0].get("protocol") == "hysteria"
+        and c["outbounds"][0].get("tag") == "proxy"
     ]
     assert len(hy2_cfgs) == 1
     vless_profiles = [
@@ -63,9 +69,37 @@ def test_hy2_not_in_autoselect_pool():
         if any(o.get("protocol") == "vless" for o in c.get("outbounds", []))
     ]
     assert vless_profiles
-    assert all(
-        o.get("protocol") != "hysteria"
-        for c in vless_profiles
-        for o in c.get("outbounds", [])
-    )
+    # RF выключен по умолчанию — в VLESS-профилях нет youtube-rf
+    for c in vless_profiles:
+        tags = [o.get("tag") for o in c.get("outbounds", [])]
+        assert "youtube-rf" not in tags
     assert len(configs) >= 3  # auto + DE + YouTube
+
+
+def test_vless_does_not_route_youtube_when_rf_disabled(monkeypatch):
+    monkeypatch.delenv("SVOYVPN_YOUTUBE_RF_ENABLED", raising=False)
+    vless = (
+        "vless://a1b2c3d4-e5f6-7890-abcd-ef1234567890@1.2.3.4:443"
+        "?type=tcp&security=reality&pbk=abc&sid=01&sni=example.com&fp=chrome#DE"
+    )
+    cfg = _build_single_server_config(parse_vless_link(vless), remarks="DE", description="")
+    auto = generate_xray_profile([vless])
+    for profile in (cfg, auto):
+        tags = [o.get("tag") for o in profile["outbounds"]]
+        assert "youtube-rf" not in tags
+        assert all(r.get("outboundTag") != "youtube-rf" for r in profile["routing"]["rules"])
+
+
+def test_vless_routes_youtube_through_rf_when_enabled(monkeypatch):
+    monkeypatch.setenv("SVOYVPN_YOUTUBE_RF_ENABLED", "1")
+    # reload routing flag path used at call time
+    from bot import routing_rules
+    assert routing_rules.youtube_rf_enabled()
+    vless = (
+        "vless://a1b2c3d4-e5f6-7890-abcd-ef1234567890@1.2.3.4:443"
+        "?type=tcp&security=reality&pbk=abc&sid=01&sni=example.com&fp=chrome#DE"
+    )
+    cfg = _build_single_server_config(parse_vless_link(vless), remarks="DE", description="")
+    rf = next(o for o in cfg["outbounds"] if o.get("tag") == "youtube-rf")
+    assert rf["settings"]["address"] == "hysteria2.s1gyma4ka.ru"
+    assert cfg["routing"]["rules"][0]["outboundTag"] == "youtube-rf"

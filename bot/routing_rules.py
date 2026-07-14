@@ -179,6 +179,46 @@ RU_BYPASS_IP_CIDR: list[str] = [
     "geoip:private",
 ]
 
+# YouTube → RU exit (HY2 без рекламы), до правил direct/geoip:ru.
+# Включается только при валидном HY2: SVOYVPN_YOUTUBE_RF_ENABLED=1
+import os
+
+YOUTUBE_RF_OUTBOUND_TAG = "youtube-rf"
+
+YOUTUBE_RF_DOMAINS: list[str] = [
+    "geosite:youtube",
+    "domain:googlevideo.com",
+    "domain:ytimg.com",
+    "domain:ggpht.com",
+    "domain:youtube-nocookie.com",
+    "domain:youtubei.googleapis.com",
+    "domain:youtu.be",
+    "domain:googleads.g.doubleclick.net",
+    "domain:googlesyndication.com",
+]
+
+
+def youtube_rf_enabled() -> bool:
+    """HY2 exit жив и auth валиден — иначе YouTube ломается на всех серверах."""
+    v = (os.getenv("SVOYVPN_YOUTUBE_RF_ENABLED") or "0").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def get_youtube_rf_routing_rule() -> dict:
+    """Маршрут YouTube/рекламы через RU HY2 exit."""
+    return {
+        "type": "field",
+        "domain": list(YOUTUBE_RF_DOMAINS),
+        "outboundTag": YOUTUBE_RF_OUTBOUND_TAG,
+    }
+
+
+def prepend_youtube_rf_rules(rules: list[dict]) -> list[dict]:
+    """YouTube-правило первым — иначе geoip:ru/direct перехватят раньше."""
+    if not youtube_rf_enabled():
+        return list(rules)
+    return [get_youtube_rf_routing_rule(), *rules]
+
 
 def get_direct_domain_rules() -> list[str]:
     """Возвращает список доменов для direct routing (без префикса 'domain:')."""

@@ -25,8 +25,14 @@ import os
 from typing import Any, Mapping
 from urllib.parse import parse_qs, unquote
 
-from .routing_rules import RU_BYPASS_DOMAINS
+from .routing_rules import (
+    RU_BYPASS_DOMAINS,
+    YOUTUBE_RF_OUTBOUND_TAG,
+    prepend_youtube_rf_rules,
+    youtube_rf_enabled,
+)
 from .happ_catalog import autoselect_presentation, presentation_for_server
+from .static_servers import youtube_adfree_link
 
 # https://www.happ.su/happ/dev-docs/app-management — serverDescription max 30 chars
 HAPP_META_SERVER_DESCRIPTION_MAX_LEN = 30
@@ -375,6 +381,29 @@ def _build_vless_outbound(parsed: dict[str, Any], tag: str) -> dict[str, Any]:
     }
 
 
+_youtube_rf_outbound_cache: dict[str, Any] | None = None
+
+
+def _youtube_rf_outbound() -> dict[str, Any]:
+    """RU HY2 exit для YouTube без рекламы (встроен во все VLESS-профили)."""
+    global _youtube_rf_outbound_cache
+    if _youtube_rf_outbound_cache is not None:
+        return _youtube_rf_outbound_cache
+    parsed = parse_hysteria2_link(youtube_adfree_link())
+    if not parsed:
+        raise RuntimeError("YouTube RF HY2 link is invalid")
+    _youtube_rf_outbound_cache = _build_hysteria2_outbound(parsed, YOUTUBE_RF_OUTBOUND_TAG)
+    return _youtube_rf_outbound_cache
+
+
+def _append_youtube_rf_outbound(outbounds: list[dict[str, Any]]) -> None:
+    """Вставить HY2 outbound перед direct/block (только если RF включён)."""
+    if not youtube_rf_enabled():
+        return
+    insert_at = max(len(outbounds) - 2, 1)
+    outbounds.insert(insert_at, _youtube_rf_outbound())
+
+
 def _build_hysteria2_outbound(parsed: dict[str, Any], tag: str = "proxy") -> dict[str, Any]:
     """Happ/Xray hysteria2 outbound (matches working Happ export)."""
     alpn = parsed.get("alpn") or ["h3"]
@@ -441,15 +470,20 @@ def _build_single_server_config(parsed: dict[str, Any], remarks: str, descriptio
         rules = list(_BASE_RULES)
         dns = _DNS
         inbounds = _INBOUNDS
+    outbounds: list[dict[str, Any]] = [
+        outbound,
+        {"protocol": "freedom", "tag": "direct"},
+        {"protocol": "blackhole", "tag": "block"},
+    ]
+    if proto != "hysteria2":
+        _append_youtube_rf_outbound(outbounds)
+        rules = prepend_youtube_rf_rules(rules)
+
     cfg: dict[str, Any] = {
         "dns": dns,
         "inbounds": inbounds,
         "log": {"loglevel": "warning"},
-        "outbounds": [
-            outbound,
-            {"protocol": "freedom", "tag": "direct"},
-            {"protocol": "blackhole", "tag": "block"},
-        ],
+        "outbounds": outbounds,
         "routing": {
             "domainMatcher": "hybrid",
             "domainStrategy": "IPIfNonMatch",
@@ -497,8 +531,9 @@ def generate_xray_profile(
 
     outbounds.append({"protocol": "freedom", "tag": "direct"})
     outbounds.append({"protocol": "blackhole", "tag": "block"})
+    _append_youtube_rf_outbound(outbounds)
 
-    rules = list(_BASE_RULES)
+    rules = prepend_youtube_rf_rules(list(_BASE_RULES))
     balancers: list[dict[str, Any]] = []
 
     if smart_tags:
@@ -844,7 +879,9 @@ def generate_happ_configs_list(
         if is_fast_section_header(sname) or is_free_header_server(sname):
             continue
         is_bp = bool(server_is_bypass[i]) if i < len(server_is_bypass) else False
-        remark = parsed.get("remark") or sname or f"Server {i+1}"
+        # Имя из БД (servers.name) важнее хвоста # в старой ссылке —
+        # иначе rename в админке не виден, пока не переписаны vpn_keys.
+        remark = (sname.strip() if isinstance(sname, str) and sname.strip() else None) or parsed.get("remark") or f"Server {i+1}"
         real_links.append((link, parsed, remark, is_bp, sname))
         if not is_bp and (parsed.get("protocol") or "vless") == "vless":
             display_names.append(remark)
