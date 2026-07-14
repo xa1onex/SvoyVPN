@@ -32,7 +32,12 @@ from .routing_rules import (
     youtube_rf_enabled,
 )
 from .happ_catalog import autoselect_presentation, presentation_for_server
-from .static_servers import youtube_adfree_link
+from .static_servers import (
+    YOUTUBE_ADFREE_DESCRIPTION,
+    YOUTUBE_ADFREE_HOST,
+    is_youtube_adfree_host,
+    youtube_adfree_link,
+)
 
 # https://www.happ.su/happ/dev-docs/app-management — serverDescription max 30 chars
 HAPP_META_SERVER_DESCRIPTION_MAX_LEN = 30
@@ -346,7 +351,7 @@ def _build_stream(parsed: dict[str, Any]) -> dict[str, Any]:
         ss["tlsSettings"] = tls
 
     if net == "tcp":
-        ss["tcpSettings"] = {}
+        ss["tcpSettings"] = {"header": {"type": "none"}}
     elif net == "grpc":
         ss["grpcSettings"] = {
             "authority": "",
@@ -385,14 +390,14 @@ _youtube_rf_outbound_cache: dict[str, Any] | None = None
 
 
 def _youtube_rf_outbound() -> dict[str, Any]:
-    """RU HY2 exit для YouTube без рекламы (встроен во все VLESS-профили)."""
+    """RU YouTube exit (VLESS) — встраивается во все обычные профили."""
     global _youtube_rf_outbound_cache
     if _youtube_rf_outbound_cache is not None:
         return _youtube_rf_outbound_cache
-    parsed = parse_hysteria2_link(youtube_adfree_link())
+    parsed = parse_vless_link(youtube_adfree_link())
     if not parsed:
-        raise RuntimeError("YouTube RF HY2 link is invalid")
-    _youtube_rf_outbound_cache = _build_hysteria2_outbound(parsed, YOUTUBE_RF_OUTBOUND_TAG)
+        raise RuntimeError("YouTube RF VLESS link is invalid")
+    _youtube_rf_outbound_cache = _build_vless_outbound(parsed, YOUTUBE_RF_OUTBOUND_TAG)
     return _youtube_rf_outbound_cache
 
 
@@ -454,12 +459,21 @@ def _build_single_server_config(parsed: dict[str, Any], remarks: str, descriptio
     final_remarks = _happ_row_remarks(remarks, ui_description)
     proto = parsed.get("protocol") or "vless"
     is_xhttp = (parsed.get("type") or "tcp") == "xhttp"
+    is_yt_exit = is_youtube_adfree_host(parsed.get("address"))
     if proto == "hysteria2":
-        # YouTube/special nodes: весь трафик в proxy (иначе geoip:ru уведёт YouTube в direct).
         outbound = _build_hysteria2_outbound(parsed, "proxy")
         rules = list(_MINIMAL_ROUTING_RULES)
-        dns = _DNS
-        inbounds = _INBOUNDS
+        dns = _DNS_XHTTP
+        inbounds = _INBOUNDS_XHTTP
+    elif is_yt_exit:
+        # Весь трафик в RU exit: иначе geoip:ru → direct ломает YouTube.
+        outbound = _build_vless_outbound(parsed, "proxy")
+        rules = list(_MINIMAL_ROUTING_RULES)
+        dns = _DNS_XHTTP
+        inbounds = _INBOUNDS_XHTTP
+        if not (description or "").strip():
+            ui_description = clamp_happ_server_description(YOUTUBE_ADFREE_DESCRIPTION)
+            final_remarks = _happ_row_remarks(remarks, ui_description)
     elif is_xhttp:
         outbound = _build_vless_outbound(parsed, "proxy")
         rules = list(_MINIMAL_ROUTING_RULES)
@@ -475,7 +489,8 @@ def _build_single_server_config(parsed: dict[str, Any], remarks: str, descriptio
         {"protocol": "freedom", "tag": "direct"},
         {"protocol": "blackhole", "tag": "block"},
     ]
-    if proto != "hysteria2":
+    # Не вшиваем youtube-rf в сам YouTube-exit и не в HY2.
+    if proto != "hysteria2" and not is_yt_exit:
         _append_youtube_rf_outbound(outbounds)
         rules = prepend_youtube_rf_rules(rules)
 
@@ -905,8 +920,17 @@ def generate_happ_configs_list(
 
     regular = [(rl, p, r, bp, sn) for rl, p, r, bp, sn in real_links if not bp]
     bypass = [(rl, p, r, bp, sn) for rl, p, r, bp, sn in real_links if bp]
-    regular_vless = [x for x in regular if (x[1].get("protocol") or "vless") == "vless"]
-    regular_other = [x for x in regular if (x[1].get("protocol") or "vless") != "vless"]
+    # YouTube RU exit — отдельная строка, не в автовыборе
+    regular_vless = [
+        x for x in regular
+        if (x[1].get("protocol") or "vless") == "vless"
+        and not is_youtube_adfree_host(x[1].get("address"))
+    ]
+    regular_other = [
+        x for x in regular
+        if (x[1].get("protocol") or "vless") != "vless"
+        or is_youtube_adfree_host(x[1].get("address"))
+    ]
 
     if regular_vless:
         idx_fast = _fast_server_index([r for _, _, r, _, _ in regular_vless])

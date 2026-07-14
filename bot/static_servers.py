@@ -6,16 +6,42 @@ from typing import Any, Mapping
 from urllib.parse import quote
 
 
-YOUTUBE_ADFREE_NAME = "🇷🇺 YouTube без рекламы"
-YOUTUBE_ADFREE_HOST = "xdoublegroup.online"
+YOUTUBE_ADFREE_NAME = "🇷🇺 Россия | YouTube без рекламы"
+YOUTUBE_ADFREE_HOST = "104.171.131.174"
 YOUTUBE_ADFREE_PORT = 443
-YOUTUBE_ADFREE_AUTH = "12753a53-40aa-4b41-b77c-4b9c8e5d289a"
+YOUTUBE_ADFREE_UUID = "efc1e4b8-16cb-433d-b6fb-6f7eb2762712"
+YOUTUBE_ADFREE_SNI = "j5orbbxwns.medved.app"
+YOUTUBE_ADFREE_FP = "firefox"
+YOUTUBE_ADFREE_FLOW = "xtls-rprx-vision"
+YOUTUBE_ADFREE_ALPN = "h2,http/1.1"
+YOUTUBE_ADFREE_DESCRIPTION = "для RU сервисов и YouTube"
+
+# backward-compat alias
+YOUTUBE_ADFREE_AUTH = YOUTUBE_ADFREE_UUID
 
 
 def is_static_server(server: Mapping[str, Any] | None) -> bool:
     if not server:
         return False
     return (server.get("panel_type") or "").strip().lower() == "static"
+
+
+def is_youtube_adfree_host(address: object) -> bool:
+    return str(address or "").strip() == YOUTUBE_ADFREE_HOST
+
+
+def youtube_adfree_link(remark: str = YOUTUBE_ADFREE_NAME) -> str:
+    """VLESS+TLS+Vision exit (RU / YouTube без рекламы)."""
+    fragment = quote((remark or "").strip() or YOUTUBE_ADFREE_NAME, safe="")
+    return (
+        f"vless://{YOUTUBE_ADFREE_UUID}@{YOUTUBE_ADFREE_HOST}:{YOUTUBE_ADFREE_PORT}"
+        f"?encryption=none&flow={quote(YOUTUBE_ADFREE_FLOW, safe='')}"
+        f"&security=tls&type=tcp"
+        f"&sni={quote(YOUTUBE_ADFREE_SNI, safe='')}"
+        f"&fp={quote(YOUTUBE_ADFREE_FP, safe='')}"
+        f"&alpn={quote(YOUTUBE_ADFREE_ALPN, safe=',')}"
+        f"#{fragment}"
+    )
 
 
 def build_hysteria2_link(
@@ -28,6 +54,7 @@ def build_hysteria2_link(
     fingerprint: str = "chrome",
     remark: str = "",
 ) -> str:
+    """Legacy HY2 helper (не используется для YouTube exit)."""
     sn = (sni or host or "").strip() or host
     fragment = quote((remark or "").strip() or host, safe="")
     return (
@@ -37,25 +64,13 @@ def build_hysteria2_link(
     )
 
 
-def youtube_adfree_link(remark: str = YOUTUBE_ADFREE_NAME) -> str:
-    return build_hysteria2_link(
-        auth=YOUTUBE_ADFREE_AUTH,
-        host=YOUTUBE_ADFREE_HOST,
-        port=YOUTUBE_ADFREE_PORT,
-        sni=YOUTUBE_ADFREE_HOST,
-        remark=remark,
-    )
-
-
 def static_link_for_server(server: Mapping[str, Any]) -> str:
-    """URI из base_url (полный) или сборка из ip/password/port."""
+    """URI из base_url (полный) или сборка youtube VLESS."""
     base = str(server.get("base_url") or "").strip()
-    if base.startswith(("hysteria2://", "hy2://")):
+    if base.startswith(("vless://", "hysteria2://", "hy2://")):
         return base
-    auth = str(server.get("password") or "").strip()
     host = str(server.get("ip") or "").strip()
-    port = int(server.get("port") or 443)
     name = str(server.get("name") or "").strip()
-    if auth and host:
-        return build_hysteria2_link(auth=auth, host=host, port=port, sni=host, remark=name)
+    if is_youtube_adfree_host(host) or "youtube" in name.lower() or "ютуб" in name.lower():
+        return youtube_adfree_link(remark=name or YOUTUBE_ADFREE_NAME)
     return base
