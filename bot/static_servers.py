@@ -7,9 +7,9 @@ from urllib.parse import quote
 
 
 YOUTUBE_ADFREE_NAME = "🇷🇺 YouTube без рекламы"
-YOUTUBE_ADFREE_HOST = "hysteria2.s1gyma4ka.ru"
+YOUTUBE_ADFREE_HOST = "xdoublegroup.online"
 YOUTUBE_ADFREE_PORT = 443
-YOUTUBE_ADFREE_AUTH = "c6434293-3fd4-4409-962c-0416f0a2fe96"
+YOUTUBE_ADFREE_AUTH = "12753a53-40aa-4b41-b77c-4b9c8e5d289a"
 
 
 def is_static_server(server: Mapping[str, Any] | None) -> bool:

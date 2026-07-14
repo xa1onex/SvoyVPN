@@ -65,7 +65,10 @@ def test_build_stream_xhttp_includes_session_id_extra():
     assert "allowInsecure" not in tls
 
 
-def test_xhttp_single_server_uses_minimal_happ_layout():
+def test_xhttp_single_server_uses_minimal_happ_layout(monkeypatch):
+    monkeypatch.setenv("SVOYVPN_YOUTUBE_RF_ENABLED", "1")
+    import bot.profile_generator as pg
+    pg._youtube_rf_outbound_cache = None
     p = parse_vless_link(_SAMPLE)
     cfg = _build_single_server_config(p, remarks="PL", description="")
     assert cfg["dns"]["queryStrategy"] == "UseIP"
@@ -74,9 +77,7 @@ def test_xhttp_single_server_uses_minimal_happ_layout():
     assert "burstObservatory" not in cfg
     assert "policy" not in cfg
     rules = cfg["routing"]["rules"]
-    # youtube-rf выключен по умолчанию (SVOYVPN_YOUTUBE_RF_ENABLED)
-    assert all(r.get("outboundTag") != "youtube-rf" for r in rules)
+    assert rules[0]["outboundTag"] == "youtube-rf"
+    assert "geosite:youtube" in rules[0]["domain"]
     tags = [o.get("tag") for o in cfg["outbounds"]]
-    assert "youtube-rf" not in tags
-    assert tags[0] == "proxy"
-    assert "direct" in tags and "block" in tags
+    assert tags == ["proxy", "youtube-rf", "direct", "block"]
