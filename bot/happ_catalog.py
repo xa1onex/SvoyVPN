@@ -64,7 +64,7 @@ def presentation_for_server(
         return (raw, "Обход глушилок")
 
     if "youtube" in blob or "ютуб" in blob:
-        return (raw, "YouTube без рекламы")
+        return (raw, "для RU сервисов и YouTube")
 
     return (raw, "Быстрый сервер")
 
