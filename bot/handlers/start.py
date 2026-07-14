@@ -535,7 +535,7 @@ async def get_main_keyboard(user_id: int, config):
     
     # Проверяем админа
     if user_id in config.bot.admin_ids:
-        builder.row(btn("Админ панель", "admin", callback_data="admin_panel"))
+        builder.row(btn("Админ панель", "admin", callback_data="admin_panel", style="primary"))
     
     # Проверка на Пробный период
     show_trial = False
@@ -549,24 +549,24 @@ async def get_main_keyboard(user_id: int, config):
         logger.error(f"Error checking trial logic: {e}")
         
     if show_trial:
-        builder.row(btn("Plus за 1₽ — попробовать", "gift", callback_data="activate_trial"))
+        builder.row(btn("Plus за 1₽ — попробовать", "gift", callback_data="activate_trial", style="primary"))
 
-    from ..menu_labels import GIFT_BUTTON
+    from ..menu_labels import GIFT_BUTTON_LABEL
 
     builder.row(
-        btn("Помощь", "help", callback_data="open_help"),
-        btn("Лимиты", "limits", callback_data="open_bypass_packs"),
+        btn("Помощь", "help", callback_data="open_help", style="primary"),
+        btn("Лимиты", "limits", callback_data="open_bypass_packs", style="primary"),
     )
     if await should_show_devices_menu(user_id):
         builder.row(
-            btn("Устройства", "devices", callback_data="my_devices"),
+            btn("Устройства", "devices", callback_data="my_devices", style="primary"),
         )
     builder.row(
-        btn("Подписка", "subscription", callback_data="open_tiers"),
-        InlineKeyboardButton(text=GIFT_BUTTON, callback_data="open_invite"),
+        btn("Подписка", "subscription", callback_data="open_tiers", style="primary"),
+        btn(GIFT_BUTTON_LABEL, "gift", callback_data="open_invite", style="primary"),
     )
     builder.row(
-        btn("Подключить VPN", "vpn_connect", callback_data="get_vpn_link"),
+        btn("Подключить VPN", "vpn_connect", callback_data="get_vpn_link", style="success"),
     )
 
     return builder.as_markup()

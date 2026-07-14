@@ -15,14 +15,14 @@ from aiogram.exceptions import TelegramBadRequest
 
 from ..database import get_connection, ensure_subscription_token
 from ..subscriptions import get_subscription_status, get_user_subscription_url
-from ..plans import get_subscription_plans, get_renewal_plans, format_price_rub, format_price_stars, format_price_both, PAYMENT_METHODS
+from ..plans import get_subscription_plans, get_renewal_plans, format_price_rub, format_price_stars, format_price_stars_button, format_price_both, PAYMENT_METHODS
 from ..config import AppConfig
 from ..yookassa_client import YooKassaClient
 from ..device_fingerprint import (
     SUBSCRIPTION_DEVICE_COUNTABLE_SQL,
     format_device_display_name,
 )
-from ..custom_emojis import E, e, lbl, btn, emoji_button, raw
+from ..custom_emojis import E, e, lbl, btn, btn_labeled, emoji_button, raw, toast
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +58,7 @@ async def _build_my_devices_view(conn, user_id: int) -> tuple[str, InlineKeyboar
             fp = d["fp"]
             if fp:
                 builder.row(
-                    btn("{i}", "trash",
-                        callback_data=f"rm_dev:{fp}",
-                    )
+                    btn_labeled(f"Удалить {i}", "trash_vs", callback_data=f"rm_dev:{fp}")
                 )
     else:
         text += "Нет подключённых устройств.\n"
@@ -69,7 +67,7 @@ async def _build_my_devices_view(conn, user_id: int) -> tuple[str, InlineKeyboar
         text += f"\n{E.warning} Лимит превышен ({count}/{device_limit})."
 
     if count > 0:
-        builder.row(btn("Сбросить все сессии", "refresh", callback_data="reset_devices"))
+        builder.row(btn_labeled("Сбросить все сессии", "refresh", callback_data="reset_devices"))
     builder.row(btn("Назад", "back", callback_data="go_back_subscription"))
     return text, builder
 
@@ -80,6 +78,18 @@ _DEVICE_NAMES = {
     "windows": "Windows",
     "mac": "macOS",
 }
+
+_DEVICE_ALIASES = {
+    "macos": "mac",
+    "iphone": "apple",
+    "ipad": "apple",
+    "ios": "apple",
+}
+
+
+def _normalize_ob_device(device: str) -> str:
+    d = (device or "").strip().lower()
+    return _DEVICE_ALIASES.get(d, d)
 
 
 async def send_traffic_packs_menu(bot: Bot, event: Message | CallbackQuery, config: AppConfig, *, edit: bool = False) -> None:
@@ -207,10 +217,10 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
 
     def _device_select_markup() -> InlineKeyboardBuilder:
         builder = InlineKeyboardBuilder()
-        builder.row(btn("iPhone / iPad", "devices", callback_data="ob_dev_apple"))
-        builder.row(btn("Android", "android", callback_data="ob_dev_android"))
-        builder.row(btn("Windows", "laptop", callback_data="ob_dev_windows"))
-        builder.row(btn("macOS", "desktop", callback_data="ob_dev_mac"))
+        builder.row(btn_labeled("iPhone / iPad", "iphone", callback_data="ob_dev_apple"))
+        builder.row(btn_labeled("Android", "android", callback_data="ob_dev_android"))
+        builder.row(btn_labeled("Windows", "windows", callback_data="ob_dev_windows"))
+        builder.row(btn_labeled("macOS", "macos", callback_data="ob_dev_mac"))
         builder.row(btn("Назад", "back", callback_data="go_back_subscription"))
         return builder
 
@@ -249,8 +259,9 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
         from ..vpn_onboarding import build_happ_instruction_async, device_instruction_photo
         from ..database import get_device_instruction_photos
 
+        device = _normalize_ob_device(device)
         if device not in _DEVICE_NAMES:
-            await callback.answer(f"{E.error} Неизвестное устройство")
+            await callback.answer(f"{raw('error')} Неизвестное устройство", show_alert=True)
             return
 
         user_id = callback.from_user.id
@@ -271,21 +282,45 @@ async def setup_subscription_handlers(dp, bot: Bot, config: AppConfig):
         except TelegramBadRequest:
             pass
 
-        if db_photos:
-            for file_id in db_photos:
-                try:
-                    await bot.send_photo(chat_id, file_id)
-                except Exception:
-                    continue
-            await bot.send_message(chat_id, text, **message_kw)
-        elif local_photo:
-            if len(text) <= 1020:
+        sent = False
+        try:
+            if db_photos:
+                first, *rest = db_photos
+                await bot.send_photo(chat_id, first, caption=text, **photo_kw)
+                for file_id in rest:
+                    try:
+                        await bot.send_photo(chat_id, file_id)
+                    except Exception:
+                        continue
+                sent = True
+            elif local_photo:
                 await bot.send_photo(chat_id, local_photo, caption=text, **photo_kw)
+                sent = True
             else:
-                await bot.send_photo(chat_id, local_photo)
                 await bot.send_message(chat_id, text, **message_kw)
-        else:
+                sent = True
+        except (TelegramBadRequest, TypeError, ValueError):
+            plain = re.sub(r"<[^>]+>", "", text)
+            try:
+                if db_photos or local_photo:
+                    photo = db_photos[0] if db_photos else local_photo
+                    await bot.send_photo(
+                        chat_id,
+                        photo,
+                        caption=plain,
+                        parse_mode=None,
+                        reply_markup=markup,
+                    )
+                else:
+                    await bot.send_message(chat_id, plain, reply_markup=markup)
+                sent = True
+            except Exception:
+                await bot.send_message(chat_id, plain, reply_markup=markup)
+                sent = True
+
+        if not sent:
             await bot.send_message(chat_id, text, **message_kw)
+
         await callback.answer()
 
     @dp.callback_query(F.data == "get_vpn_link")
@@ -425,7 +460,7 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
                 f"{E.gift} <b>Plus за 1₽</b>\n\n"
                 f"Специальное предложение для вас — <b>{trial_days} дней</b> Plus "
                 f"с автопродлением по актуальной цене.\n\n"
-                "• 50 ГБ bypass в месяц\n"
+                "• 30 ГБ bypass в месяц\n"
                 "• YouTube / TikTok / AI\n"
                 "• Безлимит устройств\n\n"
             )
@@ -438,7 +473,7 @@ async def build_subscription_message(info: dict, state: FSMContext, config: AppC
             text = (
                 f"{E.error} <b>VPN неактивен</b>\n\n"
                 "Оформите <b>Plus</b> — быстрый VPN с обходом блокировок:\n"
-                "• 50 ГБ bypass в месяц\n"
+                "• 30 ГБ bypass в месяц\n"
                 "• YouTube / TikTok / AI\n"
                 "• Безлимит устройств\n\n"
             )
@@ -497,13 +532,13 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         for plan_id, plan_data in list(current_tariffs.items())[:2]:
             if config.yookassa.enabled:
                 builder.row(
-                    btn("{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "card",
+                    btn(f"{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "card",
                         callback_data=f"{action}:{plan_id}:yookassa"
                     )
                 )
             if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
                 builder.row(
-                    btn("{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "plus",
+                    btn(f"{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "plus",
                         callback_data=f"{action}:{plan_id}:cryptopay"
                     )
                 )
@@ -530,13 +565,13 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         for plan_id, plan_data in list(current_tariffs.items())[:2]:
             if config.yookassa.enabled:
                 builder.row(
-                    btn("{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "card",
+                    btn(f"{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "card",
                         callback_data=f"{action}:{plan_id}:yookassa"
                     )
                 )
             if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
                 builder.row(
-                    btn("{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "plus",
+                    btn(f"{plan_data['title']} ({format_price_rub(plan_data['price_rub'])})", "plus",
                         callback_data=f"{action}:{plan_id}:cryptopay"
                     )
                 )
@@ -593,7 +628,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         
         if config.yookassa.enabled:
             builder.row(
-                btn("Банковская карта ({format_price_rub(plan_data['price_rub'])})", "card",
+                btn(f"Банковская карта ({format_price_rub(plan_data['price_rub'])})", "card",
                     callback_data=f"{action}:{plan_id}:yookassa"
                 )
             )
@@ -601,7 +636,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         # Кнопка для оплаты Crypto Pay (если включена)
         if hasattr(config, 'cryptopay') and config.cryptopay.enabled:
             builder.row(
-                btn("Crypto Pay ({format_price_rub(plan_data['price_rub'])})", "plus",
+                btn(f"Crypto Pay ({format_price_rub(plan_data['price_rub'])})", "plus",
                     callback_data=f"{action}:{plan_id}:cryptopay"
                 )
             )
@@ -995,13 +1030,13 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         b = InlineKeyboardBuilder()
         if int(pack["price_stars"] or 0) >= 1:
             b.row(
-                btn("Telegram Stars ({format_price_stars(pack['price_stars'])})", "star",
+                btn(f"Telegram Stars ({format_price_stars_button(pack['price_stars'])})", "star",
                     callback_data=f"traffic_pack_pay:{pack_id}:stars",
                 )
             )
         if config.yookassa.enabled and int(pack["price_rub"] or 0) >= 100:
             b.row(
-                btn("Карта ({format_price_rub(pack['price_rub'])})", "card",
+                btn(f"Карта ({format_price_rub(pack['price_rub'])})", "card",
                     callback_data=f"traffic_pack_pay:{pack_id}:yookassa",
                 )
             )
@@ -1173,7 +1208,7 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
                 fp,
             )
             text, builder = await _build_my_devices_view(conn, user_id)
-        await callback.answer(f"{E.success} Устройство удалено из списка.", show_alert=True)
+        await callback.answer(toast("success", "Устройство удалено из списка."), show_alert=True)
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
     @dp.callback_query(F.data == "reset_devices")
@@ -1202,7 +1237,10 @@ async def setup_subscription_plan_handlers(dp, bot: Bot, config: AppConfig):
         except Exception as e:
             logger.debug("device_reset_upsell error: %s", e)
 
-        await callback.answer(f"{E.success} Сессии сброшены! Подключите нужные устройства заново.", show_alert=True)
+        await callback.answer(
+            toast("success", "Сессии сброшены! Подключите нужные устройства заново."),
+            show_alert=True,
+        )
 
         builder = InlineKeyboardBuilder()
         builder.row(btn("Устройства", "devices", callback_data="my_devices"))

@@ -45,11 +45,11 @@ TIERS = {
     },
     "plus": {
         "name": "Plus",
-        "bypass_gb": 50,
+        "bypass_gb": 30,
         "max_devices": 999,  # безлимит устройств
         "priority": "high",
         "features": [
-            "50 ГБ bypass в месяц",
+            "30 ГБ bypass в месяц",
             "YouTube / TikTok / AI работают",
             "Подключение за 30 сек",
             "Безлимит устройств",
@@ -58,24 +58,24 @@ TIERS = {
     # Legacy-тарифы: отображение для старых записей в БД
     "lite": {
         "name": "Plus",  # показываем как Plus в UI
-        "bypass_gb": 50,
+        "bypass_gb": 30,
         "max_devices": 999,
         "priority": "high",
-        "features": ["50 ГБ bypass в месяц", "YouTube / TikTok / AI работают", "Безлимит устройств"],
+        "features": ["30 ГБ bypass в месяц", "YouTube / TikTok / AI работают", "Безлимит устройств"],
     },
     "standard": {
         "name": "Plus",
-        "bypass_gb": 50,
+        "bypass_gb": 30,
         "max_devices": 999,
         "priority": "high",
-        "features": ["50 ГБ bypass в месяц", "YouTube / TikTok / AI работают", "Безлимит устройств"],
+        "features": ["30 ГБ bypass в месяц", "YouTube / TikTok / AI работают", "Безлимит устройств"],
     },
     "pro": {
         "name": "Plus",
-        "bypass_gb": 50,
+        "bypass_gb": 30,
         "max_devices": 999,
         "priority": "high",
-        "features": ["50 ГБ bypass в месяц", "YouTube / TikTok / AI работают", "Безлимит устройств"],
+        "features": ["30 ГБ bypass в месяц", "YouTube / TikTok / AI работают", "Безлимит устройств"],
     },
 }
 
@@ -86,7 +86,7 @@ TIER_PLANS_BASE: Dict[str, Dict[str, Any]] = {
         "tier": "plus",
         "title": "Plus · 1 месяц",
         "duration": 1,
-        "bypass_gb": 50,
+        "bypass_gb": 30,
         "max_devices": 999,
         "price_rub": 14900,     # 149₽/мес
         "price_stars": 149,
@@ -96,7 +96,7 @@ TIER_PLANS_BASE: Dict[str, Dict[str, Any]] = {
         "tier": "plus",
         "title": "Plus · 12 месяцев",
         "duration": 12,
-        "bypass_gb": 50,
+        "bypass_gb": 30,
         "max_devices": 999,
         "price_rub": 99900,     # 999₽/год
         "price_stars": 999,
@@ -515,7 +515,7 @@ async def build_expiry_reminder_markup(user_id: int):
         if not plan:
             continue
         builder.row(
-            btn("{plan['title']} — {format_price_rub(plan['price_rub'])}", "card",
+            btn(f"{plan['title']} — {format_price_rub(plan['price_rub'])}", "card",
                 callback_data=f"tier_pay:{plan_id}",
             )
         )
@@ -537,13 +537,23 @@ def format_price_rub(price_cents: int) -> str:
 
 
 def format_price_stars(price_stars: int) -> str:
-    """Форматирует цену в звездах"""
+    """Форматирует цену в звёздах (HTML, для текста сообщений)."""
     return f"{price_stars}{E.star}"
 
 
+def format_price_stars_button(price_stars: int) -> str:
+    """Форматирует цену в звёздах для inline-кнопок (без HTML)."""
+    return f"{price_stars}{raw('star')}"
+
+
 def format_price_both(price_rub: int, price_stars: int) -> str:
-    """Форматирует цену в рублях и звездах"""
+    """Форматирует цену в рублях и звёздах (HTML, для текста сообщений)."""
     return f"{format_price_rub(price_rub)} | {format_price_stars(price_stars)}"
+
+
+def format_price_both_button(price_rub: int, price_stars: int) -> str:
+    """Рубли и звёзды для inline-кнопок (без HTML)."""
+    return f"{format_price_rub(price_rub)} | {format_price_stars_button(price_stars)}"
 
 
 def _strikethrough_plain(text: str) -> str:

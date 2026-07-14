@@ -15,7 +15,7 @@ from ..config import AppConfig
 from ..database import get_connection
 from ..referral import build_referral_context, format_earn_screen, track_referral_page_open
 from ..referral_rewards import get_referral_bonus_days
-from ..custom_emojis import E, e, lbl, btn, emoji_button, raw
+from ..custom_emojis import btn, copy_btn, E
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +33,11 @@ async def _gift_text_and_keyboard(bot: Bot, actor):
     if ref_link:
         b.row(
             btn("Пригласить", "invite", url=ref_ctx["share_url"]),
-            InlineKeyboardButton.model_construct(
-                text=f"{E.copy} Скопировать",
-                copy_text={"text": ref_link},
-            ),
+            copy_btn("Скопировать", "copy", copy_text=ref_link),
         )
     else:
         b.row(btn("Пригласить", "invite", url=ref_ctx["share_url"]))
-    b.row(btn("История", "clipboard", callback_data="gift_history:0"))
+    b.row(btn("История", "history", callback_data="gift_history:0"))
     b.row(btn("Назад", "back", callback_data="go_back"))
     return text, b.as_markup()
 

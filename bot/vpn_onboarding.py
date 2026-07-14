@@ -160,7 +160,7 @@ def _instruction_text(device: str, sub_url: str, connect_url: str) -> str:
             f"{activate}\n"
             f"{manual}\n\n"
             "3. Для подключения выбери страну, нажав на неё, "
-            f"а затем нажми кнопку {E.power} включения."
+            f"а затем нажми кнопку {raw('power')} включения."
         )
 
     return (
@@ -174,5 +174,5 @@ def _instruction_text(device: str, sub_url: str, connect_url: str) -> str:
         f"{activate}\n"
         f"{manual}\n\n"
         "3. Для подключения выбери страну, нажав на неё, "
-        f"а затем нажми кнопку {E.power} включения."
+        f"а затем нажми кнопку {raw('power')} включения."
     )

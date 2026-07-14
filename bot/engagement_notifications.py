@@ -147,7 +147,7 @@ async def _notify_idle_new_users(bot: Bot) -> None:
                 f"{E.gift} <b>У нас для тебя подарок!</b>\n\n"
                 "Мы подготовили VPN, который работает быстро и стабильно — "
                 "YouTube, TikTok, ChatGPT без блокировок.\n\n"
-                f"{E.bypass} 50 ГБ bypass в месяц\n"
+                f"{E.bypass} 30 ГБ bypass в месяц\n"
                 f"{E.devices} Безлимит устройств\n"
                 f"{E.activate} Подключение за 30 сек\n\n"
                 "Попробуй тариф <b>Plus</b> за <b>1₽</b> — никаких обязательств!",
@@ -216,7 +216,7 @@ async def _notify_trial_inactive(bot: Bot, config: AppConfig) -> None:
                 "Наш VPN — YouTube, TikTok, AI без блокировок.\n\n"
                 f"Специально для тебя — <b>скидка 30%</b> на тариф Plus:\n"
                 f"<s>{full_price / 100:.0f}₽</s> → <b>{discount_price_rub:.0f}₽/мес</b>\n\n"
-                "• 50 ГБ bypass/мес\n"
+                "• 30 ГБ bypass/мес\n"
                 "• YouTube / TikTok / AI работают\n"
                 "• Безлимит устройств",
                 parse_mode="HTML",
@@ -280,7 +280,7 @@ async def _notify_cancelled_users(bot: Bot, config: AppConfig) -> None:
                 f"{E.wave} <b>Мы по тебе скучаем!</b>\n\n"
                 "YouTube, TikTok и AI снова в зоне доступа — "
                 "оформите тариф <b>Plus</b> и пользуйтесь без ограничений:\n\n"
-                "• 50 ГБ bypass/мес\n"
+                "• 30 ГБ bypass/мес\n"
                 "• YouTube / TikTok / AI работают\n"
                 "• Безлимит устройств\n"
                 f"• {offer_price:.0f}₽/мес или 999₽/год",
@@ -362,7 +362,7 @@ async def _reset_trial_for_lapsed_paid_users(bot: Bot) -> None:
                 "Прошёл месяц с момента окончания вашей подписки.\n\n"
                 "Специально для вас мы возвращаем <b>предложение Plus за 1₽</b> — "
                 "попробуйте снова:\n\n"
-                f"{E.bypass} 50 ГБ bypass в месяц\n"
+                f"{E.bypass} 30 ГБ bypass в месяц\n"
                 f"{E.devices} Безлимит устройств\n"
                 f"{E.activate} YouTube / TikTok / AI работают\n\n"
                 "Воспользуйтесь предложением — оно ждёт вас в главном меню!",

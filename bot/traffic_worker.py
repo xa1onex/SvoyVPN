@@ -73,7 +73,7 @@ async def _collect_server_usage(server: dict[str, Any]) -> dict[str, int] | None
     None — если панель недоступна (не обновляем ключи этого сервера).
   Remnawave обрабатывается отдельно в _collect_remnawave_usage().
     """
-    if (server.get("panel_type") or "3x-ui") == "remnawave":
+    if (server.get("panel_type") or "3x-ui") in ("remnawave", "static"):
         return {}
 
     inbound_id = int(server["inbound_id"])

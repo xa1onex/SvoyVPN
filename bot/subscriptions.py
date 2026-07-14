@@ -25,6 +25,7 @@ from .traffic import (
     navigation_header_vless_line,
 )
 from .remnawave_client import RemnawaveClient, build_remnawave_client, is_remnawave_server
+from .static_servers import is_static_server, static_link_for_server
 from .xui_client import XUIClient
 from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
@@ -435,6 +436,37 @@ async def create_keys_for_specific_server(server_id: int) -> None:
                 )
                 return
 
+            if is_static_server(server):
+                static_users = await conn.fetch(
+                    """
+                    SELECT user_id, subscription_end FROM users
+                    WHERE pay_subscribed = TRUE
+                      AND subscription_end IS NOT NULL
+                      AND DATE(subscription_end) >= CURRENT_DATE
+                      AND COALESCE(subscription_tier, 'free') <> 'free'
+                      AND DATE(subscription_end) < DATE '2090-01-01'
+                    """
+                )
+                link = static_link_for_server(server)
+                for ur in static_users:
+                    uid = int(ur["user_id"])
+                    se = ur["subscription_end"]
+                    exp = se.date() if isinstance(se, datetime) else se
+                    await upsert_static_server_key(
+                        conn,
+                        user_id=uid,
+                        server_id=server_id,
+                        server_name=str(server["name"]),
+                        link=link,
+                        expires_at=exp,
+                    )
+                logger.info(
+                    "Static links for server %s: %d users",
+                    server["name"],
+                    len(static_users),
+                )
+                return
+
             if is_remnawave_server(server):
                 await _create_remnawave_keys_for_server(server_id, server)
                 return
@@ -694,6 +726,18 @@ async def _create_or_activate_keys_for_all_servers_impl(user_id: int) -> None:
             if is_free and allowed is not None and int(server_id) not in allowed:
                 continue
 
+            if is_static_server(server):
+                async with get_connection() as conn:
+                    await upsert_static_server_key(
+                        conn,
+                        user_id=user_id,
+                        server_id=int(server_id),
+                        server_name=str(server["name"]),
+                        link=static_link_for_server(server),
+                        expires_at=expires_at,
+                    )
+                continue
+
             if is_remnawave_server(server):
                 from .config import load_config
 
@@ -850,6 +894,21 @@ async def ensure_user_keys_for_server_ids(user_id: int, server_ids: List[int]) -
             for server in servers:
                 server_id = server["id"]
                 try:
+                    if is_static_server(server):
+                        await upsert_static_server_key(
+                            conn,
+                            user_id=user_id,
+                            server_id=int(server_id),
+                            server_name=str(server["name"]),
+                            link=static_link_for_server(server),
+                            expires_at=(
+                                subscription_end.date()
+                                if isinstance(subscription_end, datetime)
+                                else subscription_end
+                            ),
+                        )
+                        continue
+
                     if is_remnawave_server(server):
                         rw_client = build_remnawave_client(load_config())
                         try:
@@ -1312,6 +1371,62 @@ def merge_subscription_keys_with_navigation_headers(
             merged.append(row)
     return sorted(
         merged, key=lambda x: (x.get("display_order", 100), x.get("sid", 0))
+    )
+
+
+async def upsert_static_server_key(
+    conn,
+    *,
+    user_id: int,
+    server_id: int,
+    server_name: str,
+    link: str,
+    expires_at: date,
+) -> None:
+    """Общий статический URI (Hysteria2 и т.п.) без панели."""
+    client_id = "static-" + str(server_id)
+    existing = await conn.fetchrow(
+        """
+        SELECT id FROM vpn_keys
+        WHERE user_id = $1 AND server_id = $2
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        user_id,
+        server_id,
+    )
+    if existing:
+        await conn.execute(
+            """
+            UPDATE vpn_keys
+            SET is_active = TRUE,
+                vless_client_id = $1,
+                vless_link = $2,
+                expires_at = $3,
+                key_name = $4
+            WHERE id = $5
+            """,
+            client_id,
+            link,
+            expires_at,
+            server_name,
+            existing["id"],
+        )
+        return
+    await conn.execute(
+        """
+        INSERT INTO vpn_keys (
+            user_id, server_id, vless_client_id, vless_link,
+            key_name, expires_at, is_active
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+        """,
+        user_id,
+        server_id,
+        client_id,
+        link,
+        server_name,
+        expires_at,
     )
 
 
@@ -1825,7 +1940,7 @@ async def update_vless_links_for_server(server_id: int) -> None:
     try:
         async with get_connection() as conn:
             server = await conn.fetchrow(
-                "SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url, is_active FROM servers WHERE id = $1",
+                "SELECT id, name, ip, port, protocol, username, password, inbound_id, base_url, is_active, panel_type FROM servers WHERE id = $1",
                 server_id,
             )
             relay_sid = await conn.fetchval(
@@ -1833,7 +1948,10 @@ async def update_vless_links_for_server(server_id: int) -> None:
             )
             if not server or (not server["is_active"] and server_id != relay_sid):
                 return
-            
+
+            if is_static_server(server) or is_remnawave_server(server):
+                return
+
             keys = await conn.fetch('''
                 SELECT id, user_id, vless_client_id, key_name FROM vpn_keys 
                 WHERE server_id = $1 AND is_active = TRUE

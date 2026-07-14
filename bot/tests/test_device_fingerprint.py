@@ -2,6 +2,7 @@ from bot.device_fingerprint import (
     analyze_subscription_client,
     compute_subscription_device_fingerprint,
     format_device_display_name,
+    happ_ios_has_broken_xhttp,
     is_countable_subscription_client,
     parse_happ_install_key,
     resolve_device_model_name,
@@ -12,6 +13,12 @@ def test_happ_install_key_ignores_app_version():
     a = parse_happ_install_key("Happ/4.10.2/ios/2605221355512")
     b = parse_happ_install_key("Happ/4.11.0/ios/2605221355512")
     assert a == b == ("ios", "2605221355512")
+
+
+def test_happ_ios_broken_xhttp_version_gate():
+    assert happ_ios_has_broken_xhttp("Happ/4.14.0/ios/2607031625695")
+    assert not happ_ios_has_broken_xhttp("Happ/4.7.0/ios/2603181558630")
+    assert not happ_ios_has_broken_xhttp("Happ/4.6.0/macos catalyst/2603181558630")
 
 
 def test_hwid_fingerprint_stable():

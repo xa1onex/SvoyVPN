@@ -63,6 +63,9 @@ def presentation_for_server(
     if is_bypass or "🆓" in raw or "🆓" in sn:
         return (raw, "Обход глушилок")
 
+    if "youtube" in blob or "ютуб" in blob:
+        return (raw, "YouTube без рекламы")
+
     return (raw, "Быстрый сервер")
 
 

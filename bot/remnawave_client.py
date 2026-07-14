@@ -159,12 +159,41 @@ class RemnawaveClient:
             return ""
         return unquote(vless_link.rsplit("#", 1)[-1])
 
+    @staticmethod
+    def normalize_host_remark(remark: str) -> str:
+        """Сравнимый remark: без Happ-caption и маркетингового хвоста «| 🎉 NEW»."""
+        r = (remark or "").strip()
+        r = r.split("?", 1)[0].strip()
+        if "|" in r:
+            r = r.split("|", 1)[0].strip()
+        return r
+
+    @classmethod
+    def remarks_match(cls, left: str, right: str) -> bool:
+        a = (left or "").strip()
+        b = (right or "").strip()
+        if not a or not b:
+            return False
+        if a == b:
+            return True
+        return cls.normalize_host_remark(a) == cls.normalize_host_remark(b)
+
     async def get_vless_link_for_host_remark(self, short_uuid: str, host_remark: str) -> str | None:
         host_remark = host_remark.strip()
-        for link in await self.fetch_subscription_links(short_uuid):
+        links = await self.fetch_subscription_links(short_uuid)
+        for link in links:
             remark = self.extract_link_remark(link)
-            if remark == host_remark:
+            if self.remarks_match(remark, host_remark):
                 return link
+        # fallback: unique xhttp/bypass host if only one matches normalized prefix
+        want = self.normalize_host_remark(host_remark)
+        fuzzy = []
+        for link in links:
+            remark = self.normalize_host_remark(self.extract_link_remark(link))
+            if want and (want in remark or remark in want):
+                fuzzy.append(link)
+        if len(fuzzy) == 1:
+            return fuzzy[0]
         return None
 
     @staticmethod
@@ -191,6 +220,16 @@ class RemnawaveClient:
     async def ping(self) -> bool:
         await self.list_nodes()
         return True
+
+    @staticmethod
+    def traffic_bytes_from_user(user: dict[str, Any] | None) -> int:
+        """Lifetime трафик пользователя Remnawave (NO_RESET: used == lifetime)."""
+        if not user:
+            return 0
+        traffic = user.get("userTraffic") or {}
+        lifetime = int(traffic.get("lifetimeUsedTrafficBytes") or 0)
+        used = int(traffic.get("usedTrafficBytes") or 0)
+        return lifetime if lifetime > 0 else used
 
     async def fetch_all_users_traffic(self, *, page_size: int = 500) -> dict[str, int]:
         """
@@ -220,11 +259,7 @@ class RemnawaveClient:
                 norm = str(user.get("vlessUuid") or "").strip().lower().replace("-", "")
                 if not norm:
                     continue
-                traffic = user.get("userTraffic") or {}
-                lifetime = int(traffic.get("lifetimeUsedTrafficBytes") or 0)
-                used = int(traffic.get("usedTrafficBytes") or 0)
-                # NO_RESET: used == lifetime; при лимите на панели — берём used.
-                bytes_val = lifetime if lifetime > 0 else used
+                bytes_val = self.traffic_bytes_from_user(user)
                 prev = usage.get(norm, 0)
                 if bytes_val > prev:
                     usage[norm] = bytes_val

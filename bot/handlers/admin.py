@@ -23,7 +23,7 @@ from ..user_block import block_user, unblock_user, invalidate_blacklist_cache
 from ..remnawave_client import build_remnawave_client
 from ..xui_client import XUIClient
 from ..webhook_server import WebhookServer
-from ..custom_emojis import E, e, lbl, btn, emoji_button, raw
+from ..custom_emojis import E, e, lbl, btn, emoji_button, raw, icon_id
 
 logger = logging.getLogger(__name__)
 
@@ -867,7 +867,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         for plan_id, plan_data in plans.items():
             text += f"  • {plan_data['title']}: {format_price_rub(plan_data['price_rub'])}\n"
             plan_buttons.append(
-                btn("{plan_data['title']}", "edit",
+                btn(f"{plan_data['title']}", "edit",
                     callback_data=f"admin_tier_edit:{plan_id}",
                 )
             )
@@ -939,7 +939,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         for p in packs:
             status = f"{E.success}" if p["is_active"] else f"{E.error}"
             text += f"{status} +{p['gb_amount']} ГБ — {p['title']} — {format_price_rub(p['price_rub'])}\n"
-            builder.row(btn("+{p['gb_amount']} ГБ ({format_price_rub(p['price_rub'])})", "edit",
+            builder.row(btn(f"+{p['gb_amount']} ГБ ({format_price_rub(p['price_rub'])})", "edit",
                 callback_data=f"admin_bp_edit:{p['id']}",
             ))
 
@@ -989,8 +989,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         text = f"{E.tag_vs} <b>Bypass серверы</b>\n\nОтметьте серверы, которые используются для обхода блокировок:\n\n"
         builder = InlineKeyboardBuilder()
         for s in servers:
-            mark = f"{E.bypass}" if s["is_bypass"] else f"{E.globe}"
-            active = f"{E.success}" if s["is_active"] else f"{E.pause}"
+            mark = raw("bypass") if s["is_bypass"] else raw("globe")
+            active = raw("success") if s["is_active"] else raw("pause")
             builder.row(InlineKeyboardButton(
                 text=f"{mark} {active} {s['name']}",
                 callback_data=f"admin_toggle_bypass:{s['id']}",
@@ -2145,8 +2145,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         """Обработка названия сервера"""
         await state.update_data(name=message.text)
         builder = InlineKeyboardBuilder()
-        builder.button(text=f"{E.wave_water} Remnawave (новая панель)", callback_data="panel:remnawave")
-        builder.button(text=f"{E.package} 3x-ui (старая панель)", callback_data="panel:3x-ui")
+        builder.row(btn("Remnawave (новая панель)", "wave_water", callback_data="panel:remnawave"))
+        builder.row(btn("3x-ui (старая панель)", "package", callback_data="panel:3x-ui"))
         builder.adjust(1)
         await message.answer(
             f"{E.wrench} <b>Тип панели:</b>\n\n"
@@ -2281,9 +2281,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         await state.update_data(host_port=host_port)
 
         builder = InlineKeyboardBuilder()
-        builder.button(text=f"{E.top} В начало", callback_data="order:start")
-        builder.button(text=f"{E.bottom} В конец", callback_data="order:end")
-        builder.button(text=f"{E.numbers} По числу (приоритет)", callback_data="order:number")
+        builder.row(btn("В начало", "top", callback_data="order:start"))
+        builder.row(btn("В конец", "bottom", callback_data="order:end"))
+        builder.row(btn("По числу (приоритет)", "numbers", callback_data="order:number"))
         builder.adjust(1)
 
         await message.answer(
@@ -2381,9 +2381,9 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         await state.update_data(inbound_id=inbound_id)
         
         builder = InlineKeyboardBuilder()
-        builder.button(text=f"{E.top} В начало", callback_data="order:start")
-        builder.button(text=f"{E.bottom} В конец", callback_data="order:end")
-        builder.button(text=f"{E.numbers} По числу (приоритет)", callback_data="order:number")
+        builder.row(btn("В начало", "top", callback_data="order:start"))
+        builder.row(btn("В конец", "bottom", callback_data="order:end"))
+        builder.row(btn("По числу (приоритет)", "numbers", callback_data="order:number"))
         builder.adjust(1)
         
         await message.answer(
@@ -2435,8 +2435,8 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
     async def ask_is_system(message: Message, state: FSMContext):
         """Спрашиваем, является ли сервер системным"""
         builder = InlineKeyboardBuilder()
-        builder.button(text=f"{E.world} Публичный (Обычный)", callback_data="system:no")
-        builder.button(text=f"{E.gear} Системный (Скрытый)", callback_data="system:yes")
+        builder.row(btn("Публичный (Обычный)", "world", callback_data="system:no"))
+        builder.row(btn("Системный (Скрытый)", "gear", callback_data="system:yes"))
         builder.adjust(1)
         
         await message.answer(
@@ -3118,8 +3118,13 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         builder.row(btn("Дни для приглашенного", "edit", callback_data="admin_referral_invited"))
         builder.row(btn("% дней за оплату друга", "edit", callback_data="admin_referral_purchase_pct"))
         builder.row(btn("TG-подарок каждые N годовых Plus", "edit", callback_data="admin_referral_yearly_n"))
-        gift_label = f"{E.gift} TG-подарки ({pending_gifts})" if pending_gifts else f"{E.gift} TG-подарки"
-        builder.row(InlineKeyboardButton(text=gift_label, callback_data="admin_referral_tg_gifts"))
+        builder.row(
+            btn(
+                f"TG-подарки ({pending_gifts})" if pending_gifts else "TG-подарки",
+                "gift",
+                callback_data="admin_referral_tg_gifts",
+            )
+        )
         builder.row(btn("Назад", "back", callback_data="admin_back"))
         
         await callback.message.edit_text(
@@ -3614,8 +3619,12 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
                 builder = InlineKeyboardBuilder()
                 
                 for server in servers:
-                    status = f"{E.success} Активен" if server["is_active"] else f"{E.pause_vs} На паузе"
-                    hid = f" {E.see_no}" if server.get("exclude_from_subscription") else ""
+                    status = (
+                        f"{raw('success')} Активен"
+                        if server["is_active"]
+                        else f"{raw('pause_vs')} На паузе"
+                    )
+                    hid = f" {raw('see_no')}" if server.get("exclude_from_subscription") else ""
                     button_text = f"{server['name']} ({server['ip']}) - {status}{hid}"
                     builder.row(
                         InlineKeyboardButton(
@@ -4393,7 +4402,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         builder = InlineKeyboardBuilder()
         for app in apps:
             device_name = DEVICE_TYPES.get(app['device_type'], app['device_type'])
-            status = f"{E.success}" if app['is_active'] else f"{E.error}"
+            status = raw("success") if app['is_active'] else raw("error")
             builder.row(InlineKeyboardButton(
                 text=f"{status} {device_name} - {app['app_name']}",
                 callback_data=f"admin_edit_device_app:{app['id']}"

@@ -102,31 +102,106 @@ def parse_vless_link(link: str) -> dict[str, Any] | None:
         address, port_str = (addr_port.rsplit(":", 1) if ":" in addr_port else (addr_port, "443"))
         params = parse_qs(query_str, keep_blank_values=True)
 
+        extra_raw = (params.get("extra") or [""])[0]
+        extra: dict[str, Any] | None = None
+        if extra_raw:
+            try:
+                extra = json.loads(unquote(extra_raw))
+            except Exception:
+                extra = None
+
+        alpn_raw = (params.get("alpn") or [""])[0]
+        alpn = [p.strip() for p in alpn_raw.split(",") if p.strip()] if alpn_raw else []
+
+        net_type = params.get("type", ["tcp"])[0]
+        default_mode = "auto" if net_type == "xhttp" else "gun"
         return {
+            "protocol": "vless",
             "uuid": uuid_part,
             "address": address,
             "port": int(port_str),
-            "remark": fragment,
+            "remark": fragment.split("?", 1)[0] if fragment else "",
             "security": params.get("security", ["none"])[0],
-            "type": params.get("type", ["tcp"])[0],
+            "type": net_type,
             "flow": params.get("flow", [""])[0],
             "sni": params.get("sni", [""])[0],
+            "host": params.get("host", [""])[0],
+            "path": params.get("path", [""])[0],
             "pbk": params.get("pbk", [""])[0],
             "sid": params.get("sid", [""])[0],
             "fp": params.get("fp", ["chrome"])[0],
             "spx": params.get("spx", [""])[0],
             "serviceName": params.get("serviceName", [None])[0],
-            "mode": params.get("mode", ["gun"])[0],
+            "mode": params.get("mode", [default_mode])[0],
+            "extra": extra,
+            "alpn": alpn,
         }
     except Exception:
         return None
 
 
+def parse_hysteria2_link(link: str) -> dict[str, Any] | None:
+    """Parse hysteria2:// / hy2:// URI used by Happ native + JSON profiles."""
+    if not link:
+        return None
+    raw = link.strip()
+    scheme = None
+    for prefix in ("hysteria2://", "hy2://"):
+        if raw.startswith(prefix):
+            scheme = prefix
+            break
+    if not scheme:
+        return None
+    try:
+        fragment = ""
+        if "#" in raw:
+            link_part, fragment = raw.rsplit("#", 1)
+            fragment = unquote(fragment)
+        else:
+            link_part = raw
+
+        without_scheme = link_part[len(scheme):]
+        auth, rest = without_scheme.split("@", 1)
+
+        if "/?" in rest:
+            addr_port, query_str = rest.split("/?", 1)
+        elif "?" in rest:
+            addr_port, query_str = rest.split("?", 1)
+        else:
+            addr_port, query_str = rest, ""
+
+        address, port_str = (addr_port.rsplit(":", 1) if ":" in addr_port else (addr_port, "443"))
+        params = parse_qs(query_str, keep_blank_values=True)
+        alpn_raw = (params.get("alpn") or ["h3"])[0]
+        alpn = [p.strip() for p in alpn_raw.split(",") if p.strip()] or ["h3"]
+        remark = fragment.split("?", 1)[0] if fragment else ""
+        return {
+            "protocol": "hysteria2",
+            "auth": unquote(auth),
+            "address": address,
+            "port": int(port_str),
+            "remark": remark,
+            "sni": (params.get("sni") or [address])[0] or address,
+            "fp": (params.get("fp") or ["chrome"])[0] or "chrome",
+            "alpn": alpn,
+            "congestion": (params.get("congestion") or ["bbr"])[0] or "bbr",
+            "insecure": (params.get("insecure") or ["0"])[0] in ("1", "true", "True"),
+        }
+    except Exception:
+        return None
+
+
+def parse_proxy_link(link: str) -> dict[str, Any] | None:
+    return parse_vless_link(link) or parse_hysteria2_link(link)
+
+
 def _is_fake_link(parsed: dict[str, Any]) -> bool:
+    if parsed.get("protocol") == "hysteria2":
+        return parsed.get("address") in ("0.0.0.0", "127.0.0.1")
     if parsed["address"] == "0.0.0.0":
         return True
-    uuid_clean = parsed["uuid"].replace("-", "")
-    return len(set(uuid_clean)) <= 2
+    uuid_clean = str(parsed.get("uuid") or "").replace("-", "")
+    return bool(uuid_clean) and len(set(uuid_clean)) <= 2
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +255,67 @@ _BASE_RULES: list[dict[str, Any]] = [
     {"ip": ["geoip:private", "geoip:ru"], "outboundTag": "direct", "type": "field"},
 ]
 
+# Xray 26.6.22+ (#6258): sessionKey/sessionPlacement → sessionID* (без fallback).
+# Remnawave vless:// extra ещё отдаёт старые имена — Happ 4.14 / 26.6 их игнорирует.
+_SESSION_ID_TABLE_DEFAULT = (
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+)
+
+_DNS_XHTTP = {
+    "queryStrategy": "UseIP",
+    "servers": ["1.1.1.1", "1.0.0.1"],
+}
+
+_INBOUNDS_XHTTP = [
+    {
+        "listen": "127.0.0.1",
+        "port": 10808,
+        "protocol": "socks",
+        "settings": {"auth": "noauth", "udp": True},
+        "sniffing": {
+            "destOverride": ["http", "tls", "quic"],
+            "enabled": True,
+            "routeOnly": False,
+        },
+        "tag": "socks",
+    },
+    {
+        "listen": "127.0.0.1",
+        "port": 10809,
+        "protocol": "http",
+        "settings": {"allowTransparent": False},
+        "sniffing": {
+            "destOverride": ["http", "tls", "quic"],
+            "enabled": True,
+            "routeOnly": False,
+        },
+        "tag": "http",
+    },
+]
+
+
+def _adapt_xhttp_extra(extra: dict[str, Any] | None, path: str) -> dict[str, Any]:
+    """
+    Привести xhttp extra к формату, который понимает Xray 26.6+ (как у рабочих подписок).
+    Старые sessionKey/sessionPlacement дублируем в sessionID* + sessionIDLength/Table.
+    """
+    merged = dict(extra) if isinstance(extra, dict) else {}
+    merged.setdefault("path", path or "/")
+
+    session_key = merged.get("sessionIDKey") or merged.get("sessionKey")
+    session_placement = merged.get("sessionIDPlacement") or merged.get("sessionPlacement")
+    if session_key:
+        merged.setdefault("sessionIDKey", session_key)
+        merged.setdefault("sessionKey", session_key)
+    if session_placement:
+        merged.setdefault("sessionIDPlacement", session_placement)
+        merged.setdefault("sessionPlacement", session_placement)
+    if session_key and session_placement:
+        merged.setdefault("sessionIDLength", "16-32")
+        merged.setdefault("sessionIDTable", _SESSION_ID_TABLE_DEFAULT)
+
+    return merged
+
 
 def _build_stream(parsed: dict[str, Any]) -> dict[str, Any]:
     security = parsed.get("security", "none")
@@ -195,11 +331,13 @@ def _build_stream(parsed: dict[str, Any]) -> dict[str, Any]:
             "spiderX": parsed.get("spx") or "/",
         }
     elif security == "tls":
-        ss["tlsSettings"] = {
-            "serverName": parsed.get("sni", ""),
+        tls: dict[str, Any] = {
+            "serverName": parsed.get("sni") or parsed.get("host") or "",
             "fingerprint": parsed.get("fp", "chrome"),
-            "allowInsecure": False,
         }
+        if parsed.get("alpn"):
+            tls["alpn"] = parsed["alpn"]
+        ss["tlsSettings"] = tls
 
     if net == "tcp":
         ss["tcpSettings"] = {}
@@ -211,6 +349,18 @@ def _build_stream(parsed: dict[str, Any]) -> dict[str, Any]:
         }
     elif net == "ws":
         ss["wsSettings"] = {"path": parsed.get("spx") or "/", "headers": {}}
+    elif net == "xhttp":
+        xhttp: dict[str, Any] = {
+            "path": parsed.get("path") or "/",
+            "host": parsed.get("host") or parsed.get("sni") or parsed.get("address") or "",
+            "mode": parsed.get("mode") or "auto",
+        }
+        extra = parsed.get("extra")
+        if isinstance(extra, dict) and extra:
+            xhttp["extra"] = _adapt_xhttp_extra(extra, xhttp["path"])
+        elif xhttp.get("path"):
+            xhttp["extra"] = _adapt_xhttp_extra(None, xhttp["path"])
+        ss["xhttpSettings"] = xhttp
 
     return ss
 
@@ -225,34 +375,93 @@ def _build_vless_outbound(parsed: dict[str, Any], tag: str) -> dict[str, Any]:
     }
 
 
+def _build_hysteria2_outbound(parsed: dict[str, Any], tag: str = "proxy") -> dict[str, Any]:
+    """Happ/Xray hysteria2 outbound (matches working Happ export)."""
+    alpn = parsed.get("alpn") or ["h3"]
+    if isinstance(alpn, str):
+        alpn = [p.strip() for p in alpn.split(",") if p.strip()] or ["h3"]
+    return {
+        "protocol": "hysteria",
+        "settings": {
+            "address": parsed["address"],
+            "port": int(parsed["port"]),
+            "version": 2,
+        },
+        "streamSettings": {
+            "finalmask": {
+                "quicParams": {
+                    "congestion": parsed.get("congestion") or "bbr",
+                    "debug": False,
+                }
+            },
+            "hysteriaSettings": {
+                "auth": parsed["auth"],
+                "version": 2,
+            },
+            "network": "hysteria",
+            "security": "tls",
+            "tlsSettings": {
+                "alpn": alpn,
+                "fingerprint": parsed.get("fp") or "chrome",
+                "serverName": parsed.get("sni") or parsed["address"],
+            },
+        },
+        "tag": tag,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Single-server config (one entry in Happ UI)
 # ---------------------------------------------------------------------------
 
+_MINIMAL_ROUTING_RULES: list[dict[str, Any]] = [
+    {"outboundTag": "direct", "protocol": ["bittorrent"], "type": "field"},
+]
+
+
 def _build_single_server_config(parsed: dict[str, Any], remarks: str, description: str = "") -> dict[str, Any]:
     """Xray JSON config for ONE server — appears as one entry in Happ."""
-    rules = list(_BASE_RULES)
     ui_description = clamp_happ_server_description(description)
     final_remarks = _happ_row_remarks(remarks, ui_description)
-    return {
-        "dns": _DNS,
-        "inbounds": _INBOUNDS,
+    proto = parsed.get("protocol") or "vless"
+    is_xhttp = (parsed.get("type") or "tcp") == "xhttp"
+    if proto == "hysteria2":
+        # YouTube/special nodes: весь трафик в proxy (иначе geoip:ru уведёт YouTube в direct).
+        outbound = _build_hysteria2_outbound(parsed, "proxy")
+        rules = list(_MINIMAL_ROUTING_RULES)
+        dns = _DNS
+        inbounds = _INBOUNDS
+    elif is_xhttp:
+        outbound = _build_vless_outbound(parsed, "proxy")
+        rules = list(_MINIMAL_ROUTING_RULES)
+        dns = _DNS_XHTTP
+        inbounds = _INBOUNDS_XHTTP
+    else:
+        outbound = _build_vless_outbound(parsed, "proxy")
+        rules = list(_BASE_RULES)
+        dns = _DNS
+        inbounds = _INBOUNDS
+    cfg: dict[str, Any] = {
+        "dns": dns,
+        "inbounds": inbounds,
         "log": {"loglevel": "warning"},
         "outbounds": [
-            _build_vless_outbound(parsed, "proxy"),
+            outbound,
             {"protocol": "freedom", "tag": "direct"},
             {"protocol": "blackhole", "tag": "block"},
         ],
-        "policy": _POLICY,
         "routing": {
             "domainMatcher": "hybrid",
             "domainStrategy": "IPIfNonMatch",
             "rules": rules,
         },
-        "stats": {},
         "remarks": final_remarks,
         "meta": {"serverDescription": ui_description},
     }
+    if not is_xhttp:
+        cfg["policy"] = _POLICY
+        cfg["stats"] = {}
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -628,7 +837,7 @@ def generate_happ_configs_list(
     real_links: list[tuple[str, dict[str, Any], str, bool, str]] = []
     display_names: list[str] = []
     for i, link in enumerate(vless_links):
-        parsed = parse_vless_link(link)
+        parsed = parse_proxy_link(link)
         if not parsed or _is_fake_link(parsed):
             continue
         sname = server_names[i] if i < len(server_names) else ""
@@ -637,7 +846,7 @@ def generate_happ_configs_list(
         is_bp = bool(server_is_bypass[i]) if i < len(server_is_bypass) else False
         remark = parsed.get("remark") or sname or f"Server {i+1}"
         real_links.append((link, parsed, remark, is_bp, sname))
-        if not is_bp:
+        if not is_bp and (parsed.get("protocol") or "vless") == "vless":
             display_names.append(remark)
 
     if not real_links:
@@ -659,12 +868,14 @@ def generate_happ_configs_list(
 
     regular = [(rl, p, r, bp, sn) for rl, p, r, bp, sn in real_links if not bp]
     bypass = [(rl, p, r, bp, sn) for rl, p, r, bp, sn in real_links if bp]
+    regular_vless = [x for x in regular if (x[1].get("protocol") or "vless") == "vless"]
+    regular_other = [x for x in regular if (x[1].get("protocol") or "vless") != "vless"]
 
-    if regular:
-        idx_fast = _fast_server_index([r for _, _, r, _, _ in regular])
-        fast = regular[idx_fast]
-        tail = [rl for i, rl in enumerate(regular) if i != idx_fast]
-        all_vless = [rl[0] for rl in regular]
+    if regular_vless:
+        idx_fast = _fast_server_index([r for _, _, r, _, _ in regular_vless])
+        fast = regular_vless[idx_fast]
+        tail = [rl for i, rl in enumerate(regular_vless) if i != idx_fast]
+        all_vless = [rl[0] for rl in regular_vless]
         fr, fd = presentation_for_server(remark=fast[2], server_name=fast[4], is_bypass=False)
         configs.extend([
             generate_xray_profile(all_vless),
@@ -673,6 +884,10 @@ def generate_happ_configs_list(
         for _link, parsed, remark, is_bp, sname in tail:
             tr, td = presentation_for_server(remark=remark, server_name=sname, is_bypass=False)
             configs.append(_build_single_server_config(parsed, remarks=tr, description=td))
+
+    for _link, parsed, remark, is_bp, sname in regular_other:
+        tr, td = presentation_for_server(remark=remark, server_name=sname, is_bypass=False)
+        configs.append(_build_single_server_config(parsed, remarks=tr, description=td))
 
     bypass_notices_added = False
     bypass_nav_added = False

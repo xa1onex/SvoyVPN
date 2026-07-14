@@ -44,8 +44,10 @@ def happ_text_notice_vless_uri(
 
 
 def vless_link_title_only(link: str, *, title: str) -> str:
-    """Рабочий vless:// только с названием в фрагменте, без serverDescription."""
-    if not link or not link.startswith("vless://"):
+    """Рабочий proxy URI только с названием в фрагменте, без serverDescription."""
+    if not link:
+        return link
+    if not link.startswith(("vless://", "hysteria2://", "hy2://")):
         return link
     base = link.split("#", 1)[0]
     return f"{base}#{quote(title, safe='')}"
@@ -61,8 +63,10 @@ def vless_link_with_happ_caption(
     title: str | None = None,
     subtitle: str | None = None,
 ) -> str:
-    """Рабочий vless:// с #title?serverDescription=base64 для Happ plain /sub."""
-    if not link or not link.startswith("vless://"):
+    """Рабочий vless:// / hy2:// с #title?serverDescription=base64 для Happ plain /sub."""
+    if not link:
+        return link
+    if not link.startswith(("vless://", "hysteria2://", "hy2://")):
         return link
     base = link.split("#", 1)[0]
     if title is None or subtitle is None:

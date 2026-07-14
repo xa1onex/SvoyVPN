@@ -48,7 +48,7 @@ def _help_pages(offer_url: str) -> list[tuple[str, str]]:
                 "• 1 VPN-сервер без лимита\n"
                 "• 1 устройство\n\n"
                 "<b>Plus</b> — полный доступ:\n"
-                "• 50 ГБ bypass в месяц\n"
+                "• 30 ГБ bypass в месяц\n"
                 "• Все быстрые страны и bypass-серверы\n"
                 "• YouTube, TikTok, ChatGPT и др.\n"
                 "• Безлимит устройств\n"

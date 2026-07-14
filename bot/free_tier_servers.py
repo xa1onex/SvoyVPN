@@ -56,6 +56,7 @@ def _pick_from_server_rows(rows, *, is_bypass: bool) -> int | None:
             r
             for r in rows
             if not is_navigation_header_server(r["name"])
+            and (r.get("panel_type") or "3x-ui") != "static"
             and (
                 r.get("is_bypass")
                 or (
@@ -71,6 +72,7 @@ def _pick_from_server_rows(rows, *, is_bypass: bool) -> int | None:
             for r in rows
             if not is_navigation_header_server(r["name"])
             and not r.get("is_bypass")
+            and (r.get("panel_type") or "3x-ui") != "static"
             and (
                 not is_free_server_label(r["name"])
                 or (

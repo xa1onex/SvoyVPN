@@ -103,6 +103,43 @@ def parse_happ_install_key(user_agent: str) -> tuple[str, str] | None:
     return platform, m.group(2)
 
 
+_HAPP_UA = re.compile(r"^happ/([\d.]+)/([^/]+)/(\d{8,})", re.I)
+
+
+def parse_happ_app_version(user_agent: str) -> tuple[int, int, int] | None:
+    """Happ/4.14.0/ios/260703… → (4, 14, 0)."""
+    ua = _normalize_user_agent(user_agent)
+    m = _HAPP_UA.match(ua)
+    if not m:
+        return None
+    parts = m.group(1).split(".")
+    try:
+        nums = [int(x) for x in parts[:3]]
+    except ValueError:
+        return None
+    while len(nums) < 3:
+        nums.append(0)
+    return nums[0], nums[1], nums[2]
+
+
+def happ_ios_has_broken_xhttp(user_agent: str) -> bool:
+    """
+    Happ iOS 4.14+ (Xray 26.6.x): 🆓 xhttp часто n/a / не коннектится.
+    Happ 4.7 + Xray 26.2.x на том же iPhone работает.
+    """
+    ua = _normalize_user_agent(user_agent)
+    m = _HAPP_UA.match(ua)
+    if not m:
+        return False
+    platform = m.group(2).lower()
+    if platform not in ("ios", "iphone", "ipad", "ipados", "ipod"):
+        return False
+    ver = parse_happ_app_version(user_agent)
+    if not ver:
+        return False
+    return ver >= (4, 14, 0)
+
+
 def is_happ_client_user_agent(user_agent: str) -> bool:
     return _normalize_user_agent(user_agent).startswith("happ/")
 

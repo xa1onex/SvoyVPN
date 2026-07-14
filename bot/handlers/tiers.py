@@ -29,6 +29,8 @@ from ..plans import (
     TIER_PLANS_BASE,
     TIERS,
     format_price_both,
+    format_price_both_button,
+    format_price_stars_button,
     format_price_rub,
     format_price_stars,
     format_subscription_end_for_display,
@@ -189,10 +191,10 @@ async def build_tiers_message(user_id: int, *, view: str = "main"):
         )
     elif view == "plus_plans":
         builder.row(
-            btn("Plus · {format_price_rub(ctx['price_1m'])}/мес", "plus",
+            btn(f"Plus · {format_price_rub(ctx['price_1m'])}/мес", "plus",
                 callback_data="tier_select:plus:plus_1m",
             ),
-            btn("Plus · {format_price_rub(int(ctx['price_12m'] / 12))}/мес", "star_plus",
+            btn(f"Plus · {format_price_rub(int(ctx['price_12m'] / 12))}/мес", "star_plus",
                 callback_data="tier_select:plus:plus_12m",
             ),
         )
@@ -231,13 +233,10 @@ async def build_tiers_message(user_id: int, *, view: str = "main"):
             btn("Назад", "back", callback_data="go_back_subscription"),
         )
     else:
-        free_label = (
-            f"{E.success} Free — ваш"
-            if (ctx["is_active"] and not ctx["is_plus"])
-            else f"{E.free} Free — бесплатно"
-        )
         builder.row(
-            InlineKeyboardButton(text=free_label, callback_data=f"tier_info:{FREE_TIER_ID}"),
+            btn("Free — ваш", "success", callback_data=f"tier_info:{FREE_TIER_ID}")
+            if (ctx["is_active"] and not ctx["is_plus"])
+            else btn("Free — бесплатно", "free", callback_data=f"tier_info:{FREE_TIER_ID}")
         )
         if show_referral_trial:
             builder.row(
@@ -441,7 +440,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             await callback.message.edit_text(
                 f"{E.hot} <b>Plus со скидкой 30%</b>\n\n"
                 f"<s>{full_price:.0f}₽</s> → <b>{amount_rub:.0f}₽/мес</b>\n\n"
-                f"• 50 ГБ bypass/мес\n• YouTube / TikTok / AI работают\n• Безлимит устройств",
+                f"• 30 ГБ bypass/мес\n• YouTube / TikTok / AI работают\n• Безлимит устройств",
                 parse_mode="HTML",
                 reply_markup=b.as_markup(),
             )
@@ -606,7 +605,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             plan = plans.get(plan_id)
             if plan:
                 half_price = plan["price_rub"] // 2
-                b.row(btn("Plus за {format_price_rub(half_price)}", "hot",
+                b.row(btn(f"Plus за {format_price_rub(half_price)}", "hot",
                     callback_data=f"cancel_offer_50:{plan_id}",
                 ))
 
@@ -742,7 +741,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         text = (
             f"{E.money} <b>Последнее предложение!</b>\n\n"
             "Тариф <b>Plus</b> всего за <b>1₽</b> на следующий месяц:\n\n"
-            "• 50 ГБ bypass/мес\n"
+            "• 30 ГБ bypass/мес\n"
             "• YouTube / TikTok / AI работают\n"
             "• Безлимит устройств"
         )
@@ -897,7 +896,7 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
             for p in packs:
                 builder.row(
                     InlineKeyboardButton(
-                        text=f"+{p['gb_amount']} ГБ — {format_price_both(p['price_rub'], p['price_stars'])}",
+                        text=f"+{p['gb_amount']} ГБ — {format_price_both_button(p['price_rub'], p['price_stars'])}",
                         callback_data=f"bypass_pack_choose:{p['id']}",
                     )
                 )
@@ -933,13 +932,13 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         b = InlineKeyboardBuilder()
         if int(pack["price_stars"] or 0) >= 1:
             b.row(
-                btn("Stars ({format_price_stars(pack['price_stars'])})", "star",
+                btn(f"Stars ({format_price_stars_button(pack['price_stars'])})", "star",
                     callback_data=f"bypass_pack_pay:{pack_id}:stars",
                 )
             )
         if config.yookassa.enabled and int(pack["price_rub"] or 0) >= 100:
             b.row(
-                btn("Карта ({format_price_rub(pack['price_rub'])})", "card",
+                btn(f"Карта ({format_price_rub(pack['price_rub'])})", "card",
                     callback_data=f"bypass_pack_pay:{pack_id}:yookassa",
                 )
             )

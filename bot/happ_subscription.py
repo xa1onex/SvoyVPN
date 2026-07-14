@@ -16,7 +16,7 @@ from .happ_text_notice import vless_link_title_only, vless_link_with_happ_captio
 from .profile_generator import (
     _fast_server_index,
     happ_bypass_limit_notice_lines,
-    parse_vless_link,
+    parse_proxy_link,
 )
 from .traffic import (
     is_fast_section_header,
@@ -31,7 +31,7 @@ from .traffic import (
 
 def _row_remark(row: Mapping[str, Any]) -> str:
     link = str(row.get("vless_link") or "")
-    parsed = parse_vless_link(link)
+    parsed = parse_proxy_link(link)
     sname = str(row.get("server_name") or "")
     if parsed and parsed.get("remark"):
         return str(parsed["remark"])

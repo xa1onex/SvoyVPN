@@ -369,6 +369,7 @@ class WebhookServer:
             return {}
 
         headers: dict[str, str] = {"providerid": provider_id}
+        headers["no-limit-xhttp-enabled"] = "1"
         hide_settings = os.getenv("SVOYVPN_HAPP_HIDE_SETTINGS", "0").strip().lower()
         if hide_settings in ("1", "true", "yes", "on"):
             headers["hide-settings"] = "1"
@@ -806,8 +807,8 @@ class WebhookServer:
             )
 
             announce_text = (
-                    "При проблемах с интернетом используйте сервера с 🆓. "
-                    "Если что-то не работает — обновите профиль, через 🔄"
+                "При проблемах с интернетом используйте сервера с 🆓. "
+                "Если что-то не работает — обновите профиль, через 🔄"
             )
 
             headers = {

@@ -1,4 +1,7 @@
 """Подписи кнопок и заголовков меню (единое место)."""
 
-from .custom_emojis import E, e, lbl, btn, emoji_button, raw
-GIFT_BUTTON = f"{E.gift} Подарок"
+from .custom_emojis import E, lbl, raw
+
+# Только для HTML-сообщений (parse_mode=HTML). Не использовать в text= кнопок!
+GIFT_BUTTON = lbl("gift", "Подарок")
+GIFT_BUTTON_LABEL = "Подарок"
