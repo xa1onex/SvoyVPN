@@ -121,19 +121,22 @@ def _as_date(val: object) -> date | None:
 def split_bypass_consumption(
     used_bytes: int,
     base_gb: int,
-    pack_remaining_gb: int,
-    pack_purchased_gb: int | None = None,
+    pack_remaining_bytes: int,
+    pack_purchased_bytes: int | None = None,
     referral_gb: int = 0,
 ) -> dict[str, int | float]:
     """
     Расход bypass для отображения.
-    pack_remaining_gb уменьшается воркером при синхронизации (пакет тратится первым).
+    Остаток пакета хранится в байтах, поэтому небольшой расход больше не
+    уничтожает целый гигабайт.
     """
     used = max(int(used_bytes), 0)
-    pack_remaining = max(int(pack_remaining_gb), 0)
-    pack_purchased = max(int(pack_purchased_gb if pack_purchased_gb is not None else pack_remaining_gb), 0)
-    pack_used_gb = max(0, pack_purchased - pack_remaining)
-    pack_used_bytes = pack_used_gb * BYTES_PER_GB
+    pack_remaining = max(int(pack_remaining_bytes), 0)
+    pack_purchased = max(
+        int(pack_purchased_bytes if pack_purchased_bytes is not None else pack_remaining),
+        0,
+    )
+    pack_used_bytes = max(0, pack_purchased - pack_remaining)
     referral_bytes = max(int(referral_gb), 0) * BYTES_PER_GB
     base_limit_bytes = max(int(base_gb), 0) * BYTES_PER_GB
 
@@ -141,7 +144,6 @@ def split_bypass_consumption(
     referral_used = min(remaining_after_pack, referral_bytes)
     base_used = max(0, remaining_after_pack - referral_used)
 
-    pack_remaining_bytes = pack_remaining * BYTES_PER_GB
     referral_remaining_bytes = max(0, referral_bytes - referral_used)
     base_remaining_bytes = max(0, base_limit_bytes - base_used)
 
@@ -149,10 +151,10 @@ def split_bypass_consumption(
         "packUsedBytes": pack_used_bytes,
         "referralUsedBytes": referral_used,
         "baseUsedBytes": base_used,
-        "packRemainingBytes": pack_remaining_bytes,
+        "packRemainingBytes": pack_remaining,
         "referralRemainingBytes": referral_remaining_bytes,
         "baseRemainingBytes": base_remaining_bytes,
-        "packRemainingGb": float(pack_remaining),
+        "packRemainingGb": round(pack_remaining / BYTES_PER_GB, 3),
         "baseUsedGb": round(base_used / BYTES_PER_GB, 3),
     }
 
@@ -160,26 +162,24 @@ def split_bypass_consumption(
 def apply_bypass_usage_delta(
     old_used_bytes: int,
     new_used_bytes: int,
-    pack_remaining_gb: int,
+    pack_remaining_bytes: int,
 ) -> int:
     """
     Списать прирост трафика сначала с остатка пакета.
-    Возвращает новый pack_remaining_gb.
+    Возвращает точный остаток пакета в байтах.
     """
     old_used = max(int(old_used_bytes), 0)
     new_used = max(int(new_used_bytes), 0)
     if new_used <= old_used:
-        return max(int(pack_remaining_gb), 0)
+        return max(int(pack_remaining_bytes), 0)
     delta = new_used - old_used
-    pack_remaining_bytes = max(int(pack_remaining_gb), 0) * BYTES_PER_GB
-    from_pack = min(delta, pack_remaining_bytes)
-    remaining_bytes = pack_remaining_bytes - from_pack
-    return int(remaining_bytes // BYTES_PER_GB)
+    remaining = max(int(pack_remaining_bytes), 0)
+    return max(remaining - delta, 0)
 
 
-def compute_pack_carryover_gb(pack_remaining_gb: int) -> int:
-    """Неиспользованные ГБ пакета для переноса на следующий месяц."""
-    return max(int(pack_remaining_gb), 0)
+def compute_pack_carryover_bytes(pack_remaining_bytes: int) -> int:
+    """Точный неиспользованный остаток пакета для переноса на следующий месяц."""
+    return max(int(pack_remaining_bytes), 0)
 
 
 def compute_billing_period(today: date, anchor_day: int) -> tuple[date, date]:
@@ -662,14 +662,19 @@ def is_bypass_server(label: object) -> bool:
 
 
 async def _bypass_allowance_parts(conn, user_id: int) -> tuple[int, int, int]:
-    """(base_gb, pack_gb, referral_gb) — pack_gb только из купленных/подарочных пакетов."""
+    """(base_gb, pack_remaining_bytes, referral_gb)."""
     row = await conn.fetchrow(
         """
-        SELECT subscription_tier, bypass_traffic_limit_gb, bypass_bonus_gb,
+        SELECT subscription_tier, bypass_traffic_limit_gb,
+               COALESCE(
+                   bypass_bonus_bytes,
+                   COALESCE(bypass_bonus_gb, 0)::bigint * $2
+               ) AS pack_bytes,
                COALESCE(referral_bonus_bypass_percent, 0) AS referral_bypass_pct
         FROM users WHERE user_id = $1
         """,
         user_id,
+        BYTES_PER_GB,
     )
     if not row:
         return 0, 0, 0
@@ -678,10 +683,10 @@ async def _bypass_allowance_parts(conn, user_id: int) -> tuple[int, int, int]:
 
     tier = row["subscription_tier"] or FREE_TIER_ID
     base_gb = int(row["bypass_traffic_limit_gb"] or get_tier_bypass_gb(tier))
-    pack_gb = int(row["bypass_bonus_gb"] or 0)
+    pack_bytes = int(row["pack_bytes"] or 0)
     referral_pct = int(row["referral_bypass_pct"] or 0)
     referral_gb = int(base_gb * referral_pct / 100) if referral_pct > 0 else 0
-    return base_gb, pack_gb, referral_gb
+    return base_gb, pack_bytes, referral_gb
 
 
 async def ensure_bypass_period(conn, user_id: int) -> None:
@@ -693,10 +698,15 @@ async def ensure_bypass_period(conn, user_id: int) -> None:
     row = await conn.fetchrow(
         """
         SELECT traffic_anchor_day, bypass_period_start, bypass_period_end_excl,
-               bypass_traffic_used_bytes, bypass_bonus_gb, bypass_pack_purchased_gb
+               bypass_traffic_used_bytes,
+               COALESCE(
+                   bypass_bonus_bytes,
+                   COALESCE(bypass_bonus_gb, 0)::bigint * $2
+               ) AS pack_bytes
         FROM users WHERE user_id = $1
         """,
         user_id,
+        BYTES_PER_GB,
     )
     if not row:
         return
@@ -709,7 +719,7 @@ async def ensure_bypass_period(conn, user_id: int) -> None:
     start, end_excl = compute_billing_period(today, int(anchor))
     stored_start = _as_date(row["bypass_period_start"])
     stored_end = _as_date(row["bypass_period_end_excl"])
-    pack_remaining_gb = int(row["bypass_bonus_gb"] or 0)
+    pack_remaining_bytes = int(row["pack_bytes"] or 0)
 
     if stored_start is None:
         await conn.execute(
@@ -726,7 +736,10 @@ async def ensure_bypass_period(conn, user_id: int) -> None:
     period_expired = stored_end is not None and today >= stored_end
 
     if period_expired and start != stored_start:
-        carry_pack_gb = compute_pack_carryover_gb(pack_remaining_gb)
+        carry_pack_bytes = compute_pack_carryover_bytes(pack_remaining_bytes)
+        carry_pack_gb = (
+            carry_pack_bytes + BYTES_PER_GB - 1
+        ) // BYTES_PER_GB
         await conn.execute(
             """
             UPDATE vpn_keys
@@ -742,16 +755,20 @@ async def ensure_bypass_period(conn, user_id: int) -> None:
                 bypass_period_start = $1,
                 bypass_period_end_excl = $2,
                 bypass_traffic_used_bytes = 0,
-                bypass_bonus_gb = $3,
-                bypass_pack_purchased_gb = $3,
+                bypass_bonus_bytes = $3,
+                bypass_pack_purchased_bytes = $3,
+                bypass_bonus_gb = $4,
+                bypass_pack_purchased_gb = $4,
+                bypass_meter_baseline_bytes = 0,
+                bypass_meter_period_start = $1,
                 bypass_last_sync_at = NULL
-            WHERE user_id = $4
+            WHERE user_id = $5
             """,
-            start, end_excl, carry_pack_gb, user_id,
+            start, end_excl, carry_pack_bytes, carry_pack_gb, user_id,
         )
         logger.info(
-            "bypass period rollover uid=%s carry_pack_gb=%s period=%s..%s",
-            user_id, carry_pack_gb, start, end_excl,
+            "bypass period rollover uid=%s carry_pack_bytes=%s period=%s..%s",
+            user_id, carry_pack_bytes, start, end_excl,
         )
     elif stored_end != end_excl or stored_start != start:
         # Внутри периода или просроченный end без смены месяца — только выравниваем даты.
@@ -767,15 +784,27 @@ async def ensure_bypass_period(conn, user_id: int) -> None:
 
 
 async def user_bypass_allowance_bytes(conn, user_id: int) -> tuple[int, int]:
-    """(limit_bytes, pack_purchased_gb) — pack_purchased_gb = куплено за период (включая перенос)."""
-    base_gb, pack_remaining_gb, referral_gb = await _bypass_allowance_parts(conn, user_id)
+    """(limit_bytes, pack_purchased_bytes), включая точный перенос."""
+    base_gb, pack_remaining_bytes, referral_gb = await _bypass_allowance_parts(conn, user_id)
     row = await conn.fetchrow(
-        "SELECT bypass_pack_purchased_gb FROM users WHERE user_id = $1",
+        """
+        SELECT COALESCE(
+                   bypass_pack_purchased_bytes,
+                   COALESCE(bypass_pack_purchased_gb, 0)::bigint * $2
+               ) AS pack_purchased_bytes
+        FROM users WHERE user_id = $1
+        """,
         user_id,
+        BYTES_PER_GB,
     )
-    pack_purchased_gb = int(row["bypass_pack_purchased_gb"] or 0) if row else pack_remaining_gb
-    total_gb = base_gb + pack_purchased_gb + referral_gb
-    return total_gb * BYTES_PER_GB, pack_purchased_gb
+    pack_purchased_bytes = (
+        int(row["pack_purchased_bytes"] or 0) if row else pack_remaining_bytes
+    )
+    total_bytes = (
+        (base_gb + referral_gb) * BYTES_PER_GB
+        + pack_purchased_bytes
+    )
+    return total_bytes, pack_purchased_bytes
 
 
 async def user_bypass_traffic_snapshot(conn, user_id: int) -> dict[str, Any]:
@@ -787,10 +816,15 @@ async def user_bypass_traffic_snapshot(conn, user_id: int) -> dict[str, Any]:
         SELECT subscription_tier, traffic_anchor_day,
                bypass_period_start, bypass_period_end_excl,
                bypass_traffic_used_bytes, bypass_traffic_limit_gb,
-               bypass_bonus_gb, bypass_pack_purchased_gb
+               COALESCE(
+                   bypass_bonus_bytes,
+                   COALESCE(bypass_bonus_gb, 0)::bigint * $2
+               )
+                   AS pack_remaining_bytes
         FROM users WHERE user_id = $1
         """,
         user_id,
+        BYTES_PER_GB,
     )
     if not row:
         return {
@@ -808,16 +842,16 @@ async def user_bypass_traffic_snapshot(conn, user_id: int) -> dict[str, Any]:
     from .plans import FREE_TIER_ID, get_tier_bypass_gb
 
     tier = row["subscription_tier"] or FREE_TIER_ID
-    limit_bytes, pack_purchased_gb = await user_bypass_allowance_bytes(conn, user_id)
+    limit_bytes, pack_purchased_bytes = await user_bypass_allowance_bytes(conn, user_id)
     used = int(row["bypass_traffic_used_bytes"] or 0)
-    pack_remaining_gb = int(row["bypass_bonus_gb"] or 0)
+    pack_remaining_bytes = int(row["pack_remaining_bytes"] or 0)
 
     base_gb, _, referral_gb = await _bypass_allowance_parts(conn, user_id)
     if base_gb == 0:
         base_gb = get_tier_bypass_gb(tier)
 
     split = split_bypass_consumption(
-        used, base_gb, pack_remaining_gb, pack_purchased_gb, referral_gb
+        used, base_gb, pack_remaining_bytes, pack_purchased_bytes, referral_gb
     )
     exceeded = limit_bytes > 0 and used >= limit_bytes
 
@@ -831,8 +865,8 @@ async def user_bypass_traffic_snapshot(conn, user_id: int) -> dict[str, Any]:
         "bypassUsedGb": round(used / BYTES_PER_GB, 2),
         "bypassLimitGb": round(limit_bytes / BYTES_PER_GB, 2),
         "bypassRemainingGb": round(remaining_gb, 2),
-        "bypassBonusGb": pack_purchased_gb,
-        "bypassPackGb": pack_purchased_gb,
+        "bypassBonusGb": round(pack_purchased_bytes / BYTES_PER_GB, 3),
+        "bypassPackGb": round(pack_purchased_bytes / BYTES_PER_GB, 3),
         "bypassPackRemainingGb": split["packRemainingGb"],
         "bypassReferralGb": referral_gb,
         "bypassBaseGb": base_gb,

@@ -18,7 +18,7 @@ from ..database import get_connection, get_support_link, set_announcement_text, 
 from ..admin_panel import build_admin_stats_text, get_admin_panel_keyboard
 from ..config import AppConfig
 from ..plans import SUBSCRIPTION_PLANS_BASE, RENEWAL_PLANS_BASE, format_price_rub, format_price_stars, format_price_both, get_renewal_plans
-from ..subscriptions import create_or_activate_keys_for_all_servers, create_keys_for_specific_server, update_vless_links_for_server
+from ..subscriptions import create_or_activate_keys_for_all_servers, create_keys_for_specific_server, schedule_server_links_refresh
 from ..user_block import block_user, unblock_user, invalidate_blacklist_cache
 from ..remnawave_client import build_remnawave_client
 from ..xui_client import XUIClient
@@ -4031,13 +4031,14 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
             else:
                 await conn.execute(f'UPDATE servers SET {field} = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', new_value, server_id)
             
-            # Обновляем VLESS ссылки для всех пользователей при любом изменении сервера
-            # (название, IP, порт, base_url и т.д. влияют на ссылку)
+            # Лёгкий refresh при rename; полная пересборка — только при IP/порте/…
             try:
-                # Запускаем обновление ссылок в фоне, чтобы не блокировать ответ админу
-                import asyncio
-                asyncio.create_task(update_vless_links_for_server(server_id))
-                logger.info(f"Scheduled VLESS links update for server {server_id} after editing {field}")
+                schedule_server_links_refresh(server_id, changed_field=field)
+                logger.info(
+                    "Scheduled link refresh for server %s after editing %s",
+                    server_id,
+                    field,
+                )
             except Exception as e:
                 logger.error(f"Error scheduling VLESS links update for server {server_id}: {e}")
         
@@ -4046,7 +4047,7 @@ async def setup_admin_handlers(dp, bot: Bot, config: AppConfig):
         
         await message.answer(
             f"{E.success} Поле <b>{field}</b> обновлено!\n\n"
-            f"{E.refresh} VLESS ссылки пользователей обновляются...",
+            f"{E.refresh} Подписки обновляются в фоне…",
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
         )

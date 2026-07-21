@@ -195,6 +195,42 @@ async def init_db() -> None:
                     WHERE COALESCE(bypass_bonus_gb, 0) > 0
                     """
                 )
+            if 'bypass_bonus_bytes' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN bypass_bonus_bytes BIGINT"
+                )
+                await conn.execute(
+                    """
+                    UPDATE users
+                    SET bypass_bonus_bytes = COALESCE(bypass_bonus_gb, 0)::bigint * 1073741824
+                    """
+                )
+                logging.info("Added exact bypass_bonus_bytes column to users table")
+            if 'bypass_pack_purchased_bytes' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN bypass_pack_purchased_bytes BIGINT"
+                )
+                await conn.execute(
+                    """
+                    UPDATE users
+                    SET bypass_pack_purchased_bytes =
+                        COALESCE(bypass_pack_purchased_gb, 0)::bigint * 1073741824
+                    """
+                )
+                logging.info("Added exact bypass_pack_purchased_bytes column to users table")
+            if 'bypass_meter_baseline_bytes' not in existing_columns:
+                await conn.execute(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN bypass_meter_baseline_bytes BIGINT NOT NULL DEFAULT 0
+                    """
+                )
+                logging.info("Added bypass_meter_baseline_bytes column to users table")
+            if 'bypass_meter_period_start' not in existing_columns:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN bypass_meter_period_start DATE"
+                )
+                logging.info("Added bypass_meter_period_start column to users table")
             if 'bypass_last_sync_at' not in existing_columns:
                 await conn.execute(
                     "ALTER TABLE users ADD COLUMN bypass_last_sync_at TIMESTAMP"

@@ -8,13 +8,22 @@ from urllib.parse import quote
 
 YOUTUBE_ADFREE_NAME = "🇷🇺 Россия | YouTube без рекламы"
 YOUTUBE_ADFREE_HOST = "104.171.131.174"
+YOUTUBE_ADFREE_LEGACY_HOSTS = (
+    "104.171.131.174",
+    "ru-1-67.cdnquanta.com",
+)
 YOUTUBE_ADFREE_PORT = 443
-YOUTUBE_ADFREE_UUID = "efc1e4b8-16cb-433d-b6fb-6f7eb2762712"
-YOUTUBE_ADFREE_SNI = "j5orbbxwns.medved.app"
+YOUTUBE_ADFREE_UUID = "a215f8d3-fc76-49a9-8762-010483ba94fe"
+YOUTUBE_ADFREE_SNI = "unnftuqcfa.medved.app"
 YOUTUBE_ADFREE_FP = "firefox"
 YOUTUBE_ADFREE_FLOW = "xtls-rprx-vision"
 YOUTUBE_ADFREE_ALPN = "h2,http/1.1"
 YOUTUBE_ADFREE_DESCRIPTION = "для RU сервисов и YouTube"
+
+# backward-compat (старый Reality/gRPC exit)
+YOUTUBE_ADFREE_LEGACY_HOST = "ru-1-67.cdnquanta.com"
+YOUTUBE_ADFREE_PBK = ""
+YOUTUBE_ADFREE_SID = ""
 
 # backward-compat alias
 YOUTUBE_ADFREE_AUTH = YOUTUBE_ADFREE_UUID
@@ -27,19 +36,21 @@ def is_static_server(server: Mapping[str, Any] | None) -> bool:
 
 
 def is_youtube_adfree_host(address: object) -> bool:
-    return str(address or "").strip() == YOUTUBE_ADFREE_HOST
+    host = str(address or "").strip()
+    return host in YOUTUBE_ADFREE_LEGACY_HOSTS or host == YOUTUBE_ADFREE_HOST
 
 
 def youtube_adfree_link(remark: str = YOUTUBE_ADFREE_NAME) -> str:
-    """VLESS+TLS+Vision exit (RU / YouTube без рекламы)."""
+    """VLESS+TCP+TLS+Vision exit (RU / YouTube без рекламы)."""
     fragment = quote((remark or "").strip() or YOUTUBE_ADFREE_NAME, safe="")
     return (
         f"vless://{YOUTUBE_ADFREE_UUID}@{YOUTUBE_ADFREE_HOST}:{YOUTUBE_ADFREE_PORT}"
-        f"?encryption=none&flow={quote(YOUTUBE_ADFREE_FLOW, safe='')}"
-        f"&security=tls&type=tcp"
+        f"?encryption=none"
+        f"&flow={quote(YOUTUBE_ADFREE_FLOW, safe='')}"
+        f"&type=tcp&security=tls"
         f"&sni={quote(YOUTUBE_ADFREE_SNI, safe='')}"
         f"&fp={quote(YOUTUBE_ADFREE_FP, safe='')}"
-        f"&alpn={quote(YOUTUBE_ADFREE_ALPN, safe=',')}"
+        f"&alpn={quote(YOUTUBE_ADFREE_ALPN, safe='')}"
         f"#{fragment}"
     )
 

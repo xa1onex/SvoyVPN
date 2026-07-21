@@ -2025,3 +2025,34 @@ async def migrate_all_vless_configs() -> None:
     logger.info("Migrating VLESS configurations...")
     # Здесь можно добавить логику массового обновления ссылок при необходимости
     pass
+
+
+def schedule_server_links_refresh(server_id: int, changed_field: str | None = None) -> None:
+    """Background refresh of VLESS links after server field edits (admin panel)."""
+    import asyncio
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async def _run():
+        try:
+            if changed_field in (None, "ip", "port", "protocol", "name"):
+                # Full rebuild for connectivity-affecting fields / rename
+                from . import subscriptions as self_mod
+                # Prefer existing helpers if present
+                if hasattr(self_mod, "refresh_all_links_for_server"):
+                    await self_mod.refresh_all_links_for_server(server_id)
+                elif hasattr(self_mod, "create_or_activate_keys_for_all_servers"):
+                    logger.info("schedule_server_links_refresh(%s): no dedicated refresh helper", server_id)
+                else:
+                    logger.info("schedule_server_links_refresh(%s) field=%s: noop", server_id, changed_field)
+        except Exception:
+            logger.exception("schedule_server_links_refresh failed for server %s", server_id)
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(_run())
+        else:
+            loop.run_until_complete(_run())
+    except RuntimeError:
+        asyncio.ensure_future(_run())

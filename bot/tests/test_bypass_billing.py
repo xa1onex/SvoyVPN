@@ -7,7 +7,7 @@ from bot.traffic import (
     BYTES_PER_GB,
     apply_bypass_usage_delta,
     compute_billing_period,
-    compute_pack_carryover_gb,
+    compute_pack_carryover_bytes,
     split_bypass_consumption,
 )
 
@@ -29,16 +29,32 @@ def test_compute_billing_period_advances_on_anchor_day():
 
 def test_pack_delta_consumed_before_base():
     """После покупки 10 ГБ новый трафик списывается с пакета."""
-    pack_remaining = 10
+    pack_remaining = 10 * BYTES_PER_GB
     pack_remaining = apply_bypass_usage_delta(20 * BYTES_PER_GB, 25 * BYTES_PER_GB, pack_remaining)
-    assert pack_remaining == 5
+    assert pack_remaining == 5 * BYTES_PER_GB
+
+
+def test_partial_gigabyte_is_preserved_exactly():
+    pack_remaining = apply_bypass_usage_delta(
+        0,
+        BYTES_PER_GB // 10,
+        10 * BYTES_PER_GB,
+    )
+    assert pack_remaining == 10 * BYTES_PER_GB - BYTES_PER_GB // 10
 
 
 def test_user_scenario_remaining_before_renewal():
     """50 base, +10 pack, 20 base used then +5 → 35 GB left (5 pack + 30 base)."""
-    pack_remaining = apply_bypass_usage_delta(20 * BYTES_PER_GB, 25 * BYTES_PER_GB, 10)
+    pack_remaining = apply_bypass_usage_delta(
+        20 * BYTES_PER_GB,
+        25 * BYTES_PER_GB,
+        10 * BYTES_PER_GB,
+    )
     split = split_bypass_consumption(
-        25 * BYTES_PER_GB, 50, pack_remaining, pack_purchased_gb=10
+        25 * BYTES_PER_GB,
+        50,
+        pack_remaining,
+        pack_purchased_bytes=10 * BYTES_PER_GB,
     )
     pack_left = split["packRemainingBytes"] / BYTES_PER_GB
     base_left = split["baseRemainingBytes"] / BYTES_PER_GB
@@ -49,19 +65,22 @@ def test_user_scenario_remaining_before_renewal():
 
 def test_user_scenario_carryover_after_renewal():
     """После продления: 50 base + 5 carry pack = 55."""
-    carry = compute_pack_carryover_gb(5)
-    assert carry == 5
-    assert 50 + carry == 55
+    carry = compute_pack_carryover_bytes(5 * BYTES_PER_GB)
+    assert carry == 5 * BYTES_PER_GB
+    assert 50 + carry / BYTES_PER_GB == 55
 
 
 def test_user_scenario_second_month_exactly_base():
     """55 лимит, потратили 35 → 20 осталось. Перенос 0 → ровно 50."""
-    pack_remaining = apply_bypass_usage_delta(0, 35 * BYTES_PER_GB, 5)
+    pack_remaining = apply_bypass_usage_delta(0, 35 * BYTES_PER_GB, 5 * BYTES_PER_GB)
     assert pack_remaining == 0
-    carry = compute_pack_carryover_gb(pack_remaining)
+    carry = compute_pack_carryover_bytes(pack_remaining)
     assert carry == 0
     split = split_bypass_consumption(
-        35 * BYTES_PER_GB, 50, pack_remaining, pack_purchased_gb=5
+        35 * BYTES_PER_GB,
+        50,
+        pack_remaining,
+        pack_purchased_bytes=5 * BYTES_PER_GB,
     )
     assert split["baseRemainingBytes"] == 20 * BYTES_PER_GB
 

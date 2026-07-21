@@ -30,12 +30,15 @@ from .traffic import (
 
 
 def _row_remark(row: Mapping[str, Any]) -> str:
+    """Название в UI: сначала servers.name, иначе # из ссылки."""
+    sname = str(row.get("server_name") or "").strip()
+    if sname:
+        return sname
     link = str(row.get("vless_link") or "")
     parsed = parse_proxy_link(link)
-    sname = str(row.get("server_name") or "")
     if parsed and parsed.get("remark"):
         return str(parsed["remark"])
-    return sname
+    return ""
 
 
 def build_happ_plain_subscription_body(

@@ -716,7 +716,7 @@ class WebhookServer:
                     "Cache-Control": "no-store",
                     "Content-Disposition": 'attachment; filename="SvoyVPN"',
                     "profile-title": "Svoy VPN",
-                    "profile-update-interval": "4",
+                    "profile-update-interval": "2",
                     "support-url": "https://t.me/majorka_wy",
                     "profile-web-page-url": "https://t.me/SvoyVPN_robot",
                     "announce": announce_text,
@@ -815,7 +815,7 @@ class WebhookServer:
                 "Cache-Control": "no-store, no-transform",
                 "Content-Disposition": 'attachment; filename="SvoyVPN"',
                 "profile-title": "Svoy VPN",
-                "profile-update-interval": "4",
+                "profile-update-interval": "2",
                 "support-url": "https://t.me/majorka_wy",
                 "profile-web-page-url": "https://t.me/SvoyVPN_robot",
                 "announce": announce_text,
@@ -1143,7 +1143,7 @@ class WebhookServer:
             common_headers = {
                 "Cache-Control": "no-store, no-transform",
                 "profile-title": "Svoy VPN",
-                "profile-update-interval": "4",
+                "profile-update-interval": "2",
                 "support-url": "https://t.me/majorka_wy",
                 "profile-web-page-url": "https://t.me/SvoyVPN_robot",
                 "announce": announce_text,
@@ -1259,7 +1259,7 @@ class WebhookServer:
                     "X-Crypt-Version": "5",
                     "X-Protected-Profile": "1",
                     "profile-title": "Svoy VPN",
-                    "profile-update-interval": "4",
+                    "profile-update-interval": "2",
                     "subscription-userinfo": (
                         f"upload=0; download={data['used_bytes']}; "
                         f"total={data['total_bytes']}; expire={data['expire_ts']}"
