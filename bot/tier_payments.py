@@ -27,7 +27,7 @@ from .subscriptions import (
     set_new_subscription,
     sync_user_keys,
 )
-from .traffic import apply_subscription_anchor_on_payment, ensure_bypass_period
+from .traffic import BYTES_PER_GB, apply_subscription_anchor_on_payment, ensure_bypass_period
 from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
@@ -158,14 +158,30 @@ async def apply_tier_upgrade(
 async def apply_bypass_pack(conn, user_id: int, gb_amount: int) -> None:
     """Add bypass pack GB to user's current period (remaining + purchased counters)."""
     await ensure_bypass_period(conn, user_id)
+    pack_bytes = max(int(gb_amount), 0) * BYTES_PER_GB
     await conn.execute(
         """
         UPDATE users
-        SET bypass_bonus_gb = COALESCE(bypass_bonus_gb, 0) + $1,
-            bypass_pack_purchased_gb = COALESCE(bypass_pack_purchased_gb, 0) + $1
-        WHERE user_id = $2
+        SET bypass_bonus_bytes = COALESCE(
+                bypass_bonus_bytes,
+                COALESCE(bypass_bonus_gb, 0)::bigint * $1
+            ) + $2,
+            bypass_pack_purchased_bytes = COALESCE(
+                bypass_pack_purchased_bytes,
+                COALESCE(bypass_pack_purchased_gb, 0)::bigint * $1
+            ) + $2,
+            bypass_bonus_gb = CEIL((COALESCE(
+                bypass_bonus_bytes,
+                COALESCE(bypass_bonus_gb, 0)::bigint * $1
+            ) + $2)::numeric / $1)::integer,
+            bypass_pack_purchased_gb = CEIL((COALESCE(
+                bypass_pack_purchased_bytes,
+                COALESCE(bypass_pack_purchased_gb, 0)::bigint * $1
+            ) + $2)::numeric / $1)::integer
+        WHERE user_id = $3
         """,
-        gb_amount,
+        BYTES_PER_GB,
+        pack_bytes,
         user_id,
     )
 

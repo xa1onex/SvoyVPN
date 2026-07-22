@@ -1484,10 +1484,10 @@ class WebhookServer:
                                     if parts[-1] == "miniapp"
                                     else "bot",
                                 }
-                            elif len(parts) >= 4 and parts[1] == "gb_pack":
+                            elif len(parts) >= 4 and parts[1] in ("gb_pack", "bypass_pack"):
                                 metadata = {
                                     "user_id": int(parts[0]),
-                                    "product_type": "gb_pack",
+                                    "product_type": parts[1],
                                     "pack_id": int(parts[2]),
                                     "method_id": parts[3] if len(parts) > 3 else "cryptopay",
                                     "payment_source": "miniapp" if parts[-1] == "miniapp" else "bot",
@@ -2164,13 +2164,13 @@ class WebhookServer:
             return web.json_response({"error": str(e)}, status=500)
 
     async def api_get_traffic_packs(self, request: web_request.Request) -> web.Response:
-        """Список активных пакетов доп. ГБ для миниаппа / веба."""
+        """Compatibility endpoint: returns active bypass packs for the miniapp."""
         try:
             async with get_connection() as conn:
                 rows = await conn.fetch(
                     """
                     SELECT id, title, gb_amount, price_rub, price_stars, display_order
-                    FROM gb_pack_products
+                    FROM bypass_pack_products
                     WHERE is_active = TRUE
                     ORDER BY gb_amount ASC, display_order ASC, id ASC
                     """
@@ -2191,7 +2191,7 @@ class WebhookServer:
             return web.json_response({"error": str(e)}, status=500)
 
     async def api_create_traffic_pack_payment(self, request: web_request.Request) -> web.Response:
-        """Оплата пакета ГБ (Stars / ЮKassa / Crypto Pay) — только при активной подписке."""
+        """Compatibility endpoint: creates payment for a bypass pack."""
         try:
             data = await request.json()
             init_data = data.get("initData", "")
@@ -2230,7 +2230,7 @@ class WebhookServer:
                 pack = await conn.fetchrow(
                     """
                     SELECT id, title, gb_amount, price_rub, price_stars
-                    FROM gb_pack_products
+                    FROM bypass_pack_products
                     WHERE id = $1 AND is_active = TRUE
                     """,
                     pack_id,
@@ -2263,10 +2263,10 @@ class WebhookServer:
                 if price_stars < 1:
                     return web.json_response({"error": "Invalid pack price"}, status=400)
                 labeled_prices = [LabeledPrice(label=title, amount=price_stars)]
-                payload = f"stars_gbpack_{user_id}_{pack_id}_{ts}_miniapp"
+                payload = f"bypass_pack|{user_id}|{pack_id}|miniapp"
                 invoice_link = await self.bot.create_invoice_link(
-                    title=f"Доп. трафик: {title}",
-                    description=f"+{pack['gb_amount']} ГБ к месячному лимиту",
+                    title=f"Bypass трафик: {title}",
+                    description=f"+{pack['gb_amount']} ГБ bypass",
                     payload=payload,
                     provider_token="",
                     currency="XTR",
@@ -2287,7 +2287,7 @@ class WebhookServer:
                     invoice_link = await self.bot.create_invoice_link(
                         title=f"Доп. трафик: {title}",
                         description=f"+{pack['gb_amount']} ГБ",
-                        payload=f"yoo_gbpack_{user_id}_{pack_id}_{ts}_miniapp",
+                        payload=f"bypass_pack|{user_id}|{pack_id}|miniapp",
                         provider_token=self.yookassa_config.provider_token,
                         currency="RUB",
                         prices=labeled_prices,
@@ -2301,11 +2301,11 @@ class WebhookServer:
                 bot_username = (await self.bot.get_me()).username
                 payment_data = self.yookassa_client.create_payment(
                     amount=price_rub / 100.0,
-                    description=f"Доп. трафик VPN — {title}",
+                    description=f"Bypass трафик VPN — {title}",
                     return_url=f"https://t.me/{bot_username}?start=payment_success",
                     metadata={
                         "user_id": user_id,
-                        "product_type": "gb_pack",
+                        "product_type": "bypass_pack",
                         "pack_id": pack_id,
                         "payment_source": "miniapp",
                     },
@@ -2326,7 +2326,7 @@ class WebhookServer:
                     if self.cryptopay_config.testnet
                     else "https://pay.crypt.bot/api/createInvoice"
                 )
-                payload_str = f"{user_id}:gb_pack:{pack_id}:cryptopay:miniapp"
+                payload_str = f"{user_id}:bypass_pack:{pack_id}:cryptopay:miniapp"
                 import aiohttp
 
                 async with aiohttp.ClientSession() as session:
@@ -2335,7 +2335,7 @@ class WebhookServer:
                         "currency_type": "fiat",
                         "fiat": "RUB",
                         "amount": f"{amount_rub:.2f}",
-                        "description": f"Доп. трафик — {title}",
+                        "description": f"Bypass трафик — {title}",
                         "payload": payload_str,
                     }
                     async with session.post(api_url, headers=headers, json=data_pay) as resp:
@@ -2356,8 +2356,8 @@ class WebhookServer:
                                 user_id,
                                 int(price_rub),
                                 "RUB",
-                                f"gb_pack:{pack_id}",
-                                "gb_pack",
+                                f"bypass_pack:{pack_id}",
+                                "bypass_pack",
                                 "pending",
                                 str(invoice_id),
                                 "miniapp",
@@ -4382,5 +4382,4 @@ class WebhookServer:
         """Остановка сервера"""
         if self.runner:
             await self.runner.cleanup()
-
 

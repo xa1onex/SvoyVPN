@@ -51,6 +51,17 @@ async def main() -> None:
               AND remnawave_node_uuid IS NOT NULL
             """
         )
+        key_rows = await conn.fetch(
+            """
+            SELECT k.user_id, k.vless_client_id
+            FROM vpn_keys k
+            JOIN servers s ON s.id = k.server_id
+            WHERE k.is_active = TRUE
+              AND s.is_active = TRUE
+              AND s.is_bypass = TRUE
+              AND s.panel_type = 'remnawave'
+            """
+        )
 
     periods = {
         int(row["user_id"]): (
@@ -68,8 +79,20 @@ async def main() -> None:
     )
     if result is None:
         raise RuntimeError("Remnawave usage is unavailable; migration aborted")
-    _, node_records = result
-    raw_totals = _sum_node_usage_by_period(node_records, periods)
+    node_records, remnawave_to_vless = result
+    user_ids_by_vless_uuid = {
+        str(row["vless_client_id"]).lower().replace("-", ""): int(row["user_id"])
+        for row in key_rows
+        if row["vless_client_id"]
+    }
+    user_ids_by_remnawave_uuid = {
+        remnawave_uuid: user_ids_by_vless_uuid[vless_uuid]
+        for remnawave_uuid, vless_uuid in remnawave_to_vless.items()
+        if vless_uuid in user_ids_by_vless_uuid
+    }
+    raw_totals = _sum_node_usage_by_period(
+        node_records, periods, user_ids_by_remnawave_uuid
+    )
 
     async with get_connection() as conn:
         async with conn.transaction():

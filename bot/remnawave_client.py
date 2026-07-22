@@ -270,6 +270,64 @@ class RemnawaveClient:
             start += len(users)
         return usage
 
+    async def fetch_all_user_vless_uuids(
+        self, *, page_size: int = 500
+    ) -> dict[str, str]:
+        """Map an internal Remnawave user UUID to its VLESS UUID."""
+        identities: dict[str, str] = {}
+        start = 0
+        page_size = max(50, min(int(page_size), 500))
+        while True:
+            data = await self._request(
+                "GET", "users", params={"size": page_size, "start": start}
+            )
+            if isinstance(data, list):
+                users, total = data, None
+            else:
+                users = data.get("users") or []
+                total = data.get("total")
+            if not users:
+                break
+            for user in users:
+                if not isinstance(user, dict):
+                    continue
+                user_uuid = str(user.get("uuid") or "").strip().lower().replace("-", "")
+                vless_uuid = str(user.get("vlessUuid") or "").strip().lower().replace("-", "")
+                if user_uuid and vless_uuid:
+                    identities[user_uuid] = vless_uuid
+            if total is not None and start + len(users) >= int(total):
+                break
+            if len(users) < page_size:
+                break
+            start += len(users)
+        return identities
+
+    async def fetch_node_users_usage(
+        self,
+        node_uuid: str,
+        *,
+        start: date,
+        end_exclusive: date,
+    ) -> list[dict[str, Any]]:
+        """Return daily per-user traffic for one Remnawave node.
+
+        ``users`` exposes a user's aggregate lifetime counter.  It must never
+        be used to bill a subset of nodes: a user can use regular and bypass
+        hosts with the same VLESS UUID.  The legacy node endpoint is the
+        Remnawave endpoint that contains the necessary node UUID and day.
+        """
+        data = await self._request(
+            "GET",
+            f"bandwidth-stats/nodes/{node_uuid}/users/legacy",
+            params={
+                "start": start.isoformat(),
+                "end": end_exclusive.isoformat(),
+            },
+        )
+        if not isinstance(data, list):
+            raise RuntimeError("Unexpected Remnawave node usage response")
+        return [item for item in data if isinstance(item, dict)]
+
 
 def build_remnawave_client(config) -> RemnawaveClient:
     rw = config.remnawave

@@ -9,8 +9,8 @@
   чтобы в период не попадал старый накопленный трафик.
 - После прохода по всем серверам одной SQL-аггрегацией пересчитываем
   users.bypass_traffic_used_bytes (servers.is_bypass = TRUE, включая Remnawave 🆓).
-- Remnawave: один запрос к панели на все RW-хосты; при агрегации MAX, не SUM
-  (один пользователь = один UUID на всех RW-серверах).
+- Remnawave: bypass считается только по посуточной статистике выделенных
+  bypass-нод, а не по глобальному UUID-счётчику пользователя.
 
 На сбой отдельной панели реагируем мягко: значения lifetime прошлого прохода сохраняются,
 никакой ключ не «обнуляется» из-за таймаута.
@@ -21,6 +21,7 @@ import asyncio
 import json
 import logging
 import os
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from .database import get_connection
@@ -40,31 +41,162 @@ DEFAULT_INTERVAL_SEC = int(os.getenv("TRAFFIC_SYNC_INTERVAL_SEC", "60"))
 _sync_cycle_lock = asyncio.Lock()
 
 
-async def _collect_remnawave_usage() -> dict[str, int] | None:
-    """
-    Трафик всех пользователей с Remnawave Panel (один запрос на все RW-серверы).
-    None — панель недоступна.
+def _record_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+async def _collect_remnawave_usage(
+    *,
+    bypass_node_uuids: set[str],
+    period_start: date,
+    period_end_exclusive: date,
+) -> tuple[list[dict[str, Any]], dict[str, str]] | None:
+    """Fetch daily per-user traffic only for the dedicated bypass nodes.
+
+    A Remnawave user has one UUID for every host, so the global user lifetime
+    counter includes regular VPN traffic too.  Billing bypass from that counter
+    was the source of false charges for users who had not used bypass.
     """
     from .config import load_config
     from .remnawave_client import build_remnawave_client
 
     config = load_config()
     if not config.remnawave.enabled:
-        return {}
+        return [], {}
 
     client = build_remnawave_client(config)
     try:
-        raw = await client.fetch_all_users_traffic()
-        return {
-            _norm_xui_identity(uuid): int(bytes_val)
-            for uuid, bytes_val in raw.items()
-            if _norm_xui_identity(uuid)
-        }
+        records: list[dict[str, Any]] = []
+        for node_uuid in sorted({str(v).strip() for v in bypass_node_uuids if str(v).strip()}):
+            records.extend(
+                await client.fetch_node_users_usage(
+                    node_uuid,
+                    start=period_start,
+                    end_exclusive=period_end_exclusive,
+                )
+            )
+        return records, await client.fetch_all_user_vless_uuids()
     except Exception as e:
         logger.warning("traffic worker: Remnawave traffic fetch failed: %s", e)
         return None
     finally:
         await client.close()
+
+
+def _sum_node_usage_by_period(
+    node_records: list[dict[str, Any]],
+    periods: dict[int, tuple[date, date]],
+    user_ids_by_vless_uuid: dict[str, int],
+) -> dict[int, int]:
+    """Sum daily Remnawave node records inside each user's billing period."""
+    result: dict[int, int] = {}
+    for record in node_records:
+        user_id = user_ids_by_vless_uuid.get(
+            _norm_xui_identity(record.get("userUuid"))
+        )
+        if user_id is None or user_id not in periods:
+            continue
+        record_day = _record_date(record.get("date"))
+        if record_day is None:
+            continue
+        period_start, period_end_exclusive = periods[user_id]
+        if not (period_start <= record_day < period_end_exclusive):
+            continue
+        try:
+            total = max(int(record.get("total") or 0), 0)
+        except (TypeError, ValueError):
+            continue
+        result[user_id] = result.get(user_id, 0) + total
+    return result
+
+
+async def _collect_remnawave_bypass_usage() -> dict[int, int] | None:
+    """Read authoritative bypass usage for all current user periods."""
+    today = date.today()
+    async with get_connection() as conn:
+        period_rows = await conn.fetch(
+            """
+            SELECT user_id, bypass_period_start, bypass_period_end_excl
+            FROM users
+            WHERE bypass_period_start IS NOT NULL
+              AND bypass_period_end_excl IS NOT NULL
+            """
+        )
+        node_rows = await conn.fetch(
+            """
+            SELECT DISTINCT remnawave_node_uuid
+            FROM servers
+            WHERE is_active = TRUE
+              AND is_bypass = TRUE
+              AND panel_type = 'remnawave'
+              AND remnawave_node_uuid IS NOT NULL
+            """
+        )
+        missing_nodes = await conn.fetch(
+            """
+            SELECT id, name
+            FROM servers
+            WHERE is_active = TRUE
+              AND is_bypass = TRUE
+              AND panel_type = 'remnawave'
+              AND remnawave_node_uuid IS NULL
+            """
+        )
+        key_rows = await conn.fetch(
+            """
+            SELECT k.user_id, k.vless_client_id
+            FROM vpn_keys k
+            JOIN servers s ON s.id = k.server_id
+            WHERE k.is_active = TRUE
+              AND s.is_active = TRUE
+              AND s.is_bypass = TRUE
+              AND s.panel_type = 'remnawave'
+            """
+        )
+
+    if missing_nodes:
+        logger.error(
+            "traffic worker: bypass Remnawave servers without node UUID: %s; "
+            "their traffic is intentionally not billed until configured",
+            ", ".join(f"{row['id']}:{row['name']}" for row in missing_nodes),
+        )
+
+    periods: dict[int, tuple[date, date]] = {}
+    for row in period_rows:
+        start = _record_date(row["bypass_period_start"])
+        end = _record_date(row["bypass_period_end_excl"])
+        if start is not None and end is not None and start < end:
+            periods[int(row["user_id"])] = (start, end)
+    if not periods or not node_rows:
+        return {}
+
+    ids_by_uuid: dict[str, int] = {}
+    for row in key_rows:
+        norm = _norm_xui_identity(row["vless_client_id"])
+        if norm:
+            ids_by_uuid[norm] = int(row["user_id"])
+    earliest = min(start for start, _ in periods.values())
+    result = await _collect_remnawave_usage(
+        bypass_node_uuids={str(row["remnawave_node_uuid"]) for row in node_rows},
+        period_start=earliest,
+        period_end_exclusive=today + timedelta(days=1),
+    )
+    if result is None:
+        return None
+    records, remnawave_to_vless = result
+    user_ids_by_remnawave_uuid = {
+        remnawave_uuid: ids_by_uuid[vless_uuid]
+        for remnawave_uuid, vless_uuid in remnawave_to_vless.items()
+        if vless_uuid in ids_by_uuid
+    }
+    return _sum_node_usage_by_period(records, periods, user_ids_by_remnawave_uuid)
 
 
 async def _collect_server_usage(server: dict[str, Any]) -> dict[str, int] | None:
@@ -276,7 +408,7 @@ async def _refresh_bypass_periods() -> None:
                 )
 
 
-async def _aggregate_bypass_traffic() -> None:
+async def _aggregate_bypass_traffic(remnawave_usage: dict[int, int]) -> None:
     """Пересчитывает users.bypass_traffic_used_bytes; пакет тратится первым (по дельте)."""
     from .traffic import apply_bypass_usage_delta
 
@@ -285,50 +417,55 @@ async def _aggregate_bypass_traffic() -> None:
             """
             SELECT u.user_id,
                    COALESCE(u.bypass_traffic_used_bytes, 0) AS old_used,
-                   COALESCE(u.bypass_bonus_gb, 0) AS pack_remaining_gb,
-                   COALESCE(agg.used, 0) AS new_used
+                   COALESCE(
+                       u.bypass_bonus_bytes,
+                       COALESCE(u.bypass_bonus_gb, 0)::bigint * $1
+                   ) AS pack_remaining_bytes,
+                   COALESCE(agg.used, 0) AS non_remnawave_used
             FROM users u
-            JOIN (
+            LEFT JOIN (
                 SELECT user_id,
-                       COALESCE(SUM(used) FILTER (WHERE panel_type <> 'remnawave'), 0)
-                       + COALESCE(MAX(used) FILTER (WHERE panel_type = 'remnawave'), 0)
-                       AS used
-                FROM (
-                    SELECT k.user_id,
-                           s.panel_type,
-                           GREATEST(
-                               k.traffic_lifetime_bytes
-                               - COALESCE(k.traffic_period_baseline_bytes, 0),
-                               0
-                           ) AS used
-                    FROM vpn_keys k
-                    JOIN servers s ON s.id = k.server_id
-                    WHERE k.is_active = TRUE
-                      AND s.is_bypass = TRUE
-                ) key_delta
+                       SUM(GREATEST(
+                           k.traffic_lifetime_bytes
+                           - COALESCE(k.traffic_period_baseline_bytes, 0),
+                           0
+                       )) AS used
+                FROM vpn_keys k
+                JOIN servers s ON s.id = k.server_id
+                WHERE k.is_active = TRUE
+                  AND s.is_bypass = TRUE
+                  AND s.panel_type <> 'remnawave'
                 GROUP BY user_id
             ) agg ON u.user_id = agg.user_id
-            """
+            WHERE u.traffic_anchor_day IS NOT NULL
+            """,
+            1073741824,
         )
         for row in rows:
             old_used = int(row["old_used"] or 0)
-            new_used = int(row["new_used"] or 0)
-            if new_used < old_used:
-                # Панель могла сбросить счётчик — не откатываем списание пакета.
-                new_used = old_used
-            pack_remaining = apply_bypass_usage_delta(
-                old_used, new_used, int(row["pack_remaining_gb"] or 0)
+            new_used = (
+                int(row["non_remnawave_used"] or 0)
+                + int(remnawave_usage.get(int(row["user_id"]), 0))
             )
+            # Node history can arrive late and can also correct a previous day.
+            # It is authoritative for bypass, therefore a decrease is valid and
+            # must not be pinned to the former (possibly global) RW counter.
+            pack_remaining = apply_bypass_usage_delta(
+                old_used, new_used, int(row["pack_remaining_bytes"] or 0)
+            )
+            pack_remaining_gb = (pack_remaining + 1073741824 - 1) // 1073741824
             await conn.execute(
                 """
                 UPDATE users
                 SET bypass_traffic_used_bytes = $1,
-                    bypass_bonus_gb = $2,
+                    bypass_bonus_bytes = $2,
+                    bypass_bonus_gb = $3,
                     bypass_last_sync_at = NOW()
-                WHERE user_id = $3
+                WHERE user_id = $4
                 """,
                 new_used,
                 pack_remaining,
+                pack_remaining_gb,
                 int(row["user_id"]),
             )
 
@@ -394,29 +531,6 @@ async def _run_sync_once_impl() -> dict[str, int]:
                     srv["id"], e,
                 )
 
-    rw_usage = await _collect_remnawave_usage()
-    if rw_usage is None:
-        servers_failed += 1
-        logger.warning("traffic worker: Remnawave panel unavailable, RW keys not updated")
-    else:
-        rw_server_ids = [
-            int(s["id"])
-            for s in servers
-            if (s.get("panel_type") or "3x-ui") == "remnawave"
-        ]
-        if rw_server_ids:
-            servers_ok += 1
-            for sid in rw_server_ids:
-                if not rw_usage:
-                    continue
-                try:
-                    keys_updated += await _apply_server_usage(sid, rw_usage)
-                except Exception as e:
-                    logger.warning(
-                        "traffic worker: apply Remnawave usage failed for server %s: %s",
-                        sid, e,
-                    )
-
     try:
         await _align_stale_traffic_periods()
     except Exception as e:
@@ -428,7 +542,14 @@ async def _run_sync_once_impl() -> dict[str, int]:
         logger.warning("traffic worker: bypass period refresh failed: %s", e)
 
     try:
-        await _aggregate_bypass_traffic()
+        rw_usage = await _collect_remnawave_bypass_usage()
+        if rw_usage is None:
+            servers_failed += 1
+            logger.warning("traffic worker: Remnawave node usage unavailable; bypass total kept unchanged")
+        else:
+            if any((s.get("panel_type") or "3x-ui") == "remnawave" for s in servers):
+                servers_ok += 1
+            await _aggregate_bypass_traffic(rw_usage)
     except Exception as e:
         logger.warning("traffic worker: aggregate bypass traffic failed: %s", e)
 

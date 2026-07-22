@@ -12,7 +12,7 @@ from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .database import get_connection
-from .traffic import BYTES_PER_GB, ensure_bypass_period
+from .traffic import BYTES_PER_GB, ensure_bypass_period, user_bypass_allowance_bytes
 from .custom_emojis import E, e, lbl, btn, emoji_button, raw
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ async def check_bypass_traffic_notifications(bot: Bot) -> None:
             users = await conn.fetch(
                 """
                 SELECT user_id, subscription_tier, bypass_traffic_used_bytes,
-                       bypass_traffic_limit_gb, bypass_bonus_gb,
+                       bypass_traffic_limit_gb,
                        bypass_period_start
                 FROM users
                 WHERE pay_subscribed = TRUE
@@ -50,15 +50,19 @@ async def check_bypass_traffic_notifications(bot: Bot) -> None:
             user_id = user_row["user_id"]
             used_bytes = int(user_row["bypass_traffic_used_bytes"] or 0)
             limit_gb = int(user_row["bypass_traffic_limit_gb"] or 0)
-            pack_gb = int(user_row["bypass_bonus_gb"] or 0)
             period_start = user_row["bypass_period_start"]
 
             if limit_gb <= 0:
                 continue
 
-            total_limit_bytes = (limit_gb + pack_gb) * BYTES_PER_GB
+            async with get_connection() as conn:
+                await ensure_bypass_period(conn, user_id)
+                total_limit_bytes, pack_purchased_bytes = await user_bypass_allowance_bytes(
+                    conn, user_id
+                )
             if total_limit_bytes <= 0:
                 continue
+            pack_gb = pack_purchased_bytes / BYTES_PER_GB
 
             remaining_fraction = max(0, (total_limit_bytes - used_bytes)) / total_limit_bytes
 
@@ -82,7 +86,7 @@ async def _maybe_send_notification(
     used_bytes: int,
     limit_bytes: int,
     limit_gb: int,
-    bonus_gb: int,
+    bonus_gb: float,
 ) -> None:
     """Send bypass notification if not already sent for this period."""
     if period_start is None:
@@ -110,7 +114,7 @@ async def _maybe_send_notification(
             )
 
         remaining_gb = max(0, (limit_bytes - used_bytes)) / BYTES_PER_GB
-        total_gb = limit_gb + bonus_gb
+        total_gb = limit_bytes / BYTES_PER_GB
 
         if notif_type == "bypass_0pct":
             text = (

@@ -702,8 +702,10 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         """User accepted 100 GB bonus."""
         user_id = callback.from_user.id
         async with get_connection() as conn:
+            from ..tier_payments import apply_bypass_pack
+            await apply_bypass_pack(conn, user_id, 100)
             await conn.execute(
-                "UPDATE users SET bypass_bonus_gb = COALESCE(bypass_bonus_gb, 0) + 100, bypass_pack_purchased_gb = COALESCE(bypass_pack_purchased_gb, 0) + 100, cancel_retention_used = TRUE WHERE user_id = $1",
+                "UPDATE users SET cancel_retention_used = TRUE WHERE user_id = $1",
                 user_id,
             )
         await callback.message.edit_text(
@@ -721,10 +723,8 @@ async def setup_tier_handlers(dp, bot: Bot, config: AppConfig):
         """User accepted 10 GB bonus (repeat canceller)."""
         user_id = callback.from_user.id
         async with get_connection() as conn:
-            await conn.execute(
-                "UPDATE users SET bypass_bonus_gb = COALESCE(bypass_bonus_gb, 0) + 10, bypass_pack_purchased_gb = COALESCE(bypass_pack_purchased_gb, 0) + 10 WHERE user_id = $1",
-                user_id,
-            )
+            from ..tier_payments import apply_bypass_pack
+            await apply_bypass_pack(conn, user_id, 10)
         await callback.message.edit_text(
             f"{E.success} <b>Готово!</b>\n\n"
             "+10 ГБ bypass добавлены на ваш аккаунт.",
